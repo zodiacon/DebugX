@@ -1,5 +1,8 @@
 #pragma once
 
+#include <memory>
+#include <string>
+
 namespace DebugEngine {
 	enum class AttachType {
 		Default = 0,					// DEBUG_ATTACH_DEFAULT
@@ -12,15 +15,60 @@ namespace DebugEngine {
 	};
 	DEFINE_ENUM_FLAG_OPERATORS(DebugEngine::AttachType);
 
+	enum class DebuggerNotificationType {
+		ProcessCreated = 0x400,
+		ThreadCreated,
+		ModuleLoaded,
+		ModuleUnloaded,
+		Output,
+		Exception,
+		Breakpoint,
+		ExitProcess,
+		ExitThread,
+	};
+
+	struct CreateProcessData {
+		void* BaseAddress;
+		HANDLE hProcess;
+		HANDLE hFile;
+		HANDLE hThread;
+		std::string ImageName;
+		ULONG DateTimeStamp;
+		ULONG Checksum;
+		ULONG ModuleSize;
+		void* ThreadDataOffset;
+	};
+
+	enum class OutputDataMask {
+		Normal				= 1,
+		Error				= 2,
+		Warning				= 4,
+		Verbose				= 8,
+		Prompt				= 0x10,
+		PromptRegisters		= 0x20,
+		ExtensionWarning	= 0x40,
+		Debuggee			= 0x80,
+		DebuggePrompt		= 0x100,
+		Symbols				= 0x200,
+		Status				= 0x400,
+		Xml					= 0x800,
+	};
+
+	struct OutputData {
+		OutputDataMask Mask;
+		std::string Text;
+	};
+
 	class Debugger sealed {
 	public:
 		Debugger();
 		~Debugger();
 
-		HRESULT Create();
+		HRESULT Create(DWORD notifyThreadId);
 
 		HRESULT AttachToProcess(DWORD pid, AttachType attach);
 		HRESULT RunAndAttachToProcess();
+		void FreeNotification(WPARAM id);
 
 	private:
 		struct Impl;
