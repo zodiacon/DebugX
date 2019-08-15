@@ -8,11 +8,13 @@
 
 #include "..\DebugEngine\Debugger.h"
 
+#define HR(x) ATLVERIFY(SUCCEEDED(x))
+
 int wmain(int argc, const wchar_t* argv[]) {
 	using namespace DebugEngine;
 
 	Debugger debugger;
-	ATLVERIFY(SUCCEEDED(debugger.Create()));
-
+	HR(debugger.Create());
+	HR(debugger.AttachToProcess(30524, AttachType::Default));
 }
 
