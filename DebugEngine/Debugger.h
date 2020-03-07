@@ -5,7 +5,7 @@
 
 namespace DebugEngine {
 	enum class AttachType {
-		Default = 0,					// DEBUG_ATTACH_DEFAULT
+		Default = 0,					// DEBUG_ATTACH_DEFAULT (invasive)
 		NonInvasive = 1,				// DEBUG_ATTACH_NONINVASIVE
 		Existing = 2,					// DEBUG_ATTACH_EXISTING
 		NonInvasiveNoSuspend = 4,		// DEBUG_ATTACH_NONINVASIVE_NO_SUSPEND
@@ -65,9 +65,11 @@ namespace DebugEngine {
 		~Debugger();
 
 		HRESULT Create(DWORD notifyThreadId);
+		HRESULT Create(HWND hWndNotify);
 
 		HRESULT AttachToProcess(DWORD pid, AttachType attach);
 		HRESULT RunAndAttachToProcess();
+		HRESULT ExecuteCommand(const char* command);
 		void FreeNotification(WPARAM id);
 
 	private:
