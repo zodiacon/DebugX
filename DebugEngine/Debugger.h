@@ -1,6 +1,5 @@
 #pragma once
 
-#include <memory>
 #include <string>
 
 namespace DebugEngine {
@@ -16,7 +15,7 @@ namespace DebugEngine {
 	DEFINE_ENUM_FLAG_OPERATORS(DebugEngine::AttachType);
 
 	enum class DebuggerNotificationType {
-		ProcessCreated = 0x400,
+		ProcessCreated = 0xb00,
 		ThreadCreated,
 		ModuleLoaded,
 		ModuleUnloaded,
@@ -25,6 +24,28 @@ namespace DebugEngine {
 		Breakpoint,
 		ExitProcess,
 		ExitThread,
+		StatusChanged
+	};
+
+	enum class ExecutionStatus {
+		NoChange,
+		Go,
+		GoHandled,
+		GoNotHandled,
+		StepOver,
+		StepInfo,
+		Vreak,
+		NoDebugge,
+		SteoBranch,
+		IgnoreEvent,
+		RestartRequested,
+		ReverseGo,
+		ReverseStepBranch,
+		ReverseStepOver,
+		ReverseStepInto,
+		OutOfSync,
+		WaitInput,
+		Timeout
 	};
 
 	struct CreateProcessData {
@@ -40,6 +61,7 @@ namespace DebugEngine {
 	};
 
 	enum class OutputDataMask {
+		None				= 0,
 		Normal				= 1,
 		Error				= 2,
 		Warning				= 4,
@@ -53,6 +75,7 @@ namespace DebugEngine {
 		Status				= 0x400,
 		Xml					= 0x800,
 	};
+	DEFINE_ENUM_FLAG_OPERATORS(DebugEngine::OutputDataMask);
 
 	struct OutputData {
 		OutputDataMask Mask;
@@ -63,18 +86,27 @@ namespace DebugEngine {
 	public:
 		Debugger();
 		~Debugger();
+		Debugger(const Debugger&) = delete;
+		Debugger& operator=(const Debugger&) = delete;
 
 		HRESULT Create(DWORD notifyThreadId);
 		HRESULT Create(HWND hWndNotify);
 
-		HRESULT AttachToProcess(DWORD pid, AttachType attach);
-		HRESULT RunAndAttachToProcess();
-		HRESULT ExecuteCommand(const char* command);
+		HRESULT AttachToProcess(DWORD pid, AttachType attach = AttachType::Default);
+		HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, AttachType attach = AttachType::Default);
+		HRESULT ExecuteCommand(PCWSTR command);
+		HRESULT ExecuteCommand(PCSTR command);
+		HRESULT AttachLocalKernel();
+		HRESULT Break();
+		ExecutionStatus GetExecutionStatus();
+
+		HRESULT OutputPrompt();
+
 		void FreeNotification(WPARAM id);
 
 	private:
 		struct Impl;
-		std::unique_ptr<Impl> _impl;
+		Impl* _impl;
 
 	};
 }

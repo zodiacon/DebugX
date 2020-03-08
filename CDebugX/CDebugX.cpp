@@ -16,6 +16,37 @@ using namespace DebugEngine;
 
 std::unique_ptr<Debugger> debugger;
 
+CComModule _Module;
+
+enum class ConsoleColor : short {
+	Black,
+	DarkBlue,
+	DarkGreen,
+	DarkCyan,
+	DarkRed,
+	DarkMagenta,
+	DarkYellow,
+	Gray,
+	DarkGray,
+	Blue,
+	Green,
+	Cyan,
+	Red,
+	Magenta,
+	Yellow,
+	White
+};
+
+void SetConsoleForegroundColor(ConsoleColor color) {
+	static HANDLE hOutput;
+	if (hOutput == nullptr)
+		hOutput = ::GetStdHandle(STD_OUTPUT_HANDLE);
+
+	CONSOLE_SCREEN_BUFFER_INFO info;
+	GetConsoleScreenBufferInfo(hOutput, &info);
+	SetConsoleTextAttribute(hOutput, (info.wAttributes & ~0x0f) | (WORD)color);
+}
+
 DWORD CALLBACK NotifyThread(PVOID) {
 	MSG msg;
 	while (::GetMessage(&msg, nullptr, 0, 0)) {
@@ -115,7 +146,7 @@ struct CDebugCallbacks :
 	virtual HRESULT __stdcall ChangeDebuggeeState(ULONG Flags, ULONG64 Argument) override {
 		StateChanged = true;
 		m_spControl->GetExecutionStatus(&Status);
-		
+
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeEngineState(ULONG Flags, ULONG64 Argument) override {
@@ -150,6 +181,16 @@ struct CDebugCallbacks :
 		auto data = new OutputData;
 		data->Text = Text;
 		data->Mask = static_cast<OutputDataMask>(Mask);
+		auto color = ConsoleColor::White;
+		switch (data->Mask) {
+			case OutputDataMask::Prompt: color = ConsoleColor::Cyan; break;
+			case OutputDataMask::Error: color = ConsoleColor::Red; break;
+			case OutputDataMask::Symbols: color = ConsoleColor::Blue; break;
+			case OutputDataMask::Debuggee: color = ConsoleColor::Yellow; break;
+			case OutputDataMask::ExtensionWarning: color = ConsoleColor::Gray; break;
+			case OutputDataMask::Warning: color = ConsoleColor::DarkYellow; break;
+		}
+		SetConsoleForegroundColor(color);
 		printf("%s", Text);
 
 		return S_OK;
@@ -158,101 +199,114 @@ struct CDebugCallbacks :
 
 IDebugControl5* g_pControl;
 
-void RunSimpleDebugger() {
-	::CoInitialize(nullptr);
+HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
+	auto pid = _wtoi(argv[1]);
 
-	STARTUPINFO si = { sizeof(si) };
-	PROCESS_INFORMATION pi;
-	WCHAR name[] = L"notepad";
-	if (::CreateProcess(nullptr, name, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
-		::CloseHandle(pi.hProcess);
-		::CloseHandle(pi.hThread);
+	CComPtr<IDebugClient7> spClient;
+	auto hr = ::DebugCreate(__uuidof(IDebugClient7), reinterpret_cast<void**>(&spClient));
+	ATLASSERT(SUCCEEDED(hr));
+	CComQIPtr<IDebugControl5> spControl(spClient);
+	ATLASSERT(spControl);
 
-		CComPtr<IDebugClient7> spClient;
-		auto hr = ::DebugCreate(__uuidof(IDebugClient7), reinterpret_cast<void**>(&spClient));
-		ATLASSERT(SUCCEEDED(hr));
-		CComQIPtr<IDebugControl5> spControl(spClient);
-		ATLASSERT(spControl);
+	CComObject<CDebugCallbacks>* cb;
+	cb->CreateInstance(&cb);
+	cb->SetControl(spControl);
+	spClient->SetEventCallbacks(cb);
+	spClient->SetOutputCallbacks(cb);
+	g_pControl = spControl;
+	spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 
-		CComObject<CDebugCallbacks>* cb;
-		cb->CreateInstance(&cb);
-		cb->SetControl(spControl);
-		spClient->SetEventCallbacks(cb);
-		spClient->SetOutputCallbacks(cb);
-		g_pControl = spControl;
-		spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
-
-		::SetConsoleCtrlHandler([](auto type) {
-			if (type == CTRL_C_EVENT) {
-				g_pControl->SetInterrupt(DEBUG_INTERRUPT_ACTIVE);
-				return TRUE;
-			}
-			return FALSE;
-			}, TRUE);
-
-		//WCHAR name[] = L"c:\\windows\\system32\\notepad.exe";
-		//hr = spClient->CreateProcessAndAttachWide(0, name, DEBUG_PROCESS, 0, DEBUG_ATTACH_DEFAULT);
-		spClient->AttachProcess(0, pi.dwProcessId, DEBUG_ATTACH_DEFAULT);
-		spControl->WaitForEvent(0, INFINITE);
-
-		ULONG status;
-
-		while (true) {
-			status = cb->UpdateState();
-			if (status == DEBUG_STATUS_NO_DEBUGGEE) {
-				printf("No target\n");
-				break;
-			}
-
-			if (status == DEBUG_STATUS_GO || status == DEBUG_STATUS_STEP_BRANCH || status == DEBUG_STATUS_STEP_INTO || status == DEBUG_STATUS_STEP_OVER) {
-				hr = spControl->WaitForEvent(DEBUG_WAIT_DEFAULT, INFINITE);
-				continue;
-			}
-
-			if (cb->StateChanged) {
-				printf("\n");
-				cb->StateChanged = false;
-				if (cb->BreakpointHit) {
-					spControl->OutputCurrentState(DEBUG_OUTCTL_THIS_CLIENT, DEBUG_CURRENT_DEFAULT);
-					cb->BreakpointHit = false;
-				}
-			}
-
-			spControl->OutputPrompt(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
-			printf(" ");
-			char cmd[256];
-			gets_s(cmd);
-			spControl->Execute(DEBUG_OUTCTL_THIS_CLIENT, cmd, DEBUG_EXECUTE_DEFAULT);
+	::SetConsoleCtrlHandler([](auto type) {
+		if (type == CTRL_C_EVENT) {
+			g_pControl->SetInterrupt(DEBUG_INTERRUPT_ACTIVE);
+			return TRUE;
 		}
+		return FALSE;
+		}, TRUE);
+
+	if (pid > 0) {
+		hr = spClient->AttachProcess(0, pid, DEBUG_ATTACH_DEFAULT);
 	}
+	else {
+		if (::_wcsicmp(argv[1], L"-lk") == 0)
+			hr = spClient->AttachKernel(DEBUG_ATTACH_LOCAL_KERNEL, nullptr);
+		else
+			hr = spClient->CreateProcessAndAttachWide(0, argv[1], DEBUG_PROCESS, 0, DEBUG_ATTACH_DEFAULT);
+	}
+	if (FAILED(hr))
+		return hr;
+
+	spControl->WaitForEvent(0, INFINITE);
+
+	//CComQIPtr<IDebugSymbols3> spSymbols(spClient);
+	//ATLASSERT(spSymbols);
+	//ULONG64 base;
+	//hr = spSymbols->GetModuleByModuleName("nt", 0, nullptr, &base);
+	//ULONG64 processListHead;
+	//hr = spSymbols->GetOffsetByName("nt!PsActiveProcessHead", &processListHead);
+	//ULONG id;
+	//hr = spSymbols->GetTypeId(base, "_EPROCESS", &id);
+	//ULONG fieldOffset;
+	//hr = spSymbols->GetFieldOffset(base, id, "ActiveProcessLinks", &fieldOffset);
+
+	ULONG status;
+	char cmd[512];
+
+	while (true) {
+		status = cb->UpdateState();
+		if (status == DEBUG_STATUS_NO_DEBUGGEE) {
+			printf("No target\n");
+			break;
+		}
+
+		if (status == DEBUG_STATUS_GO || status == DEBUG_STATUS_STEP_BRANCH || status == DEBUG_STATUS_STEP_INTO || status == DEBUG_STATUS_STEP_OVER) {
+			hr = spControl->WaitForEvent(DEBUG_WAIT_DEFAULT, INFINITE);
+			continue;
+		}
+
+		if (cb->StateChanged) {
+			printf("\n");
+			cb->StateChanged = false;
+			if (cb->BreakpointHit) {
+				spControl->OutputCurrentState(DEBUG_OUTCTL_THIS_CLIENT, DEBUG_CURRENT_DEFAULT);
+				cb->BreakpointHit = false;
+			}
+		}
+
+		spControl->OutputPrompt(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
+		SetConsoleForegroundColor(ConsoleColor::White);
+		printf(" ");
+		gets_s(cmd);
+		spControl->Execute(DEBUG_OUTCTL_THIS_CLIENT, cmd, DEBUG_EXECUTE_DEFAULT);
+	}
+	return S_OK;
 }
 
+HRESULT RunSimpleDebugger(int argc, wchar_t* argv[]) {
+	auto pid = _wtoi(argv[1]);
 
-int wmain(int argc, const wchar_t* argv[]) {
-	//RunSimpleDebugger();
-	//return 0;
+	::SetConsoleCtrlHandler([](auto type) {
+		if (type == CTRL_C_EVENT) {
+			g_pControl->SetInterrupt(DEBUG_INTERRUPT_ACTIVE);
+			return TRUE;
+		}
+		return FALSE;
+		}, TRUE);
 
-	DWORD id;
-	auto hNotify = ::CreateThread(nullptr, 0, NotifyThread, nullptr, 0, &id);
+	return S_OK;
+}
 
-	debugger = std::make_unique<Debugger>();
-
-	STARTUPINFO si = { sizeof(si) };
-	PROCESS_INFORMATION pi;
-	WCHAR name[] = L"notepad";
-	if (::CreateProcess(nullptr, name, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
-		::CloseHandle(pi.hProcess);
-		::CloseHandle(pi.hThread);
-
-		HR(debugger->Create(id));
-		HR(debugger->AttachToProcess(pi.dwProcessId, AttachType::Default));
-		
-		do {
-			char command[256];
-			gets_s(command);
-
-			debugger->ExecuteCommand(command);
-		} while (true);
+int wmain(int argc, wchar_t* argv[]) {
+	if (argc < 2) {
+		printf("Usage: cdebux <pid or exePath>\n");
+		return 0;
 	}
+	::CoInitialize(nullptr);
+	auto hr = RunSimpleDebugger2(argc, argv);
+	if (FAILED(hr)) {
+		printf("Error: HRESULT=0x%08X\n", hr);
+	}
+	::CoUninitialize();
+	return 0;
 }
 

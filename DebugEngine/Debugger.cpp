@@ -4,8 +4,6 @@
 #include <atlcom.h>
 #include <wil\resource.h>
 
-CComModule _Module;
-
 #pragma comment(lib, "dbgeng")
 
 using namespace DebugEngine;
@@ -62,8 +60,13 @@ struct Debugger::Impl :
 
 	HRESULT Create(DWORD notifyThreadId, HWND hWndNotify);
 	HRESULT AttachToProcess(DWORD pid, AttachType attach);
-
-	HRESULT ExecuteCommand(const char* command);
+	HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, AttachType attach);
+	HRESULT AttachLocalKernel();
+	HRESULT ExecuteCommand(PCSTR command);
+	HRESULT ExecuteCommand(PCWSTR command);
+	HRESULT Break();
+	HRESULT OutputPrompt();
+	ExecutionStatus GetExecutionStatus();
 
 private:
 	template<typename F>
@@ -93,7 +96,6 @@ private:
 		T2 Arg2;
 	};
 
-	HRESULT WaitForEvent(UINT timeout = INFINITE);
 	DWORD DebuggerThread();
 
 	template<typename F, typename T1>
@@ -108,7 +110,7 @@ private:
 			::SetEvent(d->hEvent);
 			}, m_hDebugThread.get(), (ULONG_PTR)&data);
 
-		::WaitForSingleObject(data.hEvent, INFINITE);
+		WaitWithMessages(m_hAsyncEvent.get());
 
 		return data.HResult;
 	}
@@ -126,7 +128,7 @@ private:
 			::SetEvent(d->hEvent);
 			}, m_hDebugThread.get(), (ULONG_PTR)&data);
 
-		::WaitForSingleObject(m_hAsyncEvent.get(), INFINITE);
+		WaitWithMessages(m_hAsyncEvent.get());
 
 		return data.HResult;
 	}
@@ -142,7 +144,7 @@ private:
 			::SetEvent(d->hEvent);
 			}, m_hDebugThread.get(), (ULONG_PTR)& data);
 
-		::WaitForSingleObject(m_hAsyncEvent.get(), INFINITE);
+		WaitWithMessages(m_hAsyncEvent.get());
 
 		return data.HResult;
 	}
@@ -152,7 +154,10 @@ private:
 	HRESULT WaitForEventInternal(ULONG timeout);
 
 private:
-	static const int MaxNotifications = 64;
+	void UpdateStatus();
+	void WaitWithMessages(HANDLE hEvent);
+
+	static const int MaxNotifications = 256;
 
 	bool _stateChanged : 1 { false};
 	bool _breakpointHit : 1 { false };
@@ -160,8 +165,8 @@ private:
 	wil::unique_handle m_hDebugThread;
 	wil::unique_handle m_hShutdownEvent;
 	wil::unique_handle m_hAsyncEvent;
-	DWORD m_NotifyThreadId;
-	HWND m_NotifyHwnd;
+	DWORD m_NotifyThreadId{ 0 };
+	HWND m_NotifyHwnd{ nullptr };
 	void* m_NotificationData[MaxNotifications];
 	int m_CurrentNotification{ 0 };
 	CComPtr<IDebugClient7> m_spClient;
@@ -218,10 +223,12 @@ private:
 	}
 	virtual HRESULT __stdcall ChangeDebuggeeState(ULONG Flags, ULONG64 Argument) override {
 		_stateChanged = true;
+		UpdateStatus();
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeEngineState(ULONG Flags, ULONG64 Argument) override {
 		_stateChanged = true;
+		UpdateStatus();
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeSymbolState(ULONG Flags, ULONG64 Argument) override {
@@ -248,7 +255,10 @@ private:
 		auto current = m_CurrentNotification;
 		m_CurrentNotification = ++m_CurrentNotification % MaxNotifications;
 		m_NotificationData[current] = data;
-		::PostThreadMessage(m_NotifyThreadId, static_cast<UINT>(type), current, reinterpret_cast<LPARAM>(data));
+		if(m_NotifyThreadId)
+			::PostThreadMessage(m_NotifyThreadId, static_cast<UINT>(type), current, reinterpret_cast<LPARAM>(data));
+		else
+			::PostMessage(m_NotifyHwnd, static_cast<UINT>(type), current, reinterpret_cast<LPARAM>(data));
 	}
 
 	// Inherited via IDebugOutputCallbacks
@@ -265,6 +275,19 @@ Debugger::Impl::Impl() {
 }
 
 Debugger::Impl::~Impl() {
+	RunAsync([this]() {
+		m_spClient->EndSession(0);
+		m_spClient.Release();
+		m_spAdvanced.Release();
+		m_spSymbols.Release();
+		m_spControl.Release();
+		m_spData.Release();
+		m_spRegisters.Release();
+		m_spSystem.Release();
+		return S_OK;
+		});
+
+	::SetEvent(m_hShutdownEvent.get());
 	::WaitForSingleObject(m_hDebugThread.get(), 1000);
 }
 
@@ -280,7 +303,6 @@ HRESULT Debugger::Impl::CreateInternal() {
 
 		HR(m_spClient->SetEventCallbacks(this));
 		HR(m_spClient->SetOutputCallbacks(this));
-
 		return S_OK;
 		});
 }
@@ -298,7 +320,29 @@ HRESULT Debugger::Impl::WaitForEventInternal(ULONG timeout) {
 	return m_spControl->WaitForEvent(0, timeout);
 }
 
+void Debugger::Impl::UpdateStatus() {
+	auto oldStatus = _status;
+	m_spControl->GetExecutionStatus(&_status);
+	if (_status != oldStatus) {
+		auto data = new ULONG(_status);
+		PostNotification(DebuggerNotificationType::StatusChanged, data);
+	}
+}
+
+void Debugger::Impl::WaitWithMessages(HANDLE hEvent) {
+	while (::MsgWaitForMultipleObjects(1, &hEvent, FALSE, INFINITE, QS_ALLEVENTS) == WAIT_OBJECT_0 + 1) {
+		MSG msg;
+		while (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+			::TranslateMessage(&msg);
+			::DispatchMessage(&msg);
+		}
+	}
+}
+
 HRESULT Debugger::Impl::Create(DWORD notifyThreadId, HWND hNotifyWnd) {
+	if (m_NotifyHwnd || m_NotifyThreadId)
+		return E_UNEXPECTED;
+
 	m_NotifyThreadId = notifyThreadId;
 	m_NotifyHwnd = hNotifyWnd;
 	m_hShutdownEvent.reset(::CreateEvent(nullptr, TRUE, FALSE, nullptr));
@@ -317,16 +361,50 @@ HRESULT Debugger::Impl::AttachToProcess(DWORD pid, AttachType attach) {
 	return AttachToProcessInternal(pid, attach);
 }
 
-HRESULT Debugger::Impl::ExecuteCommand(const char* command) {
-	return RunAsync([this](const char* cmd) {
+HRESULT Debugger::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, AttachType attach) {
+	return E_NOTIMPL;
+}
+
+HRESULT Debugger::Impl::AttachLocalKernel() {
+	return RunAsync([this]() {
+		HR(m_spClient->AttachKernel(DEBUG_ATTACH_LOCAL_KERNEL, nullptr));
+		return m_spControl->WaitForEvent(0, INFINITE);
+		});
+}
+
+HRESULT Debugger::Impl::ExecuteCommand(PCSTR command) {
+	return RunAsync([this](auto cmd) {
 		HR(m_spControl->Execute(DEBUG_OUTCTL_ALL_CLIENTS, cmd, DEBUG_EXECUTE_DEFAULT));
 		DoPostCommand();
 		return S_OK;
 		}, command);
 }
 
-HRESULT Debugger::Impl::WaitForEvent(UINT timeout) {
-	return S_OK;
+HRESULT Debugger::Impl::ExecuteCommand(PCWSTR command) {
+	return RunAsync([this](auto cmd) {
+		HR(m_spControl->ExecuteWide(DEBUG_OUTCTL_ALL_CLIENTS, cmd, DEBUG_EXECUTE_DEFAULT));
+		DoPostCommand();
+		return S_OK;
+		}, command);
+}
+
+HRESULT Debugger::Impl::Break() {
+	return m_spControl->SetInterrupt(DEBUG_INTERRUPT_ACTIVE);
+}
+
+HRESULT Debugger::Impl::OutputPrompt() {
+	return RunAsync([this]() {
+		return m_spControl->OutputPrompt(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
+		});
+}
+
+ExecutionStatus Debugger::Impl::GetExecutionStatus() {
+	ULONG status;
+	RunAsync([this](ULONG* status) {
+		return m_spControl->GetExecutionStatus(status);
+		}, &status);
+
+	return static_cast<ExecutionStatus>(status);
 }
 
 DWORD Debugger::Impl::DebuggerThread() {
@@ -342,6 +420,7 @@ DebugEngine::Debugger::Debugger() : _impl(new CComObject<Impl>) {
 }
 
 DebugEngine::Debugger::~Debugger() {
+	_impl->Release();
 }
 
 HRESULT Debugger::Create(DWORD notifyThreadId) {
@@ -356,8 +435,32 @@ HRESULT Debugger::AttachToProcess(DWORD pid, AttachType attach) {
 	return _impl->AttachToProcess(pid, attach);
 }
 
-HRESULT Debugger::ExecuteCommand(const char* command) {
+HRESULT Debugger::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, AttachType attach) {
+	return _impl->LaunchAndAttach(exeName, commandLineArgs, attach);
+}
+
+HRESULT Debugger::ExecuteCommand(PCSTR command) {
 	return _impl->ExecuteCommand(command);
+}
+
+HRESULT Debugger::ExecuteCommand(PCWSTR command) {
+	return _impl->ExecuteCommand(command);
+}
+
+HRESULT Debugger::AttachLocalKernel() {
+	return _impl->AttachLocalKernel();
+}
+
+HRESULT Debugger::Break() {
+	return _impl->Break();
+}
+
+ExecutionStatus DebugEngine::Debugger::GetExecutionStatus() {
+	return _impl->GetExecutionStatus();
+}
+
+HRESULT DebugEngine::Debugger::OutputPrompt() {
+	return _impl->OutputPrompt();
 }
 
 void Debugger::FreeNotification(WPARAM id) {
