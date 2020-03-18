@@ -62,6 +62,12 @@
     <ClInclude Include="CommandView.h">
       <Filter>Views</Filter>
     </ClInclude>
+    <ClInclude Include="Interfaces.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GenericEditCommands.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DebugX.rc">
@@ -73,6 +79,69 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="res\DebugX.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\clip_copy.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\clip_cut.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\clip_paste.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\command.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\debug_break_all.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\debug_breakpoint.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\debug_start.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\debug_step_into.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\debug_step_next_statement.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\debug_step_out.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\debug_step_over.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\debug_stop.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\delete.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\dll.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\event.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\find.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\help.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\process.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\processes.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\structure.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\threads.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

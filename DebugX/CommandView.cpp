@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "CommandView.h"
 #include "DebugManager.h"
+#include "resource.h"
 
 using namespace DebugEngine;
 
@@ -12,8 +13,8 @@ void CCommandView::OnFinalMessage(HWND) {
 }
 
 LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
-	m_Text.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL |
-		ES_MULTILINE | ES_READONLY);
+	m_Text.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | 
+		WS_CLIPSIBLINGS | WS_CLIPCHILDREN | ES_MULTILINE | ES_READONLY | ES_NOHIDESEL, 0, TextId);
 
 	CHARFORMAT cf{};
 	cf.crTextColor = RGB(0, 0, 0);
@@ -21,7 +22,6 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	::wcscpy_s(cf.szFaceName, L"Consolas");
 	m_Text.SetDefaultCharFormat(cf);
 	m_Text.SetAutoURLDetect(TRUE);
-
 	DebugManager::Get()->RegisterWindow(*this);
 
 	CFontHandle font;
@@ -32,8 +32,12 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_CommandEdit.SetLimitText(512);
 	m_Prompt.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | SS_SUNKEN | SS_RIGHT);
 	m_Prompt.SetFont(font);
-	m_Execute.Create(*this, nullptr, L"Execute", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON);
-	m_Execute.SetFont(font);
+	m_Execute.Create(*this, nullptr, L"Exec", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, ExecuteId);
+	//CImageList images;
+	//images.Create(32, 32, ILC_COLOR32 | ILC_COLOR, 4, 0);
+	//images.AddIcon(AtlLoadIconImage(IDI_EVENT, 64, 32, 32));
+	//m_Execute.SetImageList(images);
+	//m_Execute.SetImages(0);
 
 	m_CommandHistory.reserve(64);
 
@@ -57,7 +61,7 @@ LRESULT CCommandView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 		m_Text.MoveWindow(0, 0, cx, cy - cmdHeight);
 		m_Prompt.MoveWindow(0, cy - cmdHeight + 1, promptWidth, cmdHeight - 2);
 		m_CommandEdit.MoveWindow(2 + promptWidth, cy - cmdHeight, cx - promptWidth - buttonWidth - 4, cmdHeight);
-		m_Execute.MoveWindow(cx - buttonWidth + 2, cy - cmdHeight, buttonWidth - 4, cmdHeight);
+		m_Execute.MoveWindow(cx - buttonWidth + 2, cy - 20, buttonWidth - 4, 20);
 	}
 	return 0;
 }
@@ -99,7 +103,7 @@ void CCommandView::DoExecuteCommand() {
 	m_Prompt.GetWindowText(prompt);
 	m_Text.AppendText(prompt + L" " + cmd + L"\n");
 	m_CommandHistory.push_back(cmd);
-
+	m_CommandHistoryIndex = (int)m_CommandHistory.size();
 	m_CommandEdit.SetWindowText(L"");
 	m_CommandEdit.EnableWindow(FALSE);
 	m_Execute.EnableWindow(FALSE);
@@ -127,4 +131,48 @@ LRESULT CCommandView::OnRichEditKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handl
 		handled = FALSE;
 	}
 	return 0;
+}
+
+LRESULT CCommandView::OnEditKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
+	switch(wParam) {
+		case VK_UP:
+			if (m_CommandHistoryIndex > 0) {
+				m_CommandEdit.SetWindowText(m_CommandHistory[--m_CommandHistoryIndex]);
+				m_CommandEdit.SetSel(0, -1);
+				m_CommandEdit.SetSel(-1);
+			}
+			return 0;
+
+		case VK_DOWN:
+			if (m_CommandHistoryIndex + 1 < m_CommandHistory.size()) {
+				m_CommandEdit.SetWindowText(m_CommandHistory[++m_CommandHistoryIndex]);
+				m_CommandEdit.SetSel(0, -1);
+				m_CommandEdit.SetSel(-1);
+			}
+			return 0;
+
+		case VK_ESCAPE:
+			m_CommandEdit.SetWindowText(L"");
+			return 0;
+	}
+	handled = FALSE;
+	return 0;
+}
+
+LRESULT CCommandView::OnCopy(WORD, WORD, HWND, BOOL&) {
+	::SendMessage(GetFocus(), WM_COPY, 0, 0);
+
+	return 0;
+}
+
+HICON CCommandView::GetIcon() const {
+	return AtlLoadIconImage(IDI_COMMAND, 64, 16, 16);
+}
+
+CString CCommandView::GetHeader() const {
+	return L"Command";
+}
+
+DWORD CCommandView::GetWindowStyle() const {
+	return WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
 }

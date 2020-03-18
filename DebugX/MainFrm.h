@@ -4,7 +4,7 @@
 
 #pragma once
 
-#define WINDOW_MENU_POSITION	3
+#define WINDOW_MENU_POSITION	4
 
 class CMainFrame : 
 	public CFrameWindowImpl<CMainFrame>, 
@@ -37,6 +37,8 @@ public:
 		COMMAND_RANGE_HANDLER(ID_WINDOW_TABFIRST, ID_WINDOW_TABLAST, OnWindowActivate)
 		CHAIN_MSG_MAP(CUpdateUI<CMainFrame>)
 		CHAIN_MSG_MAP(CFrameWindowImpl<CMainFrame>)
+		COMMAND_RANGE_HANDLER(0x8000, 0xffff, OnForward)
+		REFLECT_NOTIFICATIONS()
 	END_MSG_MAP()
 
 // Handler prototypes (uncomment arguments if needed):
@@ -45,6 +47,7 @@ public:
 //	LRESULT NotifyHandler(int /*idCtrl*/, LPNMHDR /*pnmh*/, BOOL& /*bHandled*/)
 
 private:
+	LRESULT OnForward(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled);
 	LRESULT OnFileExit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -59,5 +62,6 @@ private:
 private:
 	CTabView m_view;
 	CCommandBarCtrl m_CmdBar;
+	CImageList m_TabImages;
 	static int s_FrameWindowCount;
 };

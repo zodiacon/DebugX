@@ -82,10 +82,11 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <ExceptionHandling />
+      <ExceptionHandling>Async</ExceptionHandling>
       <DebugInformationFormat />
       <PreprocessorDefinitions>_WINDOWS;STRICT;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -116,6 +117,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;STRICT;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -148,6 +150,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_WINDOWS;STRICT;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -174,10 +177,11 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <ExceptionHandling />
+      <ExceptionHandling>Async</ExceptionHandling>
       <DebugInformationFormat />
       <PreprocessorDefinitions>WIN32;_WINDOWS;STRICT;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -215,8 +219,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AboutDlg.h" />
+    <ClInclude Include="GenericEditCommands.h" />
     <ClInclude Include="CommandView.h" />
     <ClInclude Include="DebugManager.h" />
+    <ClInclude Include="Interfaces.h" />
     <ClInclude Include="MainFrm.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />
@@ -226,7 +232,28 @@
     <ResourceCompile Include="DebugX.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="res\clip_copy.ico" />
+    <Image Include="res\clip_cut.ico" />
+    <Image Include="res\clip_paste.ico" />
+    <Image Include="res\command.ico" />
     <Image Include="res\DebugX.ico" />
+    <Image Include="res\debug_breakpoint.ico" />
+    <Image Include="res\debug_break_all.ico" />
+    <Image Include="res\debug_start.ico" />
+    <Image Include="res\debug_step_into.ico" />
+    <Image Include="res\debug_step_next_statement.ico" />
+    <Image Include="res\debug_step_out.ico" />
+    <Image Include="res\debug_step_over.ico" />
+    <Image Include="res\debug_stop.ico" />
+    <Image Include="res\delete.ico" />
+    <Image Include="res\dll.ico" />
+    <Image Include="res\event.ico" />
+    <Image Include="res\find.ico" />
+    <Image Include="res\help.ico" />
+    <Image Include="res\process.ico" />
+    <Image Include="res\processes.ico" />
+    <Image Include="res\structure.ico" />
+    <Image Include="res\threads.ico" />
     <Image Include="res\toolbar.bmp" />
   </ItemGroup>
   <ItemGroup>
@@ -235,6 +262,9 @@
   <ItemGroup>
     <ProjectReference Include="..\DebugEngine\DebugEngine.vcxproj">
       <Project>{2846e398-afce-4066-afd6-bfbef8cb12a4}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\DebugX.Kernel\DebugX.Kernel.vcxproj">
+      <Project>{99987ebf-80e1-45a4-8847-a771e4e6090f}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

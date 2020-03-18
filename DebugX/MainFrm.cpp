@@ -38,6 +38,14 @@ void CMainFrame::OnFinalMessage(HWND) {
 	delete this;
 }
 
+LRESULT CMainFrame::OnForward(WORD, WORD, HWND, BOOL&) {
+	auto msg = GetCurrentMessage();
+	auto hPage = m_view.GetPageHWND(m_view.GetActivePage());
+	if (hPage)
+		::SendMessage(hPage, msg->message, msg->wParam, msg->lParam);
+	return 0;
+}
+
 LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
 	// create command bar window
 	HWND hWndCmdBar = m_CmdBar.Create(m_hWnd, rcDefault, nullptr, ATL_SIMPLE_CMDBAR_PANE_STYLE);
@@ -61,6 +69,11 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	UIAddToolBar(hWndToolBar);
 	UISetCheck(ID_VIEW_TOOLBAR, 1);
 	UISetCheck(ID_VIEW_STATUS_BAR, 1);
+
+	CReBarCtrl(m_hWndToolBar).LockBands(TRUE);
+
+	m_TabImages.Create(16, 16, ILC_COLOR | ILC_COLOR32, 16, 8);
+	m_view.SetImageList(m_TabImages);
 
 	// register object for message filtering and idle updates
 	CMessageLoop* pLoop = _Module.GetMessageLoop();
@@ -92,10 +105,11 @@ LRESULT CMainFrame::OnFileExit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCt
 
 LRESULT CMainFrame::OnFileNew(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
 	auto pView = new CCommandView;
-	pView->Create(m_view, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0);
-	m_view.AddPage(pView->m_hWnd, _T("Command"));
+	pView->Create(m_view, rcDefault, nullptr, pView->GetWindowStyle(), 0);
+	int image = m_TabImages.AddIcon(pView->GetIcon());
+	m_view.AddPage(pView->m_hWnd, pView->GetHeader(), image, pView);
 
-	auto& dbg = DebugManager::Get()->Debugger();
+	auto& dbg = DebugManager::Debugger();
 	dbg.AttachLocalKernel();
 	dbg.OutputPrompt();
 

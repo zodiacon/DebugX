@@ -81,7 +81,6 @@ IDR_MAINFRAME MENU
 BEGIN
     POPUP "&File"
     BEGIN
-        MENUITEM "&New\tCtrl+N",                ID_FILE_NEW
         MENUITEM "&Open...\tCtrl+O",            ID_FILE_OPEN
         MENUITEM "&Save\tCtrl+S",               ID_FILE_SAVE
         MENUITEM "Save &As...",                 ID_FILE_SAVE_AS
@@ -104,6 +103,28 @@ BEGIN
     BEGIN
         MENUITEM "&Toolbar",                    ID_VIEW_TOOLBAR
         MENUITEM "&Status Bar",                 ID_VIEW_STATUS_BAR
+        MENUITEM SEPARATOR
+        MENUITEM "&Command",                    ID_VIEW_COMMAND
+        MENUITEM "&Threads",                    ID_VIEW_THREADS
+        MENUITEM "&Processes",                  ID_VIEW_PROCESSES
+        MENUITEM "Call &Stack",                 ID_VIEW_CALLSTACK
+        MENUITEM "&Breakpoints",                ID_VIEW_BREAKPOINTS
+    END
+    POPUP "&Debug"
+    BEGIN
+        MENUITEM "&Attach to Process...\tF6",   ID_DEBUG_ATTACHTOPROCESS
+        MENUITEM "&Run Executable...",          ID_DEBUG_RUNEXECUTABLE
+        MENUITEM "Attach to &Local Kernel",     ID_DEBUG_ATTACHTOLOCALKERNEL
+        MENUITEM "Attach to &Kernel...",        ID_DEBUG_ATTACHTOKERNEL
+        MENUITEM SEPARATOR
+        MENUITEM "&Go",                         ID_DEBUG_GO
+        MENUITEM "&Break",                      ID_DEBUG_BREAK
+        MENUITEM "&Stop",                       ID_DEBUG_STOP
+        MENUITEM "&Detach",                     ID_DEBUG_DETACH
+        MENUITEM SEPARATOR
+        MENUITEM "&Step Over",                  ID_DEBUG_STEPOVER
+        MENUITEM "Ste&p Into",                  ID_DEBUG_STEPINTO
+        MENUITEM "Step &Out",                   ID_DEBUG_STEPOUT
     END
     POPUP "&Window"
     BEGIN
@@ -112,7 +133,7 @@ BEGIN
     END
     POPUP "&Help"
     BEGIN
-        MENUITEM "&About DebugX",               ID_APP_ABOUT
+        MENUITEM "&About DebugX...",            ID_APP_ABOUT
     END
 END
 
@@ -126,21 +147,62 @@ END
 // remains consistent on all systems.
 IDR_MAINFRAME           ICON                    "res\\DebugX.ico"
 
+IDI_COPY                ICON                    "res\\clip_copy.ico"
+
+IDI_CUT                 ICON                    "res\\clip_cut.ico"
+
+IDI_PASTE               ICON                    "res\\clip_paste.ico"
+
+IDI_COMMAND             ICON                    "res\\command.ico"
+
+IDI_PAUSE               ICON                    "res\\debug_break_all.ico"
+
+IDI_BREAKPOINT          ICON                    "res\\debug_breakpoint.ico"
+
+IDI_GO                  ICON                    "res\\debug_start.ico"
+
+IDI_STEP_INTO           ICON                    "res\\debug_step_into.ico"
+
+IDI_ICON9               ICON                    "res\\debug_step_next_statement.ico"
+
+IDI_DEBUG_STEP_OUT      ICON                    "res\\debug_step_out.ico"
+
+IDI_DEBUG_STEP_OVER     ICON                    "res\\debug_step_over.ico"
+
+IDI_STOP                ICON                    "res\\debug_stop.ico"
+
+IDI_DELETE              ICON                    "res\\delete.ico"
+
+IDI_DLL                 ICON                    "res\\dll.ico"
+
+IDI_EVENT               ICON                    "res\\event.ico"
+
+IDI_FIND                ICON                    "res\\find.ico"
+
+IDI_HELP                ICON                    "res\\help.ico"
+
+IDI_PROCESS             ICON                    "res\\process.ico"
+
+IDI_PROCESSES           ICON                    "res\\processes.ico"
+
+IDI_STRUCT              ICON                    "res\\structure.ico"
+
+IDI_THREADS             ICON                    "res\\threads.ico"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
 // Dialog
 //
 
-IDD_ABOUTBOX DIALOG 0, 0, 187, 102
+IDD_ABOUTBOX DIALOGEX 0, 0, 187, 102
 STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "About"
-FONT 9, "Segoe UI"
+CAPTION "About DebugX"
+FONT 9, "Segoe UI", 0, 0, 0x0
 BEGIN
-    DEFPUSHBUTTON   "OK",IDOK,130,81,50,14
-    CTEXT           "DebugX Application v1.0\n\n(c) Copyright 2020",IDC_STATIC,25,57,78,32
-    ICON            IDR_MAINFRAME,IDC_STATIC,55,26,18,20
-    GROUPBOX        "",IDC_STATIC,7,7,115,88
+    DEFPUSHBUTTON   "OK",IDOK,68,81,50,14
+    CTEXT           "DebugX v0.1\n\n(C)2020 Pavel Yosifovich",IDC_STATIC,36,24,114,32
+    ICON            IDR_MAINFRAME,IDC_STATIC,6,6,18,17
 END
 
 
@@ -227,12 +289,24 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 //
+// AFX_DIALOG_LAYOUT
+//
+
+IDD_ABOUTBOX AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
 // String Table
 //
 
 STRINGTABLE
 BEGIN
-    IDR_MAINFRAME           "DebugX"
+    IDR_MAINFRAME           "DebugX v0.1 (C)2020 Pavel Yosifovich"
+    IDS_TITLE               "DebugX"
 END
 
 STRINGTABLE

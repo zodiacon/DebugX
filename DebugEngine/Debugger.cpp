@@ -24,7 +24,7 @@ struct Debugger::Impl :
 	~Impl();
 
 	void FreeNotification(WPARAM id) {
-		delete m_NotificationData[id];
+		delete ((void*)id);
 	}
 
 	bool DoPostCommand() {
@@ -157,8 +157,6 @@ private:
 	void UpdateStatus();
 	void WaitWithMessages(HANDLE hEvent);
 
-	static const int MaxNotifications = 256;
-
 	bool _stateChanged : 1 { false};
 	bool _breakpointHit : 1 { false };
 	ULONG _status = DEBUG_STATUS_NO_CHANGE;
@@ -167,8 +165,6 @@ private:
 	wil::unique_handle m_hAsyncEvent;
 	DWORD m_NotifyThreadId{ 0 };
 	HWND m_NotifyHwnd{ nullptr };
-	void* m_NotificationData[MaxNotifications];
-	int m_CurrentNotification{ 0 };
 	CComPtr<IDebugClient7> m_spClient;
 	CComPtr<IDebugAdvanced4> m_spAdvanced;
 	CComPtr<IDebugDataSpaces4> m_spData;
@@ -252,13 +248,14 @@ private:
 	}
 
 	void PostNotification(DebuggerNotificationType type, void* data) {
-		auto current = m_CurrentNotification;
-		m_CurrentNotification = ++m_CurrentNotification % MaxNotifications;
-		m_NotificationData[current] = data;
+		//auto current = m_CurrentNotification;
+		//m_CurrentNotification = current;
+		//m_NotificationData[current] = data;
+		//m_CurrentNotification = (current + 1) % MaxNotifications;
 		if(m_NotifyThreadId)
-			::PostThreadMessage(m_NotifyThreadId, static_cast<UINT>(type), current, reinterpret_cast<LPARAM>(data));
+			::PostThreadMessage(m_NotifyThreadId, static_cast<UINT>(type), reinterpret_cast<WPARAM>(data), reinterpret_cast<LPARAM>(data));
 		else
-			::PostMessage(m_NotifyHwnd, static_cast<UINT>(type), current, reinterpret_cast<LPARAM>(data));
+			::PostMessage(m_NotifyHwnd, static_cast<UINT>(type), reinterpret_cast<WPARAM>(data), reinterpret_cast<LPARAM>(data));
 	}
 
 	// Inherited via IDebugOutputCallbacks

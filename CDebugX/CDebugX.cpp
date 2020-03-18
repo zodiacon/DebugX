@@ -5,8 +5,13 @@
 #include <stdio.h>
 #include <memory>
 #include <atlbase.h>
+#include <string>
+#include <atlstr.h>
 #include <DbgEng.h>
 #include <atlcom.h>
+#include "DebugX.Kernel.h"
+
+using namespace DebugX::Analysis;
 
 #include "..\DebugEngine\Debugger.h"
 
@@ -207,6 +212,8 @@ HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
 	ATLASSERT(SUCCEEDED(hr));
 	CComQIPtr<IDebugControl5> spControl(spClient);
 	ATLASSERT(spControl);
+	CComQIPtr<IDebugDataSpaces4> spData(spClient);
+	ATLASSERT(spData);
 
 	CComObject<CDebugCallbacks>* cb;
 	cb->CreateInstance(&cb);
@@ -238,16 +245,29 @@ HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
 
 	spControl->WaitForEvent(0, INFINITE);
 
-	//CComQIPtr<IDebugSymbols3> spSymbols(spClient);
-	//ATLASSERT(spSymbols);
-	//ULONG64 base;
-	//hr = spSymbols->GetModuleByModuleName("nt", 0, nullptr, &base);
-	//ULONG64 processListHead;
-	//hr = spSymbols->GetOffsetByName("nt!PsActiveProcessHead", &processListHead);
-	//ULONG id;
-	//hr = spSymbols->GetTypeId(base, "_EPROCESS", &id);
-	//ULONG fieldOffset;
-	//hr = spSymbols->GetFieldOffset(base, id, "ActiveProcessLinks", &fieldOffset);
+	CComQIPtr<IDebugSymbols3> spSymbols(spClient);
+	ATLASSERT(spSymbols);
+	ULONG64 base;
+	hr = spSymbols->GetModuleByModuleName("nt", 0, nullptr, &base);
+	ULONG64 processListHead;
+	hr = spSymbols->GetOffsetByName("nt!PsActiveProcessHead", &processListHead);
+	ULONG id;
+	hr = spSymbols->GetTypeId(base, "_EPROCESS", &id);
+	ULONG fieldOffset;
+	hr = spSymbols->GetFieldOffset(base, id, "ActiveProcessLinks", &fieldOffset);
+	LIST_ENTRY firstProcessLink;
+	hr = spData->ReadVirtual(processListHead, &firstProcessLink, sizeof(firstProcessLink), nullptr);
+	auto pProcess = (ULONG64)firstProcessLink.Flink - fieldOffset;
+
+	EProcessAnalyzer analysis(base, CComQIPtr<IDebugClient>(spClient));
+	analysis.SetProcessEntry((ULONG64)firstProcessLink.Flink);
+	do {
+		auto pid = analysis.GetProcessId();
+		printf("PID: %5u %ws\n", pid, (PCWSTR)analysis.GetImageName());
+		auto next = analysis.MoveToNextProcess();
+		if (next == processListHead - fieldOffset)
+			break;
+	} while (true);
 
 	ULONG status;
 	char cmd[512];

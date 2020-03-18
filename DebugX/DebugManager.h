@@ -11,7 +11,7 @@ public:
 	bool RegisterWindow(HWND hNotify);
 	bool UnregisterWindow(HWND hNotify);
 
-	DebugEngine::Debugger& Debugger();
+	static DebugEngine::Debugger& Debugger();
 
 private:
 	DebugManager();
