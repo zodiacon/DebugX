@@ -259,15 +259,15 @@ HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
 	hr = spData->ReadVirtual(processListHead, &firstProcessLink, sizeof(firstProcessLink), nullptr);
 	auto pProcess = (ULONG64)firstProcessLink.Flink - fieldOffset;
 
-	EProcessAnalyzer analysis(base, CComQIPtr<IDebugClient>(spClient));
-	analysis.SetProcessEntry((ULONG64)firstProcessLink.Flink);
-	do {
-		auto pid = analysis.GetProcessId();
-		printf("PID: %5u %ws\n", pid, (PCWSTR)analysis.GetImageName());
-		auto next = analysis.MoveToNextProcess();
-		if (next == processListHead - fieldOffset)
-			break;
-	} while (true);
+	DEBUG_VALUE value;
+	hr = spControl->Evaluate("nt!PsActiveProcessHead", DEBUG_VALUE_INVALID, &value, nullptr);
+
+	KernelProcessEnumerator kpe(CComQIPtr<IDebugClient>(spClient).p);
+	KernelProcessAnalyzer* p;
+	while (p = kpe.GetNextProcess()) {
+		auto pid = p->GetProcessId();
+		printf("PID: %5u %ws\n", pid, (PCWSTR)p->GetImageName());
+	}
 
 	ULONG status;
 	char cmd[512];

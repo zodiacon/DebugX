@@ -1,6 +1,9 @@
 #pragma once
 
 #include <string>
+#include <functional>
+
+struct IDebugClient;
 
 namespace DebugEngine {
 	enum class AttachType {
@@ -46,6 +49,14 @@ namespace DebugEngine {
 		OutOfSync,
 		WaitInput,
 		Timeout
+	};
+
+	struct ModuleInfo {
+		ULONG64 BaseAddress;
+		ULONG Size;
+		ULONG Symbols;
+		ULONG TimeStamp;
+		std::wstring Name, ImageName, SymbolFile;
 	};
 
 	struct CreateProcessData {
@@ -102,7 +113,12 @@ namespace DebugEngine {
 
 		HRESULT OutputPrompt();
 
+		HRESULT EnumModules(std::vector<ModuleInfo>& modules);
+
 		void FreeNotification(WPARAM id);
+
+		// run code on the debugger's thread
+		void RunAsync(std::function<void(IDebugClient*)> func);
 
 	private:
 		struct Impl;

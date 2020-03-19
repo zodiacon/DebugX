@@ -1,0 +1,55 @@
+#include "pch.h"
+#include "KernelThreadAnalyzer.h"
+
+using namespace DebugX::Analysis;
+
+const PCSTR EThreadName = "_ETHREAD";
+const PCSTR KThreadName = "_KTHREAD";
+
+KernelThreadAnalyzer::KernelThreadAnalyzer(ULONG64 address, IDebugClient* client) : 
+	KernelAnalyzerBase(client), _address(address) {
+	ATLTRACE(L"KernelThreadAnalyzer thread: 0x%llX\n", address);
+}
+
+LARGE_INTEGER KernelThreadAnalyzer::GetCreateTime() const {
+	return ReadVirtual<LARGE_INTEGER>(_address + GetFieldOffset(GetTypeId(EThreadName), "CreateTime"));
+}
+
+LARGE_INTEGER KernelThreadAnalyzer::GetExitTime() const {
+	return ReadVirtual<LARGE_INTEGER>(_address + GetFieldOffset(GetTypeId(EThreadName), "ExitTime"));
+}
+
+ClientId KernelThreadAnalyzer::GetClientId() const {
+	HANDLE id[2] = { 0 };
+	auto hr = Data()->ReadVirtual(_address + GetFieldOffset(GetTypeId(EThreadName), "Cid"), id, sizeof(id), nullptr);
+	ATLASSERT(SUCCEEDED(hr));
+	ClientId cid;
+	cid.ProcessId = HandleToUlong(id[0]);
+	cid.ThreadId = HandleToUlong(id[1]);
+	return cid;
+}
+
+ULONG64 KernelThreadAnalyzer::GetNextThread() const {
+	auto offset = GetFieldOffset(GetTypeId(EThreadName), "ThreadListEntry");
+	return GetNextThreadLink() - offset;
+}
+
+ULONG64 KernelThreadAnalyzer::GetNextThreadLink() const {
+	auto offset = GetFieldOffset(GetTypeId(EThreadName), "ThreadListEntry");
+	auto entry = ReadVirtual<LIST_ENTRY>(_address + offset);
+	auto nextEntry = (ULONG64)entry.Flink;
+	ATLTRACE(L"KernelThreadAnalyzer next thread link: 0x%llX\n", nextEntry);
+	return nextEntry;
+}
+
+ULONG KernelThreadAnalyzer::GetKernelTime() const {
+	return ReadVirtual<ULONG>(_address + GetFieldOffset(GetTypeId("_KTHREAD"), "KernelTime"));
+}
+
+ULONG KernelThreadAnalyzer::GetUserTime() const {
+	return ReadVirtual<ULONG>(_address + GetFieldOffset(GetTypeId("_KTHREAD"), "UserTime"));
+}
+
+ULONG64 KernelThreadAnalyzer::MoveToNextThread() {
+	return _address = GetNextThread();
+}

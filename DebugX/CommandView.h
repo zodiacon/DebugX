@@ -5,10 +5,12 @@
 #include "Interfaces.h"
 
 class CCommandView : 
-	public CWindowImpl<CCommandView>,
+	public CFrameWindowImpl<CCommandView, CWindow, CControlWinTraits>,
 	public CGenericEditCommands<CCommandView>,
 	public IDebugXView {
 public:
+	using BaseFrame = CFrameWindowImpl<CCommandView, CWindow, CControlWinTraits>;
+
 	CCommandView();
 
 	// Inherited via IDebugXView
@@ -26,6 +28,7 @@ public:
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		COMMAND_HANDLER(ExecuteId, BN_CLICKED, OnExecuteCommand)
 		CHAIN_MSG_MAP_ALT(CGenericEditCommands<CCommandView>, 1)
+		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(1)
 		MESSAGE_HANDLER(WM_KEYDOWN, OnEditKeyDown)
 		MESSAGE_HANDLER(WM_CHAR, OnEditChar)

@@ -10,7 +10,8 @@
 #include "MainFrm.h"
 #include "CommandView.h"
 #include "DebugManager.h"
-#include "..\DebugEngine\Debugger.h"
+#include "Debugger.h"
+#include "KernelProcessesView.h"
 
 int CMainFrame::s_FrameWindowCount = 0;
 
@@ -47,6 +48,8 @@ LRESULT CMainFrame::OnForward(WORD, WORD, HWND, BOOL&) {
 }
 
 LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
+	::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+
 	// create command bar window
 	HWND hWndCmdBar = m_CmdBar.Create(m_hWnd, rcDefault, nullptr, ATL_SIMPLE_CMDBAR_PANE_STYLE);
 	// attach menu
@@ -160,6 +163,15 @@ LRESULT CMainFrame::OnWindowCloseAll(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*
 LRESULT CMainFrame::OnWindowActivate(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
 	int nPage = wID - ID_WINDOW_TABFIRST;
 	m_view.SetActivePage(nPage);
+
+	return 0;
+}
+
+LRESULT CMainFrame::OnViewProcesses(WORD, WORD, HWND, BOOL&) {
+	auto pView = new CKernelProcessesView;
+	pView->Create(m_view, rcDefault, nullptr, pView->GetWindowStyle(), 0);
+	int image = m_TabImages.AddIcon(pView->GetIcon());
+	m_view.AddPage(pView->m_hWnd, pView->GetHeader(), image, pView);
 
 	return 0;
 }

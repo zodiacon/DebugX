@@ -27,6 +27,14 @@ struct Debugger::Impl :
 		delete ((void*)id);
 	}
 
+	void RunAsync(std::function<void(IDebugClient*)> func) {
+		RunAsync([&](auto client) {
+			func(client);
+			return S_OK;
+			}, CComQIPtr<IDebugClient>(m_spClient).p);
+
+	}
+
 	bool DoPostCommand() {
 		m_spControl->GetExecutionStatus(&_status);
 		m_spControl->OutputPromptWide(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
@@ -67,6 +75,7 @@ struct Debugger::Impl :
 	HRESULT Break();
 	HRESULT OutputPrompt();
 	ExecutionStatus GetExecutionStatus();
+	HRESULT EnumModules(std::vector<ModuleInfo>& modules);
 
 private:
 	template<typename F>
@@ -404,6 +413,31 @@ ExecutionStatus Debugger::Impl::GetExecutionStatus() {
 	return static_cast<ExecutionStatus>(status);
 }
 
+HRESULT Debugger::Impl::EnumModules(std::vector<ModuleInfo>& modules) {
+	ULONG loaded, unloaded;
+	HR(m_spSymbols->GetNumberModules(&loaded, &unloaded));
+	WCHAR name[MAX_PATH];
+	DEBUG_MODULE_PARAMETERS params;
+	modules.reserve(loaded);
+	for (ULONG i = 0; i < loaded; i++) {
+		ModuleInfo mi;
+		m_spSymbols->GetModuleByIndex(i, &mi.BaseAddress);
+		if (SUCCEEDED(m_spSymbols->GetModuleNameStringWide(DEBUG_MODNAME_IMAGE, i, 0, name, _countof(name), nullptr)))
+			mi.ImageName = name;
+		if (SUCCEEDED(m_spSymbols->GetModuleNameStringWide(DEBUG_MODNAME_MODULE, i, 0, name, _countof(name), nullptr)))
+			mi.Name = name;
+		if (SUCCEEDED(m_spSymbols->GetModuleNameStringWide(DEBUG_MODNAME_SYMBOL_FILE, i, 0, name, _countof(name), nullptr)))
+			mi.SymbolFile = name;
+		if (SUCCEEDED(m_spSymbols->GetModuleParameters(1, nullptr, i, &params))) {
+			mi.Size = params.Size;
+			mi.TimeStamp = params.TimeDateStamp;
+			mi.Symbols = params.SymbolType;
+		}
+		modules.push_back(std::move(mi));
+	}
+	return S_OK;
+}
+
 DWORD Debugger::Impl::DebuggerThread() {
 	for (;;) {
 		if (::WaitForSingleObjectEx(m_hShutdownEvent.get(), INFINITE, TRUE) == WAIT_OBJECT_0)
@@ -460,6 +494,14 @@ HRESULT DebugEngine::Debugger::OutputPrompt() {
 	return _impl->OutputPrompt();
 }
 
+HRESULT Debugger::EnumModules(std::vector<ModuleInfo>& modules) {
+	return _impl->EnumModules(modules);
+}
+
 void Debugger::FreeNotification(WPARAM id) {
 	return _impl->FreeNotification(id);
+}
+
+void Debugger::RunAsync(std::function<void(IDebugClient*)> func) {
+	_impl->RunAsync(func);
 }

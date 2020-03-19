@@ -1,5 +1,6 @@
 // DebugX.Kernel.cpp : Defines the functions for the static library.
 //
 
-#include "EProcessAnalyzer.h"
+#include "KernelProcessAnalyzer.h"
+#include "KernelProcessEnumerator.h"
 

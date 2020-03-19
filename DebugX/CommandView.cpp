@@ -33,11 +33,6 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Prompt.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | SS_SUNKEN | SS_RIGHT);
 	m_Prompt.SetFont(font);
 	m_Execute.Create(*this, nullptr, L"Exec", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, ExecuteId);
-	//CImageList images;
-	//images.Create(32, 32, ILC_COLOR32 | ILC_COLOR, 4, 0);
-	//images.AddIcon(AtlLoadIconImage(IDI_EVENT, 64, 32, 32));
-	//m_Execute.SetImageList(images);
-	//m_Execute.SetImages(0);
 
 	m_CommandHistory.reserve(64);
 

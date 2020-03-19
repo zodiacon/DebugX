@@ -208,7 +208,9 @@
     <ClCompile Include="CommandView.cpp" />
     <ClCompile Include="DebugManager.cpp" />
     <ClCompile Include="DebugX.cpp" />
+    <ClCompile Include="KernelProcessesView.cpp" />
     <ClCompile Include="MainFrm.cpp" />
+    <ClCompile Include="SortedFilteredVector.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -223,10 +225,13 @@
     <ClInclude Include="CommandView.h" />
     <ClInclude Include="DebugManager.h" />
     <ClInclude Include="Interfaces.h" />
+    <ClInclude Include="KernelProcessesView.h" />
     <ClInclude Include="MainFrm.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="SortedFilteredVector.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="View.h" />
+    <ClInclude Include="VirtualListView.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DebugX.rc" />
