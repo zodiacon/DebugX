@@ -76,6 +76,7 @@ struct Debugger::Impl :
 	HRESULT OutputPrompt();
 	ExecutionStatus GetExecutionStatus();
 	HRESULT EnumModules(std::vector<ModuleInfo>& modules);
+	HRESULT Evaluate(PCSTR text, DEBUG_VALUE* value);
 
 private:
 	template<typename F>
@@ -436,6 +437,12 @@ HRESULT Debugger::Impl::EnumModules(std::vector<ModuleInfo>& modules) {
 		modules.push_back(std::move(mi));
 	}
 	return S_OK;
+}
+
+HRESULT Debugger::Impl::Evaluate(PCSTR text, DEBUG_VALUE* value) {
+	return RunAsync([&](auto text, auto value) {
+		return m_spControl->Evaluate(text, DEBUG_VALUE_INVALID, value, nullptr);
+		}, text, value);
 }
 
 DWORD Debugger::Impl::DebuggerThread() {

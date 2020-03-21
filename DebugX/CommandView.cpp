@@ -39,6 +39,10 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	return 0;
 }
 
+HWND CCommandView::Create(HWND hParent) {
+	return __super::Create(hParent, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
+}
+
 LRESULT CCommandView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
 	DebugManager::Get()->UnregisterWindow(*this);
 	handled = FALSE;
@@ -168,6 +172,3 @@ CString CCommandView::GetHeader() const {
 	return L"Command";
 }
 
-DWORD CCommandView::GetWindowStyle() const {
-	return WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
-}

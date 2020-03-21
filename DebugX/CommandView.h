@@ -16,7 +16,7 @@ public:
 	// Inherited via IDebugXView
 	virtual HICON GetIcon() const override;
 	virtual CString GetHeader() const override;
-	virtual DWORD GetWindowStyle() const override;
+	virtual HWND Create(HWND hParent) override;
 
 	enum { TextId = 123, ExecuteId };
 

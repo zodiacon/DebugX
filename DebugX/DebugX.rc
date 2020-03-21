@@ -104,6 +104,8 @@ BEGIN
         MENUITEM "&Toolbar",                    ID_VIEW_TOOLBAR
         MENUITEM "&Status Bar",                 ID_VIEW_STATUS_BAR
         MENUITEM SEPARATOR
+        MENUITEM "&Refresh",                    ID_VIEW_REFRESH
+        MENUITEM SEPARATOR
         MENUITEM "&Command",                    ID_VIEW_COMMAND
         MENUITEM "&Threads",                    ID_VIEW_THREADS
         MENUITEM "&Processes",                  ID_VIEW_PROCESSES

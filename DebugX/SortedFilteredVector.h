@@ -17,6 +17,16 @@ public:
 		_indices.push_back(_indices.size());
 	}
 
+	void Clear() {
+		_items.clear();
+		_indices.clear();
+	}
+
+	void Reserve(size_t capacity) {
+		_items.reserve(capacity);
+		_indices.reserve(capacity);
+	}
+
 	void Set(std::vector<T> items) {
 		_items = std::move(items);
 		auto count = _items.size();

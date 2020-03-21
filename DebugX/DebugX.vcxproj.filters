@@ -45,6 +45,9 @@
     <ClCompile Include="SortedFilteredVector.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SortHelper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -81,6 +84,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="VirtualListView.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SortHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

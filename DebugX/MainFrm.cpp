@@ -14,6 +14,7 @@
 #include "KernelProcessesView.h"
 
 int CMainFrame::s_FrameWindowCount = 0;
+const int WINDOW_MENU_POSITION = 4;
 
 CMainFrame::CMainFrame() {
 	++s_FrameWindowCount;
@@ -37,6 +38,15 @@ void CMainFrame::OnFinalMessage(HWND) {
 		::PostQuitMessage(0);
 	}
 	delete this;
+}
+
+HWND CMainFrame::InitView(IDebugXView* view) {
+	auto hWnd = view->Create(m_view);
+	if (hWnd) {
+		int image = m_TabImages.AddIcon(view->GetIcon());
+		m_view.AddPage(hWnd, view->GetHeader(), image, view);
+	}
+	return hWnd;
 }
 
 LRESULT CMainFrame::OnForward(WORD, WORD, HWND, BOOL&) {
@@ -108,14 +118,11 @@ LRESULT CMainFrame::OnFileExit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCt
 
 LRESULT CMainFrame::OnFileNew(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
 	auto pView = new CCommandView;
-	pView->Create(m_view, rcDefault, nullptr, pView->GetWindowStyle(), 0);
-	int image = m_TabImages.AddIcon(pView->GetIcon());
-	m_view.AddPage(pView->m_hWnd, pView->GetHeader(), image, pView);
-
-	auto& dbg = DebugManager::Debugger();
-	dbg.AttachLocalKernel();
-	dbg.OutputPrompt();
-
+	if (InitView(pView)) {
+		auto& dbg = DebugManager::Debugger();
+		dbg.AttachLocalKernel();
+		dbg.OutputPrompt();
+	}
 	return 0;
 }
 
@@ -169,9 +176,7 @@ LRESULT CMainFrame::OnWindowActivate(WORD /*wNotifyCode*/, WORD wID, HWND /*hWnd
 
 LRESULT CMainFrame::OnViewProcesses(WORD, WORD, HWND, BOOL&) {
 	auto pView = new CKernelProcessesView;
-	pView->Create(m_view, rcDefault, nullptr, pView->GetWindowStyle(), 0);
-	int image = m_TabImages.AddIcon(pView->GetIcon());
-	m_view.AddPage(pView->m_hWnd, pView->GetHeader(), image, pView);
+	InitView(pView);
 
 	return 0;
 }

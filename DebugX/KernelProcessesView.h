@@ -25,7 +25,7 @@ public:
 	// Inherited via IDebugXView
 	virtual HICON GetIcon() const override;
 	virtual CString GetHeader() const override;
-	virtual DWORD GetWindowStyle() const override;
+	virtual HWND Create(HWND hParent) override;
 
 	struct KernelProcess {
 		DWORD Pid;
@@ -34,10 +34,13 @@ public:
 		ULONG ThreadCount;
 		LARGE_INTEGER CreateTime;
 		ULONG SessionId;
-		ULONG64 KernelTime, UserTime;
+		ULONG64 DirBase;
+		ULONG64 Peb;
+//		ULONG64 KernelTime, UserTime;
 	};
 
 	void Refresh();
+	void DoSort(const SortInfo* si);
 
 private:
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);

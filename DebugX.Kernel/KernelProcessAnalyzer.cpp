@@ -56,6 +56,14 @@ ULONG DebugX::Analysis::KernelProcessAnalyzer::GetSessionId() const {
 	return ReadVirtual<ULONG>(sessionSpace + offsetSessionId);
 }
 
+ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetDirectoryTableBase() const {
+	return ReadVirtual<ULONG64>(_processAddress + GetFieldOffset(KProcessTypeId, "DirectoryTableBase"));
+}
+
+ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetPeb() const {
+	return ReadVirtual<ULONG64>(_processAddress + GetFieldOffset(EProcessTypeId, "Peb"));
+}
+
 ULONG DebugX::Analysis::KernelProcessAnalyzer::GetProcessId() const {
 	PVOID data = nullptr;
 	Data()->ReadVirtual(_processAddress + GetFieldOffset(EProcessTypeId, "UniqueProcessId"), &data, sizeof(data), nullptr);
