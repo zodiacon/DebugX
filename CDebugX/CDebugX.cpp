@@ -66,11 +66,11 @@ DWORD CALLBACK NotifyThread(PVOID) {
 				auto data = reinterpret_cast<OutputData*>(msg.lParam);
 				switch (data->Mask) {
 					case OutputDataMask::Prompt:
-						printf("%s> ", data->Text.c_str());
+						printf("%ws> ", data->Text.c_str());
 						break;
 
 					default:
-						printf("%s", data->Text.c_str());
+						printf("%ws", data->Text.c_str());
 						break;
 				}
 				debugger->FreeNotification(msg.wParam);
@@ -83,11 +83,11 @@ DWORD CALLBACK NotifyThread(PVOID) {
 struct CDebugCallbacks :
 	public CComObjectRoot,
 	public IDebugEventCallbacks,
-	public IDebugOutputCallbacks {
+	public IDebugOutputCallbacksWide {
 
 	BEGIN_COM_MAP(CDebugCallbacks)
 		COM_INTERFACE_ENTRY(IDebugEventCallbacks)
-		COM_INTERFACE_ENTRY(IDebugOutputCallbacks)
+		COM_INTERFACE_ENTRY(IDebugOutputCallbacksWide)
 	END_COM_MAP()
 
 	void SetControl(IDebugControl5* ctl) {
@@ -181,8 +181,8 @@ struct CDebugCallbacks :
 	}
 
 
-	// Inherited via IDebugOutputCallbacks
-	virtual HRESULT __stdcall Output(ULONG Mask, PCSTR Text) override {
+	// Inherited via IDebugOutputCallbacksWide
+	HRESULT __stdcall Output(ULONG Mask, PCWSTR Text) override {
 		auto data = new OutputData;
 		data->Text = Text;
 		data->Mask = static_cast<OutputDataMask>(Mask);
@@ -196,7 +196,7 @@ struct CDebugCallbacks :
 			case OutputDataMask::Warning: color = ConsoleColor::DarkYellow; break;
 		}
 		SetConsoleForegroundColor(color);
-		printf("%s", Text);
+		printf("%ws", Text);
 
 		return S_OK;
 	}
@@ -219,7 +219,7 @@ HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
 	cb->CreateInstance(&cb);
 	cb->SetControl(spControl);
 	spClient->SetEventCallbacks(cb);
-	spClient->SetOutputCallbacks(cb);
+	spClient->SetOutputCallbacksWide(cb);
 	g_pControl = spControl;
 	spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 
@@ -245,29 +245,29 @@ HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
 
 	spControl->WaitForEvent(0, INFINITE);
 
-	CComQIPtr<IDebugSymbols3> spSymbols(spClient);
-	ATLASSERT(spSymbols);
-	ULONG64 base;
-	hr = spSymbols->GetModuleByModuleName("nt", 0, nullptr, &base);
-	ULONG64 processListHead;
-	hr = spSymbols->GetOffsetByName("nt!PsActiveProcessHead", &processListHead);
-	ULONG id;
-	hr = spSymbols->GetTypeId(base, "_EPROCESS", &id);
-	ULONG fieldOffset;
-	hr = spSymbols->GetFieldOffset(base, id, "ActiveProcessLinks", &fieldOffset);
-	LIST_ENTRY firstProcessLink;
-	hr = spData->ReadVirtual(processListHead, &firstProcessLink, sizeof(firstProcessLink), nullptr);
-	auto pProcess = (ULONG64)firstProcessLink.Flink - fieldOffset;
+	//CComQIPtr<IDebugSymbols3> spSymbols(spClient);
+	//ATLASSERT(spSymbols);
+	//ULONG64 base;
+	//hr = spSymbols->GetModuleByModuleName("nt", 0, nullptr, &base);
+	//ULONG64 processListHead;
+	//hr = spSymbols->GetOffsetByName("nt!PsActiveProcessHead", &processListHead);
+	//ULONG id;
+	//hr = spSymbols->GetTypeId(base, "_EPROCESS", &id);
+	//ULONG fieldOffset;
+	//hr = spSymbols->GetFieldOffset(base, id, "ActiveProcessLinks", &fieldOffset);
+	//LIST_ENTRY firstProcessLink;
+	//hr = spData->ReadVirtual(processListHead, &firstProcessLink, sizeof(firstProcessLink), nullptr);
+	//auto pProcess = (ULONG64)firstProcessLink.Flink - fieldOffset;
 
-	DEBUG_VALUE value;
-	hr = spControl->Evaluate("nt!PsActiveProcessHead", DEBUG_VALUE_INVALID, &value, nullptr);
+	//DEBUG_VALUE value;
+	//hr = spControl->Evaluate("nt!PsActiveProcessHead", DEBUG_VALUE_INVALID, &value, nullptr);
 
-	KernelProcessEnumerator kpe(CComQIPtr<IDebugClient>(spClient).p);
-	KernelProcessAnalyzer* p;
-	while (p = kpe.GetNextProcess()) {
-		auto pid = p->GetProcessId();
-		printf("PID: %5u %ws\n", pid, (PCWSTR)p->GetImageName());
-	}
+	//KernelProcessEnumerator kpe(CComQIPtr<IDebugClient>(spClient).p);
+	//KernelProcessAnalyzer* p;
+	//while (p = kpe.GetNextProcess()) {
+	//	auto pid = p->GetProcessId();
+	//	printf("PID: %5u %ws\n", pid, (PCWSTR)p->GetImageName());
+	//}
 
 	ULONG status;
 	char cmd[512];

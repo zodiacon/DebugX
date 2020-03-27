@@ -26,6 +26,25 @@
 #define IDI_PROCESSES                   220
 #define IDI_STRUCT                      221
 #define IDI_THREADS                     222
+#define IDI_PROCESS_ADD                 223
+#define IDI_PROCESS_NEW                 224
+#define IDI_TOOL                        225
+#define IDI_REFRESH                     226
+#define IDI_REGISTRY                    227
+#define IDI_LOCAL_KERNEL                228
+#define IDI_ATTACH_KERNEL               229
+#define IDD_RUNEXE                      230
+#define IDI_ICON1                       232
+#define IDI_OK                          232
+#define IDI_OPEN                        233
+#define IDC_EXEPATH                     1000
+#define IDC_BROWSE                      1001
+#define IDC_ARGS                        1002
+#define IDC_INITIALBREAK                1003
+#define IDC_NONINVASIVE                 1004
+#define IDC_INITIALDIR                  1005
+#define IDC_BROWSEDIR                   1006
+#define IDC_BUTTON1                     1007
 #define ID_WINDOW_CLOSE                 32772
 #define ID_WINDOW_CLOSE_ALL             32773
 #define ID_FILE_DUMMY                   32775
@@ -51,9 +70,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        223
+#define _APS_NEXT_RESOURCE_VALUE        234
 #define _APS_NEXT_COMMAND_VALUE         32793
-#define _APS_NEXT_CONTROL_VALUE         1000
+#define _APS_NEXT_CONTROL_VALUE         1008
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

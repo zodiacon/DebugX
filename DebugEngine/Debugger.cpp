@@ -2,6 +2,7 @@
 #include "Debugger.h"
 #include <functional>
 #include <atlcom.h>
+#include <atlstr.h>
 #include <wil\resource.h>
 
 #pragma comment(lib, "dbgeng")
@@ -13,11 +14,13 @@ using namespace DebugEngine;
 struct Debugger::Impl : 
 	CComObjectRoot, 
 	IDebugEventCallbacks, 
-	IDebugOutputCallbacks {
+	IDebugOutputCallbacksWide,
+	IDebugOutputCallbacks2 {
 
 	BEGIN_COM_MAP(Impl)
+		COM_INTERFACE_ENTRY(IDebugOutputCallbacksWide)
+		COM_INTERFACE_ENTRY(IDebugOutputCallbacks2)
 		COM_INTERFACE_ENTRY(IDebugEventCallbacks)
-		COM_INTERFACE_ENTRY(IDebugOutputCallbacks)
 	END_COM_MAP()
 
 	Impl();
@@ -268,13 +271,27 @@ private:
 			::PostMessage(m_NotifyHwnd, static_cast<UINT>(type), reinterpret_cast<WPARAM>(data), reinterpret_cast<LPARAM>(data));
 	}
 
-	// Inherited via IDebugOutputCallbacks
+	// Inherited via IDebugOutputCallbacksWide
+	virtual HRESULT __stdcall Output(ULONG Mask, PCWSTR Text) override {
+		ATLASSERT(false);
+		return E_NOTIMPL;
+	}
+
 	virtual HRESULT __stdcall Output(ULONG Mask, PCSTR Text) override {
+		ATLASSERT(false);
+		return E_NOTIMPL;
+	}
+
+	// Inherited via IDebugOutputCallbacks2
+	HRESULT __stdcall Output2(ULONG Which, ULONG Flags, ULONG64 Arg, PCWSTR Text) override {
 		auto data = new OutputData;
-		data->Text = Text;
-		data->Mask = static_cast<OutputDataMask>(Mask);
+		data->IsDml = Which == DEBUG_OUTCB_DML;
+		if(Text)
+			data->Text = Text;
+		data->Mask = static_cast<OutputDataMask>(Arg);
 		PostNotification(DebuggerNotificationType::Output, data);
 		return S_OK;
+
 	}
 };
 
@@ -309,7 +326,8 @@ HRESULT Debugger::Impl::CreateInternal() {
 		HR(m_spClient.QueryInterface(&m_spControl));
 
 		HR(m_spClient->SetEventCallbacks(this));
-		HR(m_spClient->SetOutputCallbacks(this));
+		HR(m_spClient->SetOutputCallbacksWide(this));
+		m_spControl->AddEngineOptions(DEBUG_ENGOPT_PREFER_DML);
 		return S_OK;
 		});
 }
@@ -369,7 +387,19 @@ HRESULT Debugger::Impl::AttachToProcess(DWORD pid, AttachType attach) {
 }
 
 HRESULT Debugger::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, AttachType attach) {
-	return E_NOTIMPL;
+	return RunAsync([=]() {
+		CString cmd(L"\"");
+		(cmd += exeName) += L"\"";
+		if (commandLineArgs != nullptr && *commandLineArgs != L'\0')
+			(cmd += L" ") += commandLineArgs;
+		DEBUG_CREATE_PROCESS_OPTIONS options = { 0 };
+		options.CreateFlags = DEBUG_PROCESS;
+		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
+		HR(m_spClient->CreateProcessAndAttach2Wide(0, cmd.GetBuffer(), &options, sizeof(options), nullptr, nullptr, 0, (ULONG)attach));
+		HR(m_spControl->WaitForEvent(0, INFINITE));
+		DoPostCommand();
+		return S_OK;
+		});
 }
 
 HRESULT Debugger::Impl::AttachLocalKernel() {

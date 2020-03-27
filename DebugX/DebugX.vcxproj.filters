@@ -16,6 +16,12 @@
     <Filter Include="Views">
       <UniqueIdentifier>{b99e6f59-9b24-426d-af1c-889a57d3f66c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Resource Files\Icons">
+      <UniqueIdentifier>{c64f3932-2fc1-4c95-a9b4-7de59e367ce7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Dialogs">
+      <UniqueIdentifier>{1da263af-8d58-46e4-b5e2-bbf0d6cdd5cd}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -28,9 +34,6 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="View.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="AboutDlg.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="DebugManager.cpp">
@@ -48,6 +51,18 @@
     <ClCompile Include="SortHelper.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SecurityHelper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DialogHelper.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RunExeDlg.cpp">
+      <Filter>Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="AboutDlg.cpp">
+      <Filter>Dialogs</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -57,9 +72,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="View.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="AboutDlg.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="resource.h">
@@ -89,84 +101,120 @@
     <ClInclude Include="SortHelper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="SecurityHelper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DialogHelper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AboutDlg.h">
+      <Filter>Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="RunExeDlg.h">
+      <Filter>Dialogs</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="res\copy.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\cut.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\paste.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\command.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\debug_break_all.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\debug_breakpoint.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\debug_start.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\debug_step_into.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\debug_step_next_statement.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\debug_step_out.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\debug_step_over.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\debug_stop.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\DebugX.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\delete.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\dll.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\event.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\find.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\help.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\process.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\processes.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\structure.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\threads.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\cpu-add.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\hardware-add.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\process-add.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\process-new.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\properties.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\refresh.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\registry_editor.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\ok.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\open.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DebugX.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="res\toolbar.bmp">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\DebugX.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\clip_copy.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\clip_cut.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\clip_paste.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\command.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\debug_break_all.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\debug_breakpoint.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\debug_start.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\debug_step_into.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\debug_step_next_statement.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\debug_step_out.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\debug_step_over.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\debug_stop.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\delete.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\dll.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\event.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\find.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\help.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\process.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\processes.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\structure.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="res\threads.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
   </ItemGroup>
 </Project>

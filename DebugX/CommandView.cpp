@@ -13,15 +13,17 @@ void CCommandView::OnFinalMessage(HWND) {
 }
 
 LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
-	m_Text.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | 
+	m_Text.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL |
 		WS_CLIPSIBLINGS | WS_CLIPCHILDREN | ES_MULTILINE | ES_READONLY | ES_NOHIDESEL, 0, TextId);
 
-	CHARFORMAT cf{};
+	m_Text.SetAutoURLDetect(TRUE);
+	m_Text.SetEventMask(ENM_LINK);
+
+	CHARFORMAT cf = { sizeof(cf) };
 	cf.crTextColor = RGB(0, 0, 0);
 	cf.dwMask = CFM_COLOR | CFM_FACE;
 	::wcscpy_s(cf.szFaceName, L"Consolas");
 	m_Text.SetDefaultCharFormat(cf);
-	m_Text.SetAutoURLDetect(TRUE);
 	DebugManager::Get()->RegisterWindow(*this);
 
 	CFontHandle font;
@@ -33,6 +35,9 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Prompt.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | SS_SUNKEN | SS_RIGHT);
 	m_Prompt.SetFont(font);
 	m_Execute.Create(*this, nullptr, L"Exec", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, ExecuteId);
+
+	//CString text = "{\\rtf1 RE50W by Jim Dunne Copyright (C) 2005\\par http://www.topjimmy.net/ \\par{\\field{\\*\\fldinst{HYPERLINK mailto:jim@dunnes.net}}{\\fldrslt{\\cf1\\ul jim@dunnes.net}}}}";
+	//int x = m_Text.StreamIn(text);
 
 	m_CommandHistory.reserve(64);
 
@@ -67,6 +72,13 @@ LRESULT CCommandView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 
 LRESULT CCommandView::OnDebugOutput(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	auto data = reinterpret_cast<OutputData*>(lParam);
+	if (data->Text.empty()) {
+		// flush
+		m_Text.SetSel(-1, 0);
+		m_Text.ScrollCaret();
+		return 0;
+	}
+
 	COLORREF color = 0;
 	CString text(data->Text.c_str());
 
@@ -74,7 +86,11 @@ LRESULT CCommandView::OnDebugOutput(UINT, WPARAM, LPARAM lParam, BOOL&) {
 		m_Prompt.SetWindowTextW(text);
 	}
 	else {
-		m_Text.AppendText(text);
+		if (data->IsDml) {
+			AddDmlText(text);
+		}
+		else
+			m_Text.AppendText(text);
 		m_Text.SetSel(-1, 0);
 		m_Text.ScrollCaret();
 	}
@@ -112,6 +128,42 @@ void CCommandView::DoExecuteCommand() {
 	m_CommandEdit.SetFocus();
 }
 
+void CCommandView::AddDmlText(const CString& dml) {
+	int index = dml.Find(L'<');
+	if (index > 0)
+		m_Text.AppendText(dml.Left(index));
+
+	CHARFORMAT old;
+	m_Text.GetSelectionCharFormat(old);
+
+	CHARFORMAT cf = { sizeof(cf) };
+	cf.dwMask = CFM_EFFECTS | CFM_COLOR;
+	cf.crTextColor = RGB(0, 0, 255);
+	cf.dwEffects = CFE_LINK | CFE_UNDERLINE;
+	
+	for (;;) {
+		auto current = index;
+		index = dml.Find('<', index);
+		if (index < 0) {
+			m_Text.SetSelectionCharFormat(old);
+			m_Text.AppendText(dml.Mid(current + 1));
+			break;
+		}
+		int end = dml.Find('>', index + 1);
+		ATLASSERT(end > index);
+		int index2 = dml.Find(L'<', end + 1);
+		ATLASSERT(index2 > end);
+		CString text = dml.Mid(end + 1, index2 - end - 1);
+
+		m_Text.SetSelNone();
+		m_Text.SetSelectionCharFormat(cf);
+		m_Text.AppendText(text);
+
+		index = dml.Find(L'>', index2 + 1);
+	}
+	m_Text.SetSelectionCharFormat(old);
+}
+
 LRESULT CCommandView::OnEditChar(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
 	if (wParam == VK_RETURN) {
 		DoExecuteCommand();
@@ -133,7 +185,7 @@ LRESULT CCommandView::OnRichEditKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handl
 }
 
 LRESULT CCommandView::OnEditKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
-	switch(wParam) {
+	switch (wParam) {
 		case VK_UP:
 			if (m_CommandHistoryIndex > 0) {
 				m_CommandEdit.SetWindowText(m_CommandHistory[--m_CommandHistoryIndex]);
@@ -162,6 +214,10 @@ LRESULT CCommandView::OnCopy(WORD, WORD, HWND, BOOL&) {
 	::SendMessage(GetFocus(), WM_COPY, 0, 0);
 
 	return 0;
+}
+
+LRESULT CCommandView::OnClickLink(int, LPNMHDR, BOOL&) {
+	return LRESULT();
 }
 
 HICON CCommandView::GetIcon() const {

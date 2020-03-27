@@ -29,6 +29,9 @@ namespace DebugX::Analysis {
 		ULONG GetSessionId() const;
 		ULONG64 GetDirectoryTableBase() const;
 		ULONG64 GetPeb() const;
+		ULONG64 GetHandleTable() const;
+		ULONG GetHandleCount() const;
+		ULONG64 GetJob() const;
 
 	private:
 		KernelGlobals _globals;

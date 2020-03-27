@@ -64,6 +64,27 @@ ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetPeb() const {
 	return ReadVirtual<ULONG64>(_processAddress + GetFieldOffset(EProcessTypeId, "Peb"));
 }
 
+ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetHandleTable() const {
+	return (ULONG64)ReadVirtual<PVOID>(_processAddress + GetFieldOffset(EProcessTypeId, "ObjectTable"));
+}
+
+ULONG DebugX::Analysis::KernelProcessAnalyzer::GetHandleCount() const {
+	auto table = GetHandleTable();
+	if (table == 0)
+		return 0;
+
+	auto nextHandleNeedingPool = ReadVirtual<ULONG>(table + GetFieldOffset(GetTypeId("_HANDLE_TABLE"), "NextHandleNeedingPool"));
+	auto maxHandles = nextHandleNeedingPool / 4;
+	const auto count = (1 << 12) / _globals.GetVariable("KeMaximumProcessors");
+	maxHandles = maxHandles * (count - 1) / count;
+	// incomplete
+	return maxHandles;
+}
+
+ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetJob() const {
+	return (ULONG64)ReadVirtual<PVOID>(_processAddress + GetFieldOffset(EProcessTypeId, "Job"));
+}
+
 ULONG DebugX::Analysis::KernelProcessAnalyzer::GetProcessId() const {
 	PVOID data = nullptr;
 	Data()->ReadVirtual(_processAddress + GetFieldOffset(EProcessTypeId, "UniqueProcessId"), &data, sizeof(data), nullptr);

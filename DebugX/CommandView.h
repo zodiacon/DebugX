@@ -27,6 +27,7 @@ public:
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		COMMAND_HANDLER(ExecuteId, BN_CLICKED, OnExecuteCommand)
+		NOTIFY_CODE_HANDLER(EN_LINK, OnClickLink)
 		CHAIN_MSG_MAP_ALT(CGenericEditCommands<CCommandView>, 1)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(1)
@@ -40,6 +41,7 @@ public:
 
 private:
 	void DoExecuteCommand();
+	void AddDmlText(const CString& dml);
 
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
@@ -51,6 +53,7 @@ private:
 	LRESULT OnRichEditKeyDown(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnEditKeyDown(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnCopy(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnClickLink(int /*idCtrl*/, LPNMHDR /*pnmh*/, BOOL& /*bHandled*/);
 
 private:
 	CContainedWindowT<CEdit> m_CommandEdit;

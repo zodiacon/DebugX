@@ -90,7 +90,8 @@ namespace DebugEngine {
 
 	struct OutputData {
 		OutputDataMask Mask;
-		std::string Text;
+		std::wstring Text;
+		bool IsDml : 1;
 	};
 
 	class Debugger sealed {

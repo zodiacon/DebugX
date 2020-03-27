@@ -46,34 +46,6 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 //
-// Toolbar
-//
-
-IDR_MAINFRAME TOOLBAR 16, 15
-BEGIN
-    BUTTON      ID_FILE_NEW
-    BUTTON      ID_FILE_OPEN
-    BUTTON      ID_FILE_SAVE
-    SEPARATOR
-    BUTTON      ID_EDIT_CUT
-    BUTTON      ID_EDIT_COPY
-    BUTTON      ID_EDIT_PASTE
-    SEPARATOR
-    BUTTON      ID_FILE_PRINT
-    BUTTON      ID_APP_ABOUT
-END
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
-// Bitmap
-//
-
-IDR_MAINFRAME           BITMAP                  "res\\Toolbar.bmp"
-
-
-/////////////////////////////////////////////////////////////////////////////
-//
 // Menu
 //
 
@@ -149,11 +121,11 @@ END
 // remains consistent on all systems.
 IDR_MAINFRAME           ICON                    "res\\DebugX.ico"
 
-IDI_COPY                ICON                    "res\\clip_copy.ico"
+IDI_COPY                ICON                    "res\\copy.ico"
 
-IDI_CUT                 ICON                    "res\\clip_cut.ico"
+IDI_CUT                 ICON                    "res\\cut.ico"
 
-IDI_PASTE               ICON                    "res\\clip_paste.ico"
+IDI_PASTE               ICON                    "res\\paste.ico"
 
 IDI_COMMAND             ICON                    "res\\command.ico"
 
@@ -191,6 +163,24 @@ IDI_STRUCT              ICON                    "res\\structure.ico"
 
 IDI_THREADS             ICON                    "res\\threads.ico"
 
+IDI_PROCESS_ADD         ICON                    "res\\process-add.ico"
+
+IDI_PROCESS_NEW         ICON                    "res\\process-new.ico"
+
+IDI_TOOL                ICON                    "res\\properties.ico"
+
+IDI_REFRESH             ICON                    "res\\refresh.ico"
+
+IDI_REGISTRY            ICON                    "res\\registry_editor.ico"
+
+IDI_LOCAL_KERNEL        ICON                    "res\\cpu-add.ico"
+
+IDI_ATTACH_KERNEL       ICON                    "res\\hardware-add.ico"
+
+IDI_OK                  ICON                    "res\\ok.ico"
+
+IDI_OPEN                ICON                    "res\\open.ico"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -205,6 +195,25 @@ BEGIN
     DEFPUSHBUTTON   "OK",IDOK,68,81,50,14
     CTEXT           "DebugX v0.1\n\n(C)2020 Pavel Yosifovich",IDC_STATIC,36,24,114,32
     ICON            IDR_MAINFRAME,IDC_STATIC,6,6,18,17
+END
+
+IDD_RUNEXE DIALOGEX 0, 0, 429, 122
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Run Executable"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    EDITTEXT        IDC_EXEPATH,53,7,301,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",IDC_BROWSE,360,5,60,18
+    EDITTEXT        IDC_ARGS,53,28,301,14,ES_AUTOHSCROLL
+    CONTROL         "Stop at initial &breakpoint",IDC_INITIALBREAK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,6,75,93,10
+    CONTROL         "Non-invasive attach",IDC_NONINVASIVE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,120,75,80,10
+    DEFPUSHBUTTON   "  OK",IDOK,151,101,56,14,BS_CENTER | BS_FLAT | WS_DISABLED
+    PUSHBUTTON      "  Cancel",IDCANCEL,223,101,54,14,BS_FLAT
+    LTEXT           "Executable:",IDC_STATIC,6,10,39,8
+    LTEXT           "Arguments:",IDC_STATIC,6,30,38,8
+    LTEXT           "Working directory:",IDC_STATIC,6,52,60,8
+    EDITTEXT        IDC_INITIALDIR,72,50,282,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",IDC_BROWSEDIR,360,48,60,18
 END
 
 
@@ -222,6 +231,14 @@ BEGIN
         RIGHTMARGIN, 180
         TOPMARGIN, 7
         BOTTOMMARGIN, 95
+    END
+
+    IDD_RUNEXE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 422
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 115
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -295,6 +312,11 @@ END
 //
 
 IDD_ABOUTBOX AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_RUNEXE AFX_DIALOG_LAYOUT
 BEGIN
     0
 END

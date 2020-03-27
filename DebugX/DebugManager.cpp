@@ -43,6 +43,7 @@ bool DebugManager::UnregisterWindow(HWND hNotify) {
 }
 
 DebugEngine::Debugger& DebugManager::Debugger() {
+	Get();
 	return *Dbg;
 }
 
