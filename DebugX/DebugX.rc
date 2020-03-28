@@ -100,6 +100,11 @@ BEGIN
         MENUITEM "Ste&p Into",                  ID_DEBUG_STEPINTO
         MENUITEM "Step &Out",                   ID_DEBUG_STEPOUT
     END
+    POPUP "&Options"
+    BEGIN
+        MENUITEM "&Always on Top",              ID_OPTIONS_ALWAYSONTOP
+        MENUITEM "&Debugger Markup Language",   ID_OPTIONS_DEBUGGERMARKUPLANGUAGE
+    END
     POPUP "&Window"
     BEGIN
         MENUITEM "&Close\tCtrl+F4",             ID_WINDOW_CLOSE
@@ -181,6 +186,14 @@ IDI_OK                  ICON                    "res\\ok.ico"
 
 IDI_OPEN                ICON                    "res\\open.ico"
 
+IDI_CALLSTACK           ICON                    "res\\callstack.ico"
+
+IDI_BREAKPOINTS         ICON                    "res\\debug_breakpoints.ico"
+
+IDI_WINDOW_CLOSE        ICON                    "res\\window-delete.ico"
+
+IDI_WINDOW_CLOSEALL     ICON                    "res\\windows-delete.ico"
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -216,6 +229,17 @@ BEGIN
     PUSHBUTTON      "Browse...",IDC_BROWSEDIR,360,48,60,18
 END
 
+IDD_PROCSELECT DIALOGEX 0, 0, 309, 254
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Select Process to Attach"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Attach",IDOK,96,235,50,14,WS_DISABLED
+    PUSHBUTTON      "Cancel",IDCANCEL,162,235,50,14
+    CONTROL         "",IDC_PROCLIST,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP,7,0,295,219
+    PUSHBUTTON      "",IDC_REFRESH,282,227,26,24,BS_ICON
+END
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -239,6 +263,14 @@ BEGIN
         RIGHTMARGIN, 422
         TOPMARGIN, 7
         BOTTOMMARGIN, 115
+    END
+
+    IDD_PROCSELECT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 302
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 247
     END
 END
 #endif    // APSTUDIO_INVOKED
@@ -317,6 +349,11 @@ BEGIN
 END
 
 IDD_RUNEXE AFX_DIALOG_LAYOUT
+BEGIN
+    0
+END
+
+IDD_PROCSELECT AFX_DIALOG_LAYOUT
 BEGIN
     0
 END

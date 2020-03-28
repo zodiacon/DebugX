@@ -11,9 +11,9 @@ using namespace DebugEngine;
 
 #define HR(x) { auto _hr = (x); if(FAILED(_hr)) return _hr; }
 
-struct Debugger::Impl : 
-	CComObjectRoot, 
-	IDebugEventCallbacks, 
+struct Debugger::Impl :
+	CComObjectRoot,
+	IDebugEventCallbacks,
 	IDebugOutputCallbacksWide,
 	IDebugOutputCallbacks2 {
 
@@ -25,6 +25,14 @@ struct Debugger::Impl :
 
 	Impl();
 	~Impl();
+
+	void SetMessageLoop(IMessageLoop* ml) {
+		_ml = ml;
+	}
+
+	ExecutionStatus GetExecutionStatusAsync() const {
+		return static_cast<ExecutionStatus>(_status);
+	}
 
 	void FreeNotification(WPARAM id) {
 		delete ((void*)id);
@@ -54,6 +62,7 @@ struct Debugger::Impl :
 				if (_status == DEBUG_STATUS_NO_DEBUGGEE)
 					return false;
 			}
+			m_spControl->GetExecutionStatus(&_status);
 			m_spControl->OutputCurrentState(DEBUG_OUTCTL_THIS_CLIENT, DEBUG_CURRENT_DEFAULT);
 			_stateChanged = false;
 		}
@@ -71,11 +80,12 @@ struct Debugger::Impl :
 
 	HRESULT Create(DWORD notifyThreadId, HWND hWndNotify);
 	HRESULT AttachToProcess(DWORD pid, AttachType attach);
-	HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, AttachType attach);
+	HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach);
 	HRESULT AttachLocalKernel();
 	HRESULT ExecuteCommand(PCSTR command);
 	HRESULT ExecuteCommand(PCWSTR command);
 	HRESULT Break();
+	HRESULT Stop();
 	HRESULT OutputPrompt();
 	ExecutionStatus GetExecutionStatus();
 	HRESULT EnumModules(std::vector<ModuleInfo>& modules);
@@ -155,7 +165,7 @@ private:
 			auto d = (ApcData<F>*)p;
 			d->HResult = (d->Action());
 			::SetEvent(d->hEvent);
-			}, m_hDebugThread.get(), (ULONG_PTR)& data);
+			}, m_hDebugThread.get(), (ULONG_PTR)&data);
 
 		WaitWithMessages(m_hAsyncEvent.get());
 
@@ -170,8 +180,7 @@ private:
 	void UpdateStatus();
 	void WaitWithMessages(HANDLE hEvent);
 
-	bool _stateChanged : 1 { false};
-	bool _breakpointHit : 1 { false };
+	IMessageLoop* _ml;
 	ULONG _status = DEBUG_STATUS_NO_CHANGE;
 	wil::unique_handle m_hDebugThread;
 	wil::unique_handle m_hShutdownEvent;
@@ -185,6 +194,8 @@ private:
 	CComPtr<IDebugSystemObjects4> m_spSystem;
 	CComPtr<IDebugSymbols5> m_spSymbols;
 	CComPtr<IDebugControl7> m_spControl;
+	bool _stateChanged : 1 { false};
+	bool _breakpointHit : 1 { false };
 
 	// Inherited via IDebugEventCallbacks
 
@@ -199,6 +210,10 @@ private:
 		_breakpointHit = true;
 		_stateChanged = true;
 
+		auto data = new BreakpointData;
+		data->Breakpoint = Bp;
+		PostNotification(DebuggerNotificationType::Breakpoint, data);
+
 		return DEBUG_STATUS_BREAK;
 	}
 	virtual HRESULT __stdcall Exception(PEXCEPTION_RECORD64 Exception, ULONG FirstChance) override {
@@ -209,12 +224,26 @@ private:
 	}
 
 	virtual HRESULT __stdcall CreateThread(ULONG64 Handle, ULONG64 DataOffset, ULONG64 StartOffset) override {
+		auto data = new ThreadCreateData;
+		data->Handle = (HANDLE)Handle;
+		data->Teb = DataOffset;
+		data->StartAddress = StartOffset;
+		PostNotification(DebuggerNotificationType::ThreadCreated, data);
+
 		return DEBUG_STATUS_NO_CHANGE;
 	}
 	virtual HRESULT __stdcall ExitThread(ULONG ExitCode) override {
+		auto data = new ExitThreadData;
+		data->ExitCode = ExitCode;
+		PostNotification(DebuggerNotificationType::ExitThread, data);
+
 		return DEBUG_STATUS_NO_CHANGE;
 	}
 	virtual HRESULT __stdcall ExitProcess(ULONG ExitCode) override {
+		auto data = new ExitThreadData;
+		data->ExitCode = ExitCode;
+		PostNotification(DebuggerNotificationType::ExitProcess, data);
+
 		return DEBUG_STATUS_NO_CHANGE;
 	}
 	virtual HRESULT __stdcall LoadModule(ULONG64 ImageFileHandle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName, ULONG CheckSum, ULONG TimeDateStamp) override {
@@ -227,7 +256,8 @@ private:
 		return S_OK;
 	}
 	virtual HRESULT __stdcall SessionStatus(ULONG Status) override {
-		m_spControl->GetExecutionStatus(&_status);
+		UpdateStatus();
+
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeDebuggeeState(ULONG Flags, ULONG64 Argument) override {
@@ -243,7 +273,7 @@ private:
 	virtual HRESULT __stdcall ChangeSymbolState(ULONG Flags, ULONG64 Argument) override {
 		return S_OK;
 	}
-	virtual HRESULT CreateProcessW(ULONG64 ImageFileHandle, ULONG64 Handle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName, 
+	virtual HRESULT CreateProcessW(ULONG64 ImageFileHandle, ULONG64 Handle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName,
 		ULONG CheckSum, ULONG TimeDateStamp, ULONG64 InitialThreadHandle, ULONG64 ThreadDataOffset, ULONG64 StartOffset) {
 		auto data = new CreateProcessData;
 		data->BaseAddress = reinterpret_cast<void*>(BaseOffset);
@@ -261,11 +291,7 @@ private:
 	}
 
 	void PostNotification(DebuggerNotificationType type, void* data) {
-		//auto current = m_CurrentNotification;
-		//m_CurrentNotification = current;
-		//m_NotificationData[current] = data;
-		//m_CurrentNotification = (current + 1) % MaxNotifications;
-		if(m_NotifyThreadId)
+		if (m_NotifyThreadId)
 			::PostThreadMessage(m_NotifyThreadId, static_cast<UINT>(type), reinterpret_cast<WPARAM>(data), reinterpret_cast<LPARAM>(data));
 		else
 			::PostMessage(m_NotifyHwnd, static_cast<UINT>(type), reinterpret_cast<WPARAM>(data), reinterpret_cast<LPARAM>(data));
@@ -286,7 +312,7 @@ private:
 	HRESULT __stdcall Output2(ULONG Which, ULONG Flags, ULONG64 Arg, PCWSTR Text) override {
 		auto data = new OutputData;
 		data->IsDml = Which == DEBUG_OUTCB_DML;
-		if(Text)
+		if (Text)
 			data->Text = Text;
 		data->Mask = static_cast<OutputDataMask>(Arg);
 		PostNotification(DebuggerNotificationType::Output, data);
@@ -300,7 +326,7 @@ Debugger::Impl::Impl() {
 
 Debugger::Impl::~Impl() {
 	RunAsync([this]() {
-		m_spClient->EndSession(0);
+		m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
 		m_spClient.Release();
 		m_spAdvanced.Release();
 		m_spSymbols.Release();
@@ -336,8 +362,7 @@ HRESULT Debugger::Impl::AttachToProcessInternal(DWORD pid, AttachType attach) {
 	return RunAsync([this](auto pid, auto attach) {
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 		HR(m_spClient->AttachProcess(0, pid, static_cast<ULONG>(attach)));
-		m_spControl->WaitForEvent(0, INFINITE);
-		return S_OK;
+		return m_spControl->WaitForEvent(0, INFINITE);
 		}, pid, attach);
 }
 
@@ -360,6 +385,9 @@ void Debugger::Impl::WaitWithMessages(HANDLE hEvent) {
 		while (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
 			::TranslateMessage(&msg);
 			::DispatchMessage(&msg);
+		}
+		if (_ml) {
+			_ml->ProcessMessage(&msg);
 		}
 	}
 }
@@ -386,7 +414,7 @@ HRESULT Debugger::Impl::AttachToProcess(DWORD pid, AttachType attach) {
 	return AttachToProcessInternal(pid, attach);
 }
 
-HRESULT Debugger::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, AttachType attach) {
+HRESULT Debugger::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach) {
 	return RunAsync([=]() {
 		CString cmd(L"\"");
 		(cmd += exeName) += L"\"";
@@ -395,7 +423,10 @@ HRESULT Debugger::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, 
 		DEBUG_CREATE_PROCESS_OPTIONS options = { 0 };
 		options.CreateFlags = DEBUG_PROCESS;
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
-		HR(m_spClient->CreateProcessAndAttach2Wide(0, cmd.GetBuffer(), &options, sizeof(options), nullptr, nullptr, 0, (ULONG)attach));
+		auto initialDir = workingDir;
+		if (workingDir && *workingDir == L'\0')
+			initialDir = nullptr;
+		HR(m_spClient->CreateProcessAndAttach2Wide(0, cmd.GetBuffer(), &options, sizeof(options), initialDir, nullptr, 0, (ULONG)attach));
 		HR(m_spControl->WaitForEvent(0, INFINITE));
 		DoPostCommand();
 		return S_OK;
@@ -427,6 +458,12 @@ HRESULT Debugger::Impl::ExecuteCommand(PCWSTR command) {
 
 HRESULT Debugger::Impl::Break() {
 	return m_spControl->SetInterrupt(DEBUG_INTERRUPT_ACTIVE);
+}
+
+HRESULT Debugger::Impl::Stop() {
+	return RunAsync([this]() {
+		return m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
+	});
 }
 
 HRESULT Debugger::Impl::OutputPrompt() {
@@ -484,7 +521,8 @@ DWORD Debugger::Impl::DebuggerThread() {
 	return 0;
 }
 
-DebugEngine::Debugger::Debugger() : _impl(new CComObject<Impl>) {
+DebugEngine::Debugger::Debugger(IMessageLoop* ml) : _impl(new CComObject<Impl>) {
+	_impl->SetMessageLoop(ml);
 }
 
 DebugEngine::Debugger::~Debugger() {
@@ -503,8 +541,8 @@ HRESULT Debugger::AttachToProcess(DWORD pid, AttachType attach) {
 	return _impl->AttachToProcess(pid, attach);
 }
 
-HRESULT Debugger::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, AttachType attach) {
-	return _impl->LaunchAndAttach(exeName, commandLineArgs, attach);
+HRESULT Debugger::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach) {
+	return _impl->LaunchAndAttach(exeName, commandLineArgs, workingDir, attach);
 }
 
 HRESULT Debugger::ExecuteCommand(PCSTR command) {
@@ -521,6 +559,10 @@ HRESULT Debugger::AttachLocalKernel() {
 
 HRESULT Debugger::Break() {
 	return _impl->Break();
+}
+
+HRESULT DebugEngine::Debugger::Stop() {
+	return _impl->Stop();
 }
 
 ExecutionStatus DebugEngine::Debugger::GetExecutionStatus() {
@@ -541,4 +583,8 @@ void Debugger::FreeNotification(WPARAM id) {
 
 void Debugger::RunAsync(std::function<void(IDebugClient*)> func) {
 	_impl->RunAsync(func);
+}
+
+ExecutionStatus Debugger::GetExecutionStatusAsync() const {
+	return _impl->GetExecutionStatusAsync();
 }

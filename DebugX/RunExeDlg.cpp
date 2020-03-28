@@ -16,6 +16,7 @@ LRESULT CRunExeDlg::OnCloseCmd(WORD, WORD wID, HWND, BOOL&) {
 	if (wID == IDOK) {
 		GetDlgItem(IDC_EXEPATH).GetWindowText(m_ExePath);
 		GetDlgItem(IDC_ARGS).GetWindowText(m_Arguments);
+		GetDlgItem(IDC_INITIALDIR).GetWindowText(m_WorkingDir);
 		m_InitialBreakpoint = IsDlgButtonChecked(IDC_INITIALBREAK) == BST_CHECKED;
 		m_NonInvasiveAttach = IsDlgButtonChecked(IDC_NONINVASIVE) == BST_CHECKED;
 	}

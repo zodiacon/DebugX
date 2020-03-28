@@ -12,16 +12,17 @@ public:
 	bool UnregisterWindow(HWND hNotify);
 
 	static DebugEngine::Debugger& Debugger();
+	DebugManager();
+	HRESULT Init(DebugEngine::IMessageLoop* ml);
 
 private:
-	DebugManager();
 	DebugManager(const DebugManager&) = delete;
 	DebugManager& operator=(const DebugManager&) = delete;
 
 	DWORD NotifyThread();
-	HRESULT Init();
 
-	static std::unique_ptr<DebugManager> DbgMgr;
+	static DebugManager* DbgMgr;
+	DebugEngine::IMessageLoop* _ml{ nullptr };
 	wil::unique_handle _hNotifyThread;
 	std::vector<HWND> _registeredHwnds;
 	std::shared_mutex _registeredHwndsLock;

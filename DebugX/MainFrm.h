@@ -5,11 +5,14 @@
 #pragma once
 
 #include "Interfaces.h"
+#include "DebugManager.h"
 
 class CMainFrame : 
 	public CFrameWindowImpl<CMainFrame>, 
-	public CUpdateUI<CMainFrame>,
-	public CMessageFilter, public CIdleHandler {
+	public CAutoUpdateUI<CMainFrame>,
+	public DebugEngine::IMessageLoop,
+	public CMessageFilter, 
+	public CIdleHandler {
 public:
 	CMainFrame();
 
@@ -19,16 +22,21 @@ public:
 	BOOL OnIdle() override;
 	void OnFinalMessage(HWND) override;
 
-	BEGIN_UPDATE_UI_MAP(CMainFrame)
-		UPDATE_ELEMENT(ID_VIEW_TOOLBAR, UPDUI_MENUPOPUP)
-		UPDATE_ELEMENT(ID_VIEW_STATUS_BAR, UPDUI_MENUPOPUP)
-	END_UPDATE_UI_MAP()
+	// Inherited via IMessageLoop
+	virtual void ProcessMessage(MSG* pMsg) override;
 
 	BEGIN_MSG_MAP(CMainFrame)
+		MESSAGE_HANDLER(WM_TIMER, OnTimer)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 		COMMAND_ID_HANDLER(ID_APP_EXIT, OnFileExit)
 		COMMAND_ID_HANDLER(ID_DEBUG_ATTACHTOLOCALKERNEL, OnAttachLocalKernel)
+		COMMAND_ID_HANDLER(ID_DEBUG_ATTACHTOPROCESS, OnAttachProcess)
+		COMMAND_ID_HANDLER(ID_DEBUG_BREAK, OnDebugBreak)
+		COMMAND_ID_HANDLER(ID_DEBUG_GO, OnDebugGo)
+		COMMAND_ID_HANDLER(ID_DEBUG_STOP, OnDebugStop)
+		COMMAND_ID_HANDLER(ID_DEBUG_STEPINTO, OnDebugStepInto)
+		COMMAND_ID_HANDLER(ID_DEBUG_STEPOVER, OnDebugStepOver)
 		COMMAND_ID_HANDLER(ID_VIEW_PROCESSES, OnViewProcesses)
 		COMMAND_ID_HANDLER(ID_VIEW_TOOLBAR, OnViewToolBar)
 		COMMAND_ID_HANDLER(ID_VIEW_STATUS_BAR, OnViewStatusBar)
@@ -36,8 +44,9 @@ public:
 		COMMAND_ID_HANDLER(ID_WINDOW_CLOSE, OnWindowClose)
 		COMMAND_ID_HANDLER(ID_WINDOW_CLOSE_ALL, OnWindowCloseAll)
 		COMMAND_ID_HANDLER(ID_DEBUG_RUNEXECUTABLE, OnRunExe)
+		COMMAND_ID_HANDLER(ID_OPTIONS_ALWAYSONTOP, OnAlwaysOnTop)
 		COMMAND_RANGE_HANDLER(ID_WINDOW_TABFIRST, ID_WINDOW_TABLAST, OnWindowActivate)
-		CHAIN_MSG_MAP(CUpdateUI<CMainFrame>)
+		CHAIN_MSG_MAP(CAutoUpdateUI<CMainFrame>)
 		CHAIN_MSG_MAP(CFrameWindowImpl<CMainFrame>)
 		COMMAND_RANGE_HANDLER(0x8000, 0xffff, OnForward)
 		REFLECT_NOTIFICATIONS()
@@ -52,8 +61,10 @@ private:
 	HWND InitView(IDebugXView* view);
 	void InitCommandBar();
 	void InitToolBar(CToolBarCtrl& tb);
+	void UpdateUI(bool force = false);
 
 private:
+	LRESULT OnTimer(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnForward(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled);
@@ -67,10 +78,19 @@ private:
 	LRESULT OnWindowActivate(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnViewProcesses(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnRunExe(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnAttachProcess(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnAlwaysOnTop(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugBreak(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugGo(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugStop(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugStepOver(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugStepInto(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugStepOut(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
 private:
 	CTabView m_view;
 	CCommandBarCtrl m_CmdBar;
 	CImageList m_TabImages;
 	static int s_FrameWindowCount;
+
 };

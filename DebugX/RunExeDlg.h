@@ -23,6 +23,10 @@ public:
 		return m_Arguments;
 	}
 
+	const CString& GetWorkingDir() const {
+		return m_WorkingDir;
+	}
+
 	bool IsInitialBreak() const {
 		return m_InitialBreakpoint;
 	}
@@ -44,7 +48,7 @@ private:
 	LRESULT OnBrowseDir(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
 private:
-	CString m_ExePath, m_Arguments;
+	CString m_ExePath, m_Arguments, m_WorkingDir;
 	bool m_InitialBreakpoint;
 	bool m_NonInvasiveAttach;
 };

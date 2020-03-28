@@ -14,9 +14,11 @@
 #include "KernelProcessesView.h"
 #include "SecurityHelper.h"
 #include "RunExeDlg.h"
+#include "ProcessSelectDlg.h"
 
 int CMainFrame::s_FrameWindowCount = 0;
-const int WINDOW_MENU_POSITION = 4;
+const int WINDOW_MENU_POSITION = 5;
+std::unique_ptr<DebugManager> m_dm;
 
 CMainFrame::CMainFrame() {
 	++s_FrameWindowCount;
@@ -30,6 +32,7 @@ BOOL CMainFrame::PreTranslateMessage(MSG* pMsg) {
 }
 
 BOOL CMainFrame::OnIdle() {
+	UpdateUI();
 	UIUpdateToolBar();
 	return FALSE;
 }
@@ -37,6 +40,7 @@ BOOL CMainFrame::OnIdle() {
 void CMainFrame::OnFinalMessage(HWND) {
 	if (--s_FrameWindowCount == 0) {
 		DebugManager::Get()->Destroy();
+		m_dm.reset(nullptr);
 		::PostQuitMessage(0);
 	}
 	delete this;
@@ -49,6 +53,12 @@ HWND CMainFrame::InitView(IDebugXView* view) {
 		m_view.AddPage(hWnd, view->GetHeader(), image, view);
 	}
 	return hWnd;
+}
+
+LRESULT CMainFrame::OnTimer(UINT, WPARAM id, LPARAM, BOOL&) {
+	if (id == 1)
+		UpdateUI(true);
+	return 0;
 }
 
 LRESULT CMainFrame::OnForward(WORD, WORD, HWND, BOOL&) {
@@ -66,6 +76,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	HWND hWndCmdBar = m_CmdBar.Create(m_hWnd, rcDefault, nullptr, ATL_SIMPLE_CMDBAR_PANE_STYLE);
 	m_CmdBar.m_bAlphaImages = true;
 	m_CmdBar.AttachMenu(GetMenu());
+	UIAddMenu(GetMenu());
 	SetMenu(nullptr);
 	InitCommandBar();
 
@@ -100,6 +111,10 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	CMenuHandle menuMain = m_CmdBar.GetMenu();
 	m_view.SetWindowMenu(menuMain.GetSubMenu(WINDOW_MENU_POSITION));
 
+	m_dm.reset(new DebugManager());
+	m_dm->Init(this);
+
+	//SetTimer(1, 1000, nullptr);
 	return 0;
 }
 
@@ -199,15 +214,75 @@ LRESULT CMainFrame::OnRunExe(WORD, WORD, HWND, BOOL&) {
 		auto pView = new CCommandView;
 		ATLVERIFY(InitView(pView));
 		auto& dbg = DebugManager::Debugger();
-		auto hr = dbg.LaunchAndAttach(dlg.GetExePath(), dlg.GetArguments());
+		auto hr = dbg.LaunchAndAttach(dlg.GetExePath(), dlg.GetArguments(), dlg.GetWorkingDir());
 		if (SUCCEEDED(hr)) {
 			dbg.OutputPrompt();
 		}
 		else {
-			AtlMessageBox(*this, L"Failed to launch process", IDS_TITLE, MB_ICONWARNING);
+			AtlMessageBox(*this, L"Failed to launch process", IDS_TITLE, MB_ICONERROR);
 		}
 	}
 	return 0;
+}
+
+LRESULT CMainFrame::OnAttachProcess(WORD, WORD, HWND, BOOL&) {
+	CProcessSelectDlg dlg;
+	if (dlg.DoModal() == IDOK) {
+		auto pView = new CCommandView;
+		ATLVERIFY(InitView(pView));
+		auto& dbg = DebugManager::Debugger();
+		CString name;
+		auto pid = dlg.GetSelectedProcess(name);
+		auto hr = dbg.AttachToProcess(pid);
+		if (SUCCEEDED(hr)) {
+			dbg.OutputPrompt();
+		}
+		else {
+			CString text;
+			text.Format(L"Failed to attach to PID %u", pid);
+			AtlMessageBox(*this, pid, IDS_TITLE, MB_ICONERROR);
+		}
+	}
+	return 0;
+}
+
+LRESULT CMainFrame::OnAlwaysOnTop(WORD, WORD id, HWND, BOOL&) {
+	bool onTop = GetExStyle() & WS_EX_TOPMOST;
+	SetWindowPos(onTop ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
+	UISetCheck(id, !onTop);
+
+	return 0;
+}
+
+LRESULT CMainFrame::OnDebugBreak(WORD, WORD, HWND, BOOL&) {
+	DebugManager::Debugger().Break();
+
+	return 0;
+}
+
+LRESULT CMainFrame::OnDebugGo(WORD, WORD, HWND, BOOL&) {
+	DebugManager::Debugger().ExecuteCommand("g");
+
+	return 0;
+}
+
+LRESULT CMainFrame::OnDebugStop(WORD, WORD, HWND, BOOL&) {
+	DebugManager::Debugger().Stop();
+	return 0;
+}
+
+LRESULT CMainFrame::OnDebugStepOver(WORD, WORD, HWND, BOOL&) {
+	DebugManager::Debugger().ExecuteCommand("p");
+	return 0;
+}
+
+LRESULT CMainFrame::OnDebugStepInto(WORD, WORD, HWND, BOOL&) {
+	DebugManager::Debugger().ExecuteCommand("t");
+	return 0;
+}
+
+void CMainFrame::ProcessMessage(MSG* pMsg) {
+	_Module.GetMessageLoop()->OnIdle(0);
 }
 
 void CMainFrame::InitCommandBar() {
@@ -227,6 +302,13 @@ void CMainFrame::InitCommandBar() {
 		{ ID_DEBUG_STEPINTO, IDI_STEP_INTO },
 		{ ID_DEBUG_STEPOVER, IDI_DEBUG_STEP_OVER },
 		{ ID_DEBUG_STEPOUT, IDI_DEBUG_STEP_OUT },
+		{ ID_VIEW_PROCESSES, IDI_PROCESSES },
+		{ ID_VIEW_THREADS, IDI_THREADS },
+		{ ID_VIEW_COMMAND, IDI_COMMAND },
+		{ ID_VIEW_CALLSTACK, IDI_CALLSTACK },
+		{ ID_VIEW_BREAKPOINTS, IDI_BREAKPOINTS },
+		{ ID_WINDOW_CLOSE, IDI_WINDOW_CLOSE },
+		{ ID_WINDOW_CLOSE_ALL, IDI_WINDOW_CLOSEALL },
 	};
 	for (auto& cmd : cmds) {
 		m_CmdBar.AddIcon(cmd.icon ? AtlLoadIcon(cmd.icon) : cmd.hIcon, cmd.id);
@@ -265,4 +347,18 @@ void CMainFrame::InitToolBar(CToolBarCtrl& tb) {
 			tb.AddButton(b.id, b.style, TBSTATE_ENABLED, image, b.text, 0);
 		}
 	}
+}
+
+void CMainFrame::UpdateUI(bool force) {
+	using namespace DebugEngine;
+	if (DebugManager::Get() == nullptr)
+		return;
+
+	auto status = DebugManager::Debugger().GetExecutionStatusAsync();
+	UIEnable(ID_DEBUG_GO, status == ExecutionStatus::Break, force);
+	UIEnable(ID_DEBUG_BREAK, status == ExecutionStatus::Go, force);
+	UIEnable(ID_DEBUG_STOP, status != ExecutionStatus::NoDebuggee, force);
+	UIEnable(ID_DEBUG_STEPOVER, status == ExecutionStatus::Break, force);
+	UIEnable(ID_DEBUG_STEPINTO, status == ExecutionStatus::Break, force);
+	UIEnable(ID_DEBUG_STEPOUT, status == ExecutionStatus::Break, force);
 }

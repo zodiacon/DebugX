@@ -211,6 +211,7 @@
     <ClCompile Include="DialogHelper.cpp" />
     <ClCompile Include="KernelProcessesView.cpp" />
     <ClCompile Include="MainFrm.cpp" />
+    <ClCompile Include="ProcessSelectDlg.cpp" />
     <ClCompile Include="RunExeDlg.cpp" />
     <ClCompile Include="SecurityHelper.cpp" />
     <ClCompile Include="SortedFilteredVector.cpp" />
@@ -221,6 +222,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="UserThreadsView.cpp" />
     <ClCompile Include="View.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -232,12 +234,14 @@
     <ClInclude Include="Interfaces.h" />
     <ClInclude Include="KernelProcessesView.h" />
     <ClInclude Include="MainFrm.h" />
+    <ClInclude Include="ProcessSelectDlg.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="RunExeDlg.h" />
     <ClInclude Include="SecurityHelper.h" />
     <ClInclude Include="SortedFilteredVector.h" />
     <ClInclude Include="SortHelper.h" />
     <ClInclude Include="stdafx.h" />
+    <ClInclude Include="UserThreadsView.h" />
     <ClInclude Include="View.h" />
     <ClInclude Include="VirtualListView.h" />
   </ItemGroup>
@@ -245,9 +249,11 @@
     <ResourceCompile Include="DebugX.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="res\callstack.ico" />
     <Image Include="res\copy.ico" />
     <Image Include="res\cpu-add.ico" />
     <Image Include="res\cut.ico" />
+    <Image Include="res\debug_breakpoints.ico" />
     <Image Include="res\hardware-add.ico" />
     <Image Include="res\ok.ico" />
     <Image Include="res\open.ico" />
@@ -276,6 +282,8 @@
     <Image Include="res\registry_editor.ico" />
     <Image Include="res\structure.ico" />
     <Image Include="res\threads.ico" />
+    <Image Include="res\window-delete.ico" />
+    <Image Include="res\windows-delete.ico" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

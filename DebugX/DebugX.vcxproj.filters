@@ -63,6 +63,12 @@
     <ClCompile Include="AboutDlg.cpp">
       <Filter>Dialogs</Filter>
     </ClCompile>
+    <ClCompile Include="ProcessSelectDlg.cpp">
+      <Filter>Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="UserThreadsView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -112,6 +118,12 @@
     </ClInclude>
     <ClInclude Include="RunExeDlg.h">
       <Filter>Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="ProcessSelectDlg.h">
+      <Filter>Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="UserThreadsView.h">
+      <Filter>Views</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -206,6 +218,18 @@
       <Filter>Resource Files\Icons</Filter>
     </Image>
     <Image Include="res\open.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\callstack.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\debug_breakpoints.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\window-delete.ico">
+      <Filter>Resource Files\Icons</Filter>
+    </Image>
+    <Image Include="res\windows-delete.ico">
       <Filter>Resource Files\Icons</Filter>
     </Image>
   </ItemGroup>

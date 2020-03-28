@@ -37,14 +37,21 @@
 #define IDI_ICON1                       232
 #define IDI_OK                          232
 #define IDI_OPEN                        233
+#define IDI_CALLSTACK                   234
+#define IDI_BREAKPOINTS                 235
+#define IDD_PROCSELECT                  236
+#define IDI_WINDOW_CLOSE                238
+#define IDI_ICON3                       239
+#define IDI_WINDOW_CLOSEALL             239
 #define IDC_EXEPATH                     1000
+#define IDC_PROCLIST                    1000
 #define IDC_BROWSE                      1001
 #define IDC_ARGS                        1002
 #define IDC_INITIALBREAK                1003
 #define IDC_NONINVASIVE                 1004
 #define IDC_INITIALDIR                  1005
 #define IDC_BROWSEDIR                   1006
-#define IDC_BUTTON1                     1007
+#define IDC_REFRESH                     1009
 #define ID_WINDOW_CLOSE                 32772
 #define ID_WINDOW_CLOSE_ALL             32773
 #define ID_FILE_DUMMY                   32775
@@ -65,13 +72,15 @@
 #define ID_DEBUG_STEPINTO               32790
 #define ID_DEBUG_STEPOUT                32791
 #define ID_VIEW_REFRESH32792            32792
+#define ID_OPTIONS_ALWAYSONTOP          32793
+#define ID_OPTIONS_DEBUGGERMARKUPLANGUAGE 32794
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        234
-#define _APS_NEXT_COMMAND_VALUE         32793
+#define _APS_NEXT_RESOURCE_VALUE        240
+#define _APS_NEXT_COMMAND_VALUE         32795
 #define _APS_NEXT_CONTROL_VALUE         1008
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

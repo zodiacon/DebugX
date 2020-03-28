@@ -37,9 +37,9 @@ namespace DebugEngine {
 		GoNotHandled,
 		StepOver,
 		StepInfo,
-		Vreak,
-		NoDebugge,
-		SteoBranch,
+		Break,
+		NoDebuggee,
+		StepBranch,
 		IgnoreEvent,
 		RestartRequested,
 		ReverseGo,
@@ -49,6 +49,10 @@ namespace DebugEngine {
 		OutOfSync,
 		WaitInput,
 		Timeout
+	};
+
+	struct IMessageLoop {
+		virtual void ProcessMessage(MSG* pMsg) = 0;
 	};
 
 	struct ModuleInfo {
@@ -69,6 +73,14 @@ namespace DebugEngine {
 		ULONG Checksum;
 		ULONG ModuleSize;
 		void* ThreadDataOffset;
+	};
+
+	struct ExitThreadData {
+		ULONG ExitCode;
+	};
+
+	struct BreakpointData {
+		IDebugBreakpoint* Breakpoint;
 	};
 
 	enum class OutputDataMask {
@@ -94,9 +106,15 @@ namespace DebugEngine {
 		bool IsDml : 1;
 	};
 
+	struct ThreadCreateData {
+		HANDLE Handle;
+		ULONG64 Teb;
+		ULONG64 StartAddress;
+	};
+
 	class Debugger sealed {
 	public:
-		Debugger();
+		Debugger(IMessageLoop* msgLoop = nullptr);
 		~Debugger();
 		Debugger(const Debugger&) = delete;
 		Debugger& operator=(const Debugger&) = delete;
@@ -105,12 +123,14 @@ namespace DebugEngine {
 		HRESULT Create(HWND hWndNotify);
 
 		HRESULT AttachToProcess(DWORD pid, AttachType attach = AttachType::Default);
-		HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, AttachType attach = AttachType::Default);
+		HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, PCWSTR workingDir = nullptr, AttachType attach = AttachType::Default);
 		HRESULT ExecuteCommand(PCWSTR command);
 		HRESULT ExecuteCommand(PCSTR command);
 		HRESULT AttachLocalKernel();
 		HRESULT Break();
+		HRESULT Stop();
 		ExecutionStatus GetExecutionStatus();
+		ExecutionStatus GetExecutionStatusAsync() const;
 
 		HRESULT OutputPrompt();
 
