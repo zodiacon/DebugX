@@ -3,6 +3,7 @@
 #include <vector>
 #include <algorithm>
 #include <functional>
+#include <assert.h>
 
 template<typename T>
 class SortedFilteredVector {
@@ -14,7 +15,8 @@ public:
 
 	void Add(const T& value) {
 		_items.push_back(value);
-		_indices.push_back(_indices.size());
+		_indices.push_back(_items.size() - 1);
+		assert(_items.size() == _indices.size());
 	}
 
 	void Clear() {

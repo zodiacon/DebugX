@@ -7,6 +7,7 @@ using namespace DebugX::Analysis;
 KernelProcessEnumerator::KernelProcessEnumerator(IDebugClient* client) {
 	CComQIPtr<IDebugSymbols3> spSymbols(client);
 	ATLASSERT(spSymbols);
+
 	auto hr = spSymbols->GetOffsetByName("nt!PsActiveProcessHead", &_head);
 	ATLASSERT(SUCCEEDED(hr));
 

@@ -9,6 +9,13 @@
 #include <atlstr.h>
 #include <DbgEng.h>
 #include <atlcom.h>
+#include <DbgModel.h>
+#include <wrl.h>
+#include <wrl/client.h>
+#include <wrl/implements.h>
+#include <wrl/module.h>
+#include "DbgModelClientEx.h"
+
 #include "DebugX.Kernel.h"
 
 using namespace DebugX::Analysis;
@@ -17,9 +24,9 @@ using namespace DebugX::Analysis;
 
 #define HR(x) ATLVERIFY(SUCCEEDED(x))
 
-using namespace DebugEngine;
+using XDebugger = DebugEngine::DebuggerX;
 
-std::unique_ptr<Debugger> debugger;
+std::unique_ptr<XDebugger> debugger;
 
 CComModule _Module;
 
@@ -53,6 +60,7 @@ void SetConsoleForegroundColor(ConsoleColor color) {
 }
 
 DWORD CALLBACK NotifyThread(PVOID) {
+	using namespace DebugEngine;
 	MSG msg;
 	while (::GetMessage(&msg, nullptr, 0, 0)) {
 		ATLASSERT(msg.hwnd == nullptr);
@@ -166,6 +174,7 @@ struct CDebugCallbacks :
 
 	virtual HRESULT CreateProcessW(ULONG64 ImageFileHandle, ULONG64 Handle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName,
 		ULONG CheckSum, ULONG TimeDateStamp, ULONG64 InitialThreadHandle, ULONG64 ThreadDataOffset, ULONG64 StartOffset) {
+		using namespace DebugEngine;
 		auto data = new CreateProcessData;
 		data->BaseAddress = reinterpret_cast<void*>(BaseOffset);
 		data->hFile = reinterpret_cast<HANDLE>(ImageFileHandle);
@@ -176,13 +185,14 @@ struct CDebugCallbacks :
 		data->Checksum = CheckSum;
 		data->hThread = reinterpret_cast<HANDLE>(InitialThreadHandle);
 		data->ThreadDataOffset = reinterpret_cast<void*>(ThreadDataOffset);
-
+		
 		return DEBUG_STATUS_NO_CHANGE;
 	}
 
 
 	// Inherited via IDebugOutputCallbacksWide
 	HRESULT __stdcall Output(ULONG Mask, PCWSTR Text) override {
+		using namespace DebugEngine;
 		auto data = new OutputData;
 		data->Text = Text;
 		data->Mask = static_cast<OutputDataMask>(Mask);
@@ -202,6 +212,18 @@ struct CDebugCallbacks :
 	}
 };
 
+CComPtr<IDataModelManager> spDataMgr;
+CComPtr<IDebugHost> spDebugHost;
+
+//namespace Debugger::DataModel::ClientEx {
+//	IDataModelManager* GetManager() {
+//		return spDataMgr.p;
+//	}
+//	IDebugHost* GetHost() {
+//		return spDebugHost.p;
+//	}
+//}
+
 IDebugControl5* g_pControl;
 
 HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
@@ -214,7 +236,9 @@ HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
 	ATLASSERT(spControl);
 	CComQIPtr<IDebugDataSpaces4> spData(spClient);
 	ATLASSERT(spData);
-
+	CComQIPtr<IHostDataModelAccess> spDMAccess(spClient);
+	spDMAccess->GetDataModel(&spDataMgr, &spDebugHost);
+	
 	CComObject<CDebugCallbacks>* cb;
 	cb->CreateInstance(&cb);
 	cb->SetControl(spControl);
@@ -244,6 +268,15 @@ HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
 		return hr;
 
 	spControl->WaitForEvent(0, INFINITE);
+
+	auto session = Debugger::DataModel::ClientEx::Object::CurrentSession();
+	for (auto key : session.Keys()) {
+		ATLTRACE(L"%s\n", std::get<0>(key).c_str());
+	}
+	auto processes = session.KeyValue(L"Processes");
+	for (const auto& p : processes) {
+		ATLTRACE(L"%s\n", p.KeyValue(L"Name").ToDisplayString().c_str());
+	}
 
 	//CComQIPtr<IDebugSymbols3> spSymbols(spClient);
 	//ATLASSERT(spSymbols);

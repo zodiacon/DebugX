@@ -15,10 +15,12 @@
 #include "SecurityHelper.h"
 #include "RunExeDlg.h"
 #include "ProcessSelectDlg.h"
+#include "UserThreadsView.h"
+
+using namespace DebugEngine;
 
 int CMainFrame::s_FrameWindowCount = 0;
 const int WINDOW_MENU_POSITION = 5;
-std::unique_ptr<DebugManager> m_dm;
 
 CMainFrame::CMainFrame() {
 	++s_FrameWindowCount;
@@ -39,8 +41,7 @@ BOOL CMainFrame::OnIdle() {
 
 void CMainFrame::OnFinalMessage(HWND) {
 	if (--s_FrameWindowCount == 0) {
-		DebugManager::Get()->Destroy();
-		m_dm.reset(nullptr);
+		DebugManager::Get().Destroy();
 		::PostQuitMessage(0);
 	}
 	delete this;
@@ -53,6 +54,11 @@ HWND CMainFrame::InitView(IDebugXView* view) {
 		m_view.AddPage(hWnd, view->GetHeader(), image, view);
 	}
 	return hWnd;
+}
+
+LRESULT CMainFrame::OnKickIdle(UINT, WPARAM, LPARAM, BOOL&) {
+	_Module.GetMessageLoop()->OnIdle(0);
+	return 0;
 }
 
 LRESULT CMainFrame::OnTimer(UINT, WPARAM id, LPARAM, BOOL&) {
@@ -111,10 +117,12 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	CMenuHandle menuMain = m_CmdBar.GetMenu();
 	m_view.SetWindowMenu(menuMain.GetSubMenu(WINDOW_MENU_POSITION));
 
-	m_dm.reset(new DebugManager());
-	m_dm->Init(this);
+	if (s_FrameWindowCount == 1)
+		DebugManager::Get().Init(this);
 
-	//SetTimer(1, 1000, nullptr);
+	auto pView = new CCommandView;
+	InitView(pView);
+
 	return 0;
 }
 
@@ -144,12 +152,15 @@ LRESULT CMainFrame::OnAttachLocalKernel(WORD /*wNotifyCode*/, WORD /*wID*/, HWND
 		}
 		return 0;
 	}
-	auto pView = new CCommandView;
-	if (InitView(pView)) {
-		auto& dbg = DebugManager::Debugger();
-		dbg.AttachLocalKernel();
-		dbg.OutputPrompt();
-	}
+	auto& dbg = DebugManager::DebuggerX();
+	dbg.AttachLocalKernel();
+	dbg.OutputPrompt();
+
+	UIEnable(ID_DEBUG_ATTACHTOKERNEL, false);
+	UIEnable(ID_DEBUG_ATTACHTOLOCALKERNEL, false);
+	UIEnable(ID_DEBUG_ATTACHTOPROCESS, false);
+	UIEnable(ID_DEBUG_RUNEXECUTABLE, false);
+
 	return 0;
 }
 
@@ -202,8 +213,19 @@ LRESULT CMainFrame::OnWindowActivate(WORD /*wNotifyCode*/, WORD wID, HWND /*hWnd
 }
 
 LRESULT CMainFrame::OnViewProcesses(WORD, WORD, HWND, BOOL&) {
-	auto pView = new CKernelProcessesView;
-	InitView(pView);
+	if ((DebugManager::DebuggerX().GetTargetType() & TargetType::Kernel) == TargetType::Kernel) {
+		auto pView = new CKernelProcessesView;
+		InitView(pView);
+	}
+
+	return 0;
+}
+
+LRESULT CMainFrame::OnViewThreads(WORD, WORD, HWND, BOOL&) {
+	if ((DebugManager::DebuggerX().GetTargetType() & TargetType::User) == TargetType::User) {
+		auto pView = new CUserThreadsView;
+		InitView(pView);
+	}
 
 	return 0;
 }
@@ -211,9 +233,7 @@ LRESULT CMainFrame::OnViewProcesses(WORD, WORD, HWND, BOOL&) {
 LRESULT CMainFrame::OnRunExe(WORD, WORD, HWND, BOOL&) {
 	CRunExeDlg dlg;
 	if (dlg.DoModal() == IDOK) {
-		auto pView = new CCommandView;
-		ATLVERIFY(InitView(pView));
-		auto& dbg = DebugManager::Debugger();
+		auto& dbg = DebugManager::DebuggerX();
 		auto hr = dbg.LaunchAndAttach(dlg.GetExePath(), dlg.GetArguments(), dlg.GetWorkingDir());
 		if (SUCCEEDED(hr)) {
 			dbg.OutputPrompt();
@@ -228,9 +248,7 @@ LRESULT CMainFrame::OnRunExe(WORD, WORD, HWND, BOOL&) {
 LRESULT CMainFrame::OnAttachProcess(WORD, WORD, HWND, BOOL&) {
 	CProcessSelectDlg dlg;
 	if (dlg.DoModal() == IDOK) {
-		auto pView = new CCommandView;
-		ATLVERIFY(InitView(pView));
-		auto& dbg = DebugManager::Debugger();
+		auto& dbg = DebugManager::DebuggerX();
 		CString name;
 		auto pid = dlg.GetSelectedProcess(name);
 		auto hr = dbg.AttachToProcess(pid);
@@ -255,34 +273,38 @@ LRESULT CMainFrame::OnAlwaysOnTop(WORD, WORD id, HWND, BOOL&) {
 }
 
 LRESULT CMainFrame::OnDebugBreak(WORD, WORD, HWND, BOOL&) {
-	DebugManager::Debugger().Break();
+	DebugManager::DebuggerX().Break();
 
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugGo(WORD, WORD, HWND, BOOL&) {
-	DebugManager::Debugger().ExecuteCommand("g");
+	DebugManager::DebuggerX().ExecuteCommand("g");
 
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStop(WORD, WORD, HWND, BOOL&) {
-	DebugManager::Debugger().Stop();
+	DebugManager::DebuggerX().Stop();
+
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStepOver(WORD, WORD, HWND, BOOL&) {
-	DebugManager::Debugger().ExecuteCommand("p");
+	DebugManager::DebuggerX().ExecuteCommand("p");
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStepInto(WORD, WORD, HWND, BOOL&) {
-	DebugManager::Debugger().ExecuteCommand("t");
+	DebugManager::DebuggerX().ExecuteCommand("t");
 	return 0;
 }
 
-void CMainFrame::ProcessMessage(MSG* pMsg) {
-	_Module.GetMessageLoop()->OnIdle(0);
+void CMainFrame::ProcessIdle() {
+	if (::GetCurrentThreadId() == _Module.m_dwMainThreadID)
+		_Module.GetMessageLoop()->OnIdle(0);
+	else
+		PostMessage(WM_KICKIDLE);
 }
 
 void CMainFrame::InitCommandBar() {
@@ -351,14 +373,19 @@ void CMainFrame::InitToolBar(CToolBarCtrl& tb) {
 
 void CMainFrame::UpdateUI(bool force) {
 	using namespace DebugEngine;
-	if (DebugManager::Get() == nullptr)
-		return;
 
-	auto status = DebugManager::Debugger().GetExecutionStatusAsync();
-	UIEnable(ID_DEBUG_GO, status == ExecutionStatus::Break, force);
+	auto status = DebugManager::DebuggerX().GetExecutionStatusAsync();
+	auto target = DebugManager::DebuggerX().GetTargetType();
+
+	UIEnable(ID_DEBUG_GO, status == ExecutionStatus::Break && target != TargetType::LocalKernel, force);
 	UIEnable(ID_DEBUG_BREAK, status == ExecutionStatus::Go, force);
 	UIEnable(ID_DEBUG_STOP, status != ExecutionStatus::NoDebuggee, force);
-	UIEnable(ID_DEBUG_STEPOVER, status == ExecutionStatus::Break, force);
-	UIEnable(ID_DEBUG_STEPINTO, status == ExecutionStatus::Break, force);
-	UIEnable(ID_DEBUG_STEPOUT, status == ExecutionStatus::Break, force);
+	UIEnable(ID_DEBUG_STEPOVER, status == ExecutionStatus::Break && target != TargetType::LocalKernel, force);
+	UIEnable(ID_DEBUG_STEPINTO, status == ExecutionStatus::Break && target != TargetType::LocalKernel, force);
+	UIEnable(ID_DEBUG_STEPOUT, status == ExecutionStatus::Break && target != TargetType::LocalKernel, force);
+
+	UIEnable(ID_VIEW_THREADS, status != ExecutionStatus::NoDebuggee);
+	UIEnable(ID_VIEW_PROCESSES, status != ExecutionStatus::NoDebuggee);
+	UIEnable(ID_VIEW_CALLSTACK, status != ExecutionStatus::NoDebuggee);
+	UIEnable(ID_VIEW_BREAKPOINTS, status != ExecutionStatus::NoDebuggee);
 }

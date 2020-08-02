@@ -15,5 +15,9 @@
 #include <DbgEng.h>
 #include <atlbase.h>
 #include <memory>
+#include <wrl.h>
+#include <wrl/client.h>
+#include <wrl/implements.h>
+#include <wrl/module.h>
 
 #endif //PCH_H

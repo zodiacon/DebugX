@@ -7,6 +7,9 @@ LRESULT CRunExeDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&) {
 	DialogHelper::AddIconToButton(this, IDC_BROWSE, IDI_OPEN);
 	DialogHelper::AddIconToButton(this, IDC_BROWSEDIR, IDI_OPEN);
 
+	::SHAutoComplete(GetDlgItem(IDC_EXEPATH), SHACF_FILESYSTEM);
+	::SHAutoComplete(GetDlgItem(IDC_INITIALDIR), SHACF_FILESYS_DIRS);
+
 	CenterWindow();
 
 	return 0;

@@ -44,7 +44,8 @@ public:
 
 private:
 	void DoExecuteCommand(PCWSTR = nullptr);
-	void AddDmlText(const CString& dml);
+	void AddDmlText(CString& dml);
+	void SetBusy(bool busy = true);
 
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
@@ -68,6 +69,7 @@ private:
 	std::unordered_map<int, CString> m_Links;
 	std::vector<CString> m_CommandHistory;
 	int m_CommandHistoryIndex = 0;
+	bool m_IsBusy{ false };
 
 };
 

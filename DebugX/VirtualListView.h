@@ -1,11 +1,15 @@
 #pragma once
 
+struct ColumnManager {};
+
 template<typename T>
 struct CVirtualListView {
 	BEGIN_MSG_MAP(CVirtualListView)
 		NOTIFY_CODE_HANDLER(LVN_COLUMNCLICK, OnColumnClick)
 		NOTIFY_CODE_HANDLER(LVN_ODFINDITEM, OnFindItem)
-		ALT_MSG_MAP(1)
+		NOTIFY_CODE_HANDLER(LVN_GETDISPINFO, OnGetDispInfo)
+	ALT_MSG_MAP(1)
+		REFLECTED_NOTIFY_CODE_HANDLER(LVN_GETDISPINFO, OnGetDispInfo)
 		REFLECTED_NOTIFY_CODE_HANDLER(LVN_COLUMNCLICK, OnColumnClick)
 		REFLECTED_NOTIFY_CODE_HANDLER(LVN_ODFINDITEM, OnFindItem)
 	END_MSG_MAP()
@@ -17,7 +21,7 @@ struct CVirtualListView {
 		bool SortAscending;
 	};
 
-	bool ClearSort(UINT_PTR id) {
+	bool ClearSort(UINT_PTR id = 0) {
 		auto si = FindById(id);
 		if (si == nullptr)
 			return false;
@@ -33,6 +37,31 @@ struct CVirtualListView {
 	}
 
 protected:
+	ColumnManager* GetColumnManager(HWND hListView) {
+		auto it = std::find_if(m_Columns.begin(), m_Columns.end(), [](auto& cm) {
+			return cm->GetListView() == hListView;
+			});
+		if (it != m_Columns.end())
+			return it->second.get();
+		auto cm = std::make_unique<ColumnManager>(hListView);
+		m_Columns.push_back(cm);
+		return cm.get();
+	}
+
+	LRESULT OnGetDispInfo(int /*idCtrl*/, LPNMHDR hdr, BOOL& /*bHandled*/) {
+		auto lv = (NMLVDISPINFO*)hdr;
+		auto& item = lv->item;
+		auto p = static_cast<T*>(this);
+		if (item.mask & LVIF_TEXT)
+			::StringCchCopy(item.pszText, item.cchTextMax, p->GetColumnText(hdr->hwndFrom, item.iItem, item.iSubItem));
+		if (item.mask & LVIF_IMAGE)
+			item.iImage = p->GetRowImage(item.iItem);
+		if (item.mask & LVIF_INDENT)
+			item.iIndent = p->GetRowIndent(item.iItem);
+
+		return 0;
+	}
+
 	LRESULT OnFindItem(int /*idCtrl*/, LPNMHDR hdr, BOOL& /*bHandled*/) {
 		auto fi = (NMLVFINDITEM*)hdr;
 		auto text = fi->lvfi.psz;
@@ -40,7 +69,7 @@ protected:
 		auto list = fi->hdr.hwndFrom;
 
 		if (ListView_GetSelectedCount(list) == 0)
-			return 0;
+			return -1;
 
 		int selected = ListView_GetNextItem(list, -1, LVIS_SELECTED);
 		int start = selected + 1;
@@ -113,13 +142,29 @@ protected:
 		return si ? si->SortAscending : false;
 	}
 
-	SortInfo* GetSortInfo(UINT_PTR id = 0) {
-		if (id == 0 && m_Controls.empty())
+	//SortInfo* GetSortInfo(UINT_PTR id = 0) {
+	//	if (id == 0 && m_Controls.empty())
+	//		return nullptr;
+	//	return id == 0 ? &m_Controls[0] : FindById(id);
+	//}
+
+	SortInfo* GetSortInfo(HWND h = nullptr) {
+		if (h == nullptr && m_Controls.empty())
 			return nullptr;
-		return id == 0 ? &m_Controls[0] : FindById(id);
+		return h == nullptr ? &m_Controls[0] : FindByHwnd(h);
 	}
 
 	void DoSort(const SortInfo*) {}
+	CString GetColumnText(HWND hWnd, int row, int column) const {
+		return L"";
+	}
+	int GetRowImage(int row) const {
+		return 0;
+	}
+
+	int GetRowIndent(int row) const {
+		return 0;
+	}
 
 private:
 	SortInfo* FindById(UINT_PTR id) const {
@@ -131,5 +176,15 @@ private:
 		return nullptr;
 	}
 
+	SortInfo* FindByHwnd(HWND h) const {
+		if (h == nullptr)
+			return m_Controls.empty() ? nullptr : &m_Controls[0];
+		for (auto& info : m_Controls)
+			if (info.hWnd == h)
+				return &info;
+		return nullptr;
+	}
+
 	mutable std::vector<SortInfo> m_Controls;
+	std::vector<std::unique_ptr<ColumnManager>> m_Columns;
 };

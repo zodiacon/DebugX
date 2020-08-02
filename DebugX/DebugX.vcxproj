@@ -300,6 +300,7 @@
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\wtl.10.0.9163\build\native\wtl.targets" Condition="Exists('..\packages\wtl.10.0.9163\build\native\wtl.targets')" />
     <Import Project="..\packages\Microsoft.Windows.ImplementationLibrary.1.0.191107.2\build\native\Microsoft.Windows.ImplementationLibrary.targets" Condition="Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.191107.2\build\native\Microsoft.Windows.ImplementationLibrary.targets')" />
+    <Import Project="..\packages\Microsoft.Debugging.DataModel.CppLib.1.0.0\build\native\Microsoft.Debugging.DataModel.CppLib.targets" Condition="Exists('..\packages\Microsoft.Debugging.DataModel.CppLib.1.0.0\build\native\Microsoft.Debugging.DataModel.CppLib.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
@@ -307,5 +308,6 @@
     </PropertyGroup>
     <Error Condition="!Exists('..\packages\wtl.10.0.9163\build\native\wtl.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\wtl.10.0.9163\build\native\wtl.targets'))" />
     <Error Condition="!Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.191107.2\build\native\Microsoft.Windows.ImplementationLibrary.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Windows.ImplementationLibrary.1.0.191107.2\build\native\Microsoft.Windows.ImplementationLibrary.targets'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Debugging.DataModel.CppLib.1.0.0\build\native\Microsoft.Debugging.DataModel.CppLib.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Debugging.DataModel.CppLib.1.0.0\build\native\Microsoft.Debugging.DataModel.CppLib.targets'))" />
   </Target>
 </Project>

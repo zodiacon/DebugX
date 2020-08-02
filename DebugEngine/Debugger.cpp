@@ -4,14 +4,18 @@
 #include <atlcom.h>
 #include <atlstr.h>
 #include <wil\resource.h>
+#include <DbgModel.h>
+#include "DbgModelClientEx.h"
 
 #pragma comment(lib, "dbgeng")
 
 using namespace DebugEngine;
 
+DebuggerX::Impl* g_Debugger;
+
 #define HR(x) { auto _hr = (x); if(FAILED(_hr)) return _hr; }
 
-struct Debugger::Impl :
+struct DebuggerX::Impl :
 	CComObjectRoot,
 	IDebugEventCallbacks,
 	IDebugOutputCallbacksWide,
@@ -25,6 +29,14 @@ struct Debugger::Impl :
 
 	Impl();
 	~Impl();
+
+	IDataModelManager* GetDataManager() {
+		return m_spDataMgr.p;
+	}
+
+	IDebugHost* GetDebugHost() {
+		return m_spDebugHost.p;
+	}
 
 	void SetMessageLoop(IMessageLoop* ml) {
 		_ml = ml;
@@ -47,7 +59,7 @@ struct Debugger::Impl :
 	}
 
 	bool DoPostCommand() {
-		m_spControl->GetExecutionStatus(&_status);
+		UpdateStatus();
 		m_spControl->OutputPromptWide(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
 
 		if (_status == DEBUG_STATUS_NO_DEBUGGEE) {
@@ -57,13 +69,13 @@ struct Debugger::Impl :
 
 		if (_status == DEBUG_STATUS_GO || _status == DEBUG_STATUS_STEP_BRANCH || _status == DEBUG_STATUS_STEP_INTO || _status == DEBUG_STATUS_STEP_OVER) {
 			auto hr = m_spControl->WaitForEvent(DEBUG_WAIT_DEFAULT, INFINITE);
+			UpdateStatus();
 			if (FAILED(hr)) {
-				m_spControl->GetExecutionStatus(&_status);
 				if (_status == DEBUG_STATUS_NO_DEBUGGEE)
 					return false;
 			}
-			m_spControl->GetExecutionStatus(&_status);
-			m_spControl->OutputCurrentState(DEBUG_OUTCTL_THIS_CLIENT, DEBUG_CURRENT_DEFAULT);
+			if (_status == DEBUG_STATUS_BREAK)
+				m_spControl->OutputCurrentState(DEBUG_OUTCTL_THIS_CLIENT, DEBUG_CURRENT_DEFAULT);
 			_stateChanged = false;
 		}
 		if (_stateChanged) {
@@ -84,12 +96,23 @@ struct Debugger::Impl :
 	HRESULT AttachLocalKernel();
 	HRESULT ExecuteCommand(PCSTR command);
 	HRESULT ExecuteCommand(PCWSTR command);
+	HRESULT OpenDumpFile(PCWSTR filename);
 	HRESULT Break();
 	HRESULT Stop();
 	HRESULT OutputPrompt();
 	ExecutionStatus GetExecutionStatus();
 	HRESULT EnumModules(std::vector<ModuleInfo>& modules);
+	HRESULT EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads);
+	HRESULT EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
 	HRESULT Evaluate(PCSTR text, DEBUG_VALUE* value);
+	bool IsLocalKernelDebuggerAvailable() const;
+	bool IsBusy() const {
+		return _isBusy;
+	}
+
+	TargetType GetTargetType() const {
+		return _targetType;
+	}
 
 private:
 	template<typename F>
@@ -122,7 +145,7 @@ private:
 	DWORD DebuggerThread();
 
 	template<typename F, typename T1>
-	HRESULT RunAsync(F action, T1 arg) {
+	HRESULT RunAsync(F action, T1 arg) const {
 		ApcData1<F, T1> data(action);
 		data.Arg1 = arg;
 		data.hEvent = m_hAsyncEvent.get();
@@ -157,7 +180,7 @@ private:
 	}
 
 	template<typename F>
-	HRESULT RunAsync(F action) {
+	HRESULT RunAsync(F action) const {
 		ApcData<F> data(action);
 		data.hEvent = m_hAsyncEvent.get();
 
@@ -178,7 +201,7 @@ private:
 
 private:
 	void UpdateStatus();
-	void WaitWithMessages(HANDLE hEvent);
+	void WaitWithMessages(HANDLE hEvent) const;
 
 	IMessageLoop* _ml;
 	ULONG _status = DEBUG_STATUS_NO_CHANGE;
@@ -194,8 +217,13 @@ private:
 	CComPtr<IDebugSystemObjects4> m_spSystem;
 	CComPtr<IDebugSymbols5> m_spSymbols;
 	CComPtr<IDebugControl7> m_spControl;
+	CComPtr<IDebugHost> m_spDebugHost;
+	CComPtr<IDataModelManager> m_spDataMgr;
+
+	TargetType _targetType = TargetType::Unknown;
 	bool _stateChanged : 1 { false};
 	bool _breakpointHit : 1 { false };
+	bool _isBusy : 1 { false};
 
 	// Inherited via IDebugEventCallbacks
 
@@ -321,10 +349,12 @@ private:
 	}
 };
 
-Debugger::Impl::Impl() {
+DebuggerX::Impl::Impl() {
+	ATLASSERT(g_Debugger == nullptr);
+	g_Debugger = this;
 }
 
-Debugger::Impl::~Impl() {
+DebuggerX::Impl::~Impl() {
 	RunAsync([this]() {
 		m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
 		m_spClient.Release();
@@ -341,7 +371,7 @@ Debugger::Impl::~Impl() {
 	::WaitForSingleObject(m_hDebugThread.get(), 1000);
 }
 
-HRESULT Debugger::Impl::CreateInternal() {
+HRESULT DebuggerX::Impl::CreateInternal() {
 	return RunAsync([this]() {
 		HR(::DebugCreate(__uuidof(IDebugClient7), reinterpret_cast<void**>(&m_spClient)));
 		HR(m_spClient.QueryInterface(&m_spAdvanced));
@@ -350,7 +380,10 @@ HRESULT Debugger::Impl::CreateInternal() {
 		HR(m_spClient.QueryInterface(&m_spSymbols));
 		HR(m_spClient.QueryInterface(&m_spSystem));
 		HR(m_spClient.QueryInterface(&m_spControl));
-
+		CComQIPtr<IHostDataModelAccess> spDMAccess(m_spClient);
+		if (spDMAccess) {
+			spDMAccess->GetDataModel(&m_spDataMgr, &m_spDebugHost);
+		}
 		HR(m_spClient->SetEventCallbacks(this));
 		HR(m_spClient->SetOutputCallbacksWide(this));
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_PREFER_DML);
@@ -358,19 +391,22 @@ HRESULT Debugger::Impl::CreateInternal() {
 		});
 }
 
-HRESULT Debugger::Impl::AttachToProcessInternal(DWORD pid, AttachType attach) {
-	return RunAsync([this](auto pid, auto attach) {
+HRESULT DebuggerX::Impl::AttachToProcessInternal(DWORD pid, AttachType attach) {
+	auto hr = RunAsync([this](auto pid, auto attach) {
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 		HR(m_spClient->AttachProcess(0, pid, static_cast<ULONG>(attach)));
 		return m_spControl->WaitForEvent(0, INFINITE);
 		}, pid, attach);
+	if (SUCCEEDED(hr))
+		_targetType = TargetType::LiveUser;
+	return hr;
 }
 
-HRESULT Debugger::Impl::WaitForEventInternal(ULONG timeout) {
+HRESULT DebuggerX::Impl::WaitForEventInternal(ULONG timeout) {
 	return m_spControl->WaitForEvent(0, timeout);
 }
 
-void Debugger::Impl::UpdateStatus() {
+void DebuggerX::Impl::UpdateStatus() {
 	auto oldStatus = _status;
 	m_spControl->GetExecutionStatus(&_status);
 	if (_status != oldStatus) {
@@ -379,7 +415,7 @@ void Debugger::Impl::UpdateStatus() {
 	}
 }
 
-void Debugger::Impl::WaitWithMessages(HANDLE hEvent) {
+void DebuggerX::Impl::WaitWithMessages(HANDLE hEvent) const {
 	while (::MsgWaitForMultipleObjects(1, &hEvent, FALSE, INFINITE, QS_ALLEVENTS) == WAIT_OBJECT_0 + 1) {
 		MSG msg;
 		while (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
@@ -387,12 +423,12 @@ void Debugger::Impl::WaitWithMessages(HANDLE hEvent) {
 			::DispatchMessage(&msg);
 		}
 		if (_ml) {
-			_ml->ProcessMessage(&msg);
+			_ml->ProcessIdle();
 		}
 	}
 }
 
-HRESULT Debugger::Impl::Create(DWORD notifyThreadId, HWND hNotifyWnd) {
+HRESULT DebuggerX::Impl::Create(DWORD notifyThreadId, HWND hNotifyWnd) {
 	if (m_NotifyHwnd || m_NotifyThreadId)
 		return E_UNEXPECTED;
 
@@ -410,18 +446,18 @@ HRESULT Debugger::Impl::Create(DWORD notifyThreadId, HWND hNotifyWnd) {
 	return CreateInternal();
 }
 
-HRESULT Debugger::Impl::AttachToProcess(DWORD pid, AttachType attach) {
+HRESULT DebuggerX::Impl::AttachToProcess(DWORD pid, AttachType attach) {
 	return AttachToProcessInternal(pid, attach);
 }
 
-HRESULT Debugger::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach) {
-	return RunAsync([=]() {
+HRESULT DebuggerX::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach) {
+	auto hr = RunAsync([=]() {
 		CString cmd(L"\"");
 		(cmd += exeName) += L"\"";
 		if (commandLineArgs != nullptr && *commandLineArgs != L'\0')
 			(cmd += L" ") += commandLineArgs;
 		DEBUG_CREATE_PROCESS_OPTIONS options = { 0 };
-		options.CreateFlags = DEBUG_PROCESS;
+		options.CreateFlags = DEBUG_PROCESS | DEBUG_ONLY_THIS_PROCESS;
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 		auto initialDir = workingDir;
 		if (workingDir && *workingDir == L'\0')
@@ -431,16 +467,23 @@ HRESULT Debugger::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, 
 		DoPostCommand();
 		return S_OK;
 		});
+	if (SUCCEEDED(hr))
+		_targetType = TargetType::LiveUser;
+	return hr;
 }
 
-HRESULT Debugger::Impl::AttachLocalKernel() {
-	return RunAsync([this]() {
+HRESULT DebuggerX::Impl::AttachLocalKernel() {
+	auto hr = RunAsync([this]() {
 		HR(m_spClient->AttachKernel(DEBUG_ATTACH_LOCAL_KERNEL, nullptr));
 		return m_spControl->WaitForEvent(0, INFINITE);
 		});
+	if (SUCCEEDED(hr))
+		_targetType = TargetType::LocalKernel;
+	return hr;
+
 }
 
-HRESULT Debugger::Impl::ExecuteCommand(PCSTR command) {
+HRESULT DebuggerX::Impl::ExecuteCommand(PCSTR command) {
 	return RunAsync([this](auto cmd) {
 		HR(m_spControl->Execute(DEBUG_OUTCTL_ALL_CLIENTS, cmd, DEBUG_EXECUTE_DEFAULT));
 		DoPostCommand();
@@ -448,31 +491,45 @@ HRESULT Debugger::Impl::ExecuteCommand(PCSTR command) {
 		}, command);
 }
 
-HRESULT Debugger::Impl::ExecuteCommand(PCWSTR command) {
+HRESULT DebuggerX::Impl::ExecuteCommand(PCWSTR command) {
+	_isBusy = true;
 	return RunAsync([this](auto cmd) {
 		HR(m_spControl->ExecuteWide(DEBUG_OUTCTL_ALL_CLIENTS, cmd, DEBUG_EXECUTE_DEFAULT));
 		DoPostCommand();
+		_isBusy = false;
 		return S_OK;
 		}, command);
 }
 
-HRESULT Debugger::Impl::Break() {
+HRESULT DebuggerX::Impl::OpenDumpFile(PCWSTR filename) {
+	auto hr = RunAsync([&]() {
+		HR(m_spClient->OpenDumpFileWide(filename, 0));
+		HR(m_spControl->WaitForEvent(0, INFINITE));
+		return S_OK;
+		});
+	if (SUCCEEDED(hr))
+		_targetType = TargetType::Dump;
+	return hr;
+}
+
+HRESULT DebuggerX::Impl::Break() {
 	return m_spControl->SetInterrupt(DEBUG_INTERRUPT_ACTIVE);
 }
 
-HRESULT Debugger::Impl::Stop() {
+HRESULT DebuggerX::Impl::Stop() {
 	return RunAsync([this]() {
+		_ml = nullptr;
 		return m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
-	});
+		});
 }
 
-HRESULT Debugger::Impl::OutputPrompt() {
+HRESULT DebuggerX::Impl::OutputPrompt() {
 	return RunAsync([this]() {
 		return m_spControl->OutputPrompt(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
 		});
 }
 
-ExecutionStatus Debugger::Impl::GetExecutionStatus() {
+ExecutionStatus DebuggerX::Impl::GetExecutionStatus() {
 	ULONG status;
 	RunAsync([this](ULONG* status) {
 		return m_spControl->GetExecutionStatus(status);
@@ -481,38 +538,104 @@ ExecutionStatus Debugger::Impl::GetExecutionStatus() {
 	return static_cast<ExecutionStatus>(status);
 }
 
-HRESULT Debugger::Impl::EnumModules(std::vector<ModuleInfo>& modules) {
-	ULONG loaded, unloaded;
-	HR(m_spSymbols->GetNumberModules(&loaded, &unloaded));
-	WCHAR name[MAX_PATH];
-	DEBUG_MODULE_PARAMETERS params;
-	modules.reserve(loaded);
-	for (ULONG i = 0; i < loaded; i++) {
-		ModuleInfo mi;
-		m_spSymbols->GetModuleByIndex(i, &mi.BaseAddress);
-		if (SUCCEEDED(m_spSymbols->GetModuleNameStringWide(DEBUG_MODNAME_IMAGE, i, 0, name, _countof(name), nullptr)))
-			mi.ImageName = name;
-		if (SUCCEEDED(m_spSymbols->GetModuleNameStringWide(DEBUG_MODNAME_MODULE, i, 0, name, _countof(name), nullptr)))
-			mi.Name = name;
-		if (SUCCEEDED(m_spSymbols->GetModuleNameStringWide(DEBUG_MODNAME_SYMBOL_FILE, i, 0, name, _countof(name), nullptr)))
-			mi.SymbolFile = name;
-		if (SUCCEEDED(m_spSymbols->GetModuleParameters(1, nullptr, i, &params))) {
-			mi.Size = params.Size;
-			mi.TimeStamp = params.TimeDateStamp;
-			mi.Symbols = params.SymbolType;
+HRESULT DebuggerX::Impl::EnumModules(std::vector<ModuleInfo>& modules) {
+	return RunAsync([this](auto& modules) {
+		ULONG loaded, unloaded;
+		HR(m_spSymbols->GetNumberModules(&loaded, &unloaded));
+		WCHAR name[MAX_PATH];
+		DEBUG_MODULE_PARAMETERS params;
+		modules.reserve(loaded);
+		for (ULONG i = 0; i < loaded; i++) {
+			ModuleInfo mi;
+			if (FAILED(m_spSymbols->GetModuleByIndex(i, &mi.BaseAddress)))
+				continue;
+
+			if (SUCCEEDED(m_spSymbols->GetModuleNameStringWide(DEBUG_MODNAME_IMAGE, i, 0, name, _countof(name), nullptr)))
+				mi.ImageName = name;
+			if (SUCCEEDED(m_spSymbols->GetModuleNameStringWide(DEBUG_MODNAME_MODULE, i, 0, name, _countof(name), nullptr)))
+				mi.Name = name;
+			if (SUCCEEDED(m_spSymbols->GetModuleNameStringWide(DEBUG_MODNAME_SYMBOL_FILE, i, 0, name, _countof(name), nullptr)))
+				mi.SymbolFile = name;
+			if (SUCCEEDED(m_spSymbols->GetModuleParameters(1, nullptr, i, &params))) {
+				mi.Size = params.Size;
+				mi.TimeStamp = params.TimeDateStamp;
+				mi.Symbols = params.SymbolType;
+			}
+			modules.push_back(std::move(mi));
 		}
-		modules.push_back(std::move(mi));
+		return S_OK;
+		}, modules);
+}
+
+HRESULT DebuggerX::Impl::EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads) {
+	if ((GetTargetType() & TargetType::Kernel) == TargetType::Kernel)
+		return E_NOTIMPL;
+
+	return RunAsync([&]() {
+		ULONG count;
+		HR(m_spSystem->GetNumberProcesses(&count));
+		processes.reserve(count);
+		ULONG currentProcess;
+		m_spSystem->GetCurrentProcessId(&currentProcess);
+		WCHAR exe[MAX_PATH * 2];
+		ULONG64 d;
+		for (ULONG i = 0; i < count; i++) {
+			ProcessInfo pi;
+			if (FAILED(m_spSystem->GetProcessIdsByIndex(i, 1, &pi.Id, &pi.ProcessId)))
+				continue;
+			m_spSystem->SetCurrentProcessId(pi.Id);
+			m_spSystem->GetCurrentProcessDataOffset(&pi.Peb);
+			m_spSystem->GetCurrentProcessHandle(&d);
+			pi.Handle = (HANDLE)d;
+			m_spSystem->GetCurrentProcessUpTime(&pi.UpTimeSec);
+			EnumThreads(pi, threads);
+			if (SUCCEEDED(m_spSystem->GetCurrentProcessExecutableNameWide(exe, _countof(exe), nullptr)))
+				pi.ImagePath = exe;
+
+			processes.push_back(pi);
+		}
+		m_spSystem->SetCurrentProcessId(currentProcess);
+		return S_OK;
+		});
+
+}
+
+HRESULT DebuggerX::Impl::EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads) {
+	ULONG count;
+	HR(m_spSystem->GetNumberThreads(&count));
+	threads.reserve(count);
+	ULONG currentThread;
+	m_spSystem->GetCurrentThreadId(&currentThread);
+	ULONG64 d;
+	for (ULONG i = 0; i < count; i++) {
+		ThreadInfo ti;
+		if (FAILED(m_spSystem->GetThreadIdsByIndex(i, 1, &ti.Id, &ti.ThreadId)))
+			continue;
+		m_spSystem->SetCurrentThreadId(ti.Id);
+		m_spSystem->GetCurrentThreadDataOffset(&ti.Teb);
+		m_spSystem->GetCurrentThreadHandle(&d);
+		ti.Handle = (HANDLE)d;
+		ti.Pid = pi.ProcessId;
+		threads.push_back(ti);
 	}
+	m_spSystem->SetCurrentThreadId(currentThread);
 	return S_OK;
 }
 
-HRESULT Debugger::Impl::Evaluate(PCSTR text, DEBUG_VALUE* value) {
+bool DebuggerX::Impl::IsLocalKernelDebuggerAvailable() const {
+	auto hr = RunAsync([this]() {
+		return m_spClient->IsKernelDebuggerEnabled();
+		});
+	return hr == S_OK;
+}
+
+HRESULT DebuggerX::Impl::Evaluate(PCSTR text, DEBUG_VALUE* value) {
 	return RunAsync([&](auto text, auto value) {
 		return m_spControl->Evaluate(text, DEBUG_VALUE_INVALID, value, nullptr);
 		}, text, value);
 }
 
-DWORD Debugger::Impl::DebuggerThread() {
+DWORD DebuggerX::Impl::DebuggerThread() {
 	for (;;) {
 		if (::WaitForSingleObjectEx(m_hShutdownEvent.get(), INFINITE, TRUE) == WAIT_OBJECT_0)
 			break;
@@ -521,70 +644,100 @@ DWORD Debugger::Impl::DebuggerThread() {
 	return 0;
 }
 
-DebugEngine::Debugger::Debugger(IMessageLoop* ml) : _impl(new CComObject<Impl>) {
+DebuggerX::DebuggerX(IMessageLoop* ml) : _impl(new CComObject<Impl>) {
 	_impl->SetMessageLoop(ml);
 }
 
-DebugEngine::Debugger::~Debugger() {
+DebuggerX::~DebuggerX() {
 	_impl->Release();
 }
 
-HRESULT Debugger::Create(DWORD notifyThreadId) {
+HRESULT DebuggerX::Create(DWORD notifyThreadId) {
 	return _impl->Create(notifyThreadId, nullptr);
 }
 
-HRESULT Debugger::Create(HWND notifyHwnd) {
+HRESULT DebuggerX::Create(HWND notifyHwnd) {
 	return _impl->Create(0, notifyHwnd);
 }
 
-HRESULT Debugger::AttachToProcess(DWORD pid, AttachType attach) {
+HRESULT DebuggerX::AttachToProcess(DWORD pid, AttachType attach) {
 	return _impl->AttachToProcess(pid, attach);
 }
 
-HRESULT Debugger::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach) {
+HRESULT DebuggerX::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach) {
 	return _impl->LaunchAndAttach(exeName, commandLineArgs, workingDir, attach);
 }
 
-HRESULT Debugger::ExecuteCommand(PCSTR command) {
+HRESULT DebuggerX::ExecuteCommand(PCSTR command) {
 	return _impl->ExecuteCommand(command);
 }
 
-HRESULT Debugger::ExecuteCommand(PCWSTR command) {
+HRESULT DebuggerX::ExecuteCommand(PCWSTR command) {
 	return _impl->ExecuteCommand(command);
 }
 
-HRESULT Debugger::AttachLocalKernel() {
+HRESULT DebuggerX::AttachLocalKernel() {
 	return _impl->AttachLocalKernel();
 }
 
-HRESULT Debugger::Break() {
+HRESULT DebuggerX::Break() {
 	return _impl->Break();
 }
 
-HRESULT DebugEngine::Debugger::Stop() {
+HRESULT DebugEngine::DebuggerX::Stop() {
 	return _impl->Stop();
 }
 
-ExecutionStatus DebugEngine::Debugger::GetExecutionStatus() {
+ExecutionStatus DebugEngine::DebuggerX::GetExecutionStatus() {
 	return _impl->GetExecutionStatus();
 }
 
-HRESULT DebugEngine::Debugger::OutputPrompt() {
+HRESULT DebugEngine::DebuggerX::OutputPrompt() {
 	return _impl->OutputPrompt();
 }
 
-HRESULT Debugger::EnumModules(std::vector<ModuleInfo>& modules) {
+HRESULT DebuggerX::EnumModules(std::vector<ModuleInfo>& modules) {
 	return _impl->EnumModules(modules);
 }
 
-void Debugger::FreeNotification(WPARAM id) {
+void DebuggerX::FreeNotification(WPARAM id) {
 	return _impl->FreeNotification(id);
 }
 
-void Debugger::RunAsync(std::function<void(IDebugClient*)> func) {
+void DebuggerX::RunAsync(std::function<void(IDebugClient*)> func) {
 	_impl->RunAsync(func);
 }
 
-ExecutionStatus Debugger::GetExecutionStatusAsync() const {
+ExecutionStatus DebuggerX::GetExecutionStatusAsync() const {
 	return _impl->GetExecutionStatusAsync();
+}
+
+TargetType DebuggerX::GetTargetType() const {
+	return _impl->GetTargetType();
+}
+
+HRESULT DebuggerX::OpenDumpFile(PCWSTR filename) {
+	return _impl->OpenDumpFile(filename);
+}
+
+
+bool DebuggerX::IsLocalKernelDebuggerAvailable() const {
+	return _impl->IsLocalKernelDebuggerAvailable();
+}
+
+bool DebuggerX::IsBusy() const {
+	return _impl->IsBusy();
+}
+
+HRESULT DebuggerX::EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads) {
+	return _impl->EnumProcesses(processes, threads);
+}
+
+namespace Debugger::DataModel::ClientEx {
+	IDataModelManager* GetManager() {
+		return g_Debugger->GetDataManager();
+	}
+	IDebugHost* GetHost() {
+		return g_Debugger->GetDebugHost();
+	}
 }

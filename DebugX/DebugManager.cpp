@@ -4,18 +4,17 @@
 using namespace DebugEngine;
 
 DebugManager* DebugManager::DbgMgr;
-static std::unique_ptr<Debugger> Dbg;
+static std::unique_ptr<DebuggerX> Dbg;
 
-DebugManager* DebugManager::Get() {
-	//ATLASSERT(DbgMgr);
-	return DbgMgr;
+DebugManager& DebugManager::Get() {
+	static DebugManager mgr;
+	return mgr;
 }
 
 void DebugManager::Destroy() {
 	::PostThreadMessage(::GetThreadId(_hNotifyThread.get()), WM_QUIT, 0, 0);
 	Dbg = nullptr;
 	DbgMgr = nullptr;
-	_ml = nullptr;
 	::WaitForSingleObject(_hNotifyThread.get(), 1000);
 }
 
@@ -37,14 +36,9 @@ bool DebugManager::UnregisterWindow(HWND hNotify) {
 	return true;
 }
 
-DebugEngine::Debugger& DebugManager::Debugger() {
+DebugEngine::DebuggerX& DebugManager::DebuggerX() {
 	ATLASSERT(Dbg);
 	return *Dbg;
-}
-
-DebugManager::DebugManager() {
-	ATLASSERT(DbgMgr == nullptr);
-	DbgMgr = this;
 }
 
 DWORD DebugManager::NotifyThread() {
@@ -61,11 +55,21 @@ DWORD DebugManager::NotifyThread() {
 }
 
 HRESULT DebugManager::Init(IMessageLoop* ml) {
+	if (this != DbgMgr)
+		return E_UNEXPECTED;
+	if (_hNotifyThread)
+		return E_UNEXPECTED;
+
 	DWORD id;
 	_hNotifyThread.reset(::CreateThread(nullptr, 0, [](auto p) {
 		return ((DebugManager*)p)->NotifyThread();
 		}, this, 0, &id));
 
-	Dbg = std::make_unique<DebugEngine::Debugger>(ml);
+	Dbg = std::make_unique<DebugEngine::DebuggerX>(ml);
 	return Dbg->Create(id);
+}
+
+DebugManager::DebugManager() {
+	ATLASSERT(DbgMgr == nullptr);
+	DbgMgr = this;
 }

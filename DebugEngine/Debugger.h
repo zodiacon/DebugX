@@ -52,8 +52,22 @@ namespace DebugEngine {
 	};
 
 	struct IMessageLoop {
-		virtual void ProcessMessage(MSG* pMsg) = 0;
+		virtual void ProcessIdle() = 0;
 	};
+
+	enum class TargetType {
+		Unknown = 0,
+		User = 1,
+		Kernel = 2,
+		Live = 4,
+		Dump = 8,
+		LiveUser = Live | User,
+		LiveKernel = Live | Kernel,
+		LocalKernel = Kernel | 0x10,
+		DumpUser = Dump | User,
+		DumpKernel = Dump | Kernel
+	};
+	DEFINE_ENUM_FLAG_OPERATORS(DebugEngine::TargetType);
 
 	struct ModuleInfo {
 		ULONG64 BaseAddress;
@@ -61,6 +75,23 @@ namespace DebugEngine {
 		ULONG Symbols;
 		ULONG TimeStamp;
 		std::wstring Name, ImageName, SymbolFile;
+	};
+
+	struct ThreadInfo {
+		ULONG ThreadId;
+		ULONG Id;
+		ULONG64 Teb;
+		HANDLE Handle;
+		ULONG Pid;
+	};
+
+	struct ProcessInfo {
+		ULONG Id;
+		ULONG ProcessId;
+		ULONG64 Peb;
+		HANDLE Handle;
+		std::wstring ImagePath;
+		ULONG UpTimeSec;
 	};
 
 	struct CreateProcessData {
@@ -112,16 +143,17 @@ namespace DebugEngine {
 		ULONG64 StartAddress;
 	};
 
-	class Debugger sealed {
+	class DebuggerX sealed {
 	public:
-		Debugger(IMessageLoop* msgLoop = nullptr);
-		~Debugger();
-		Debugger(const Debugger&) = delete;
-		Debugger& operator=(const Debugger&) = delete;
+		DebuggerX(IMessageLoop* msgLoop = nullptr);
+		~DebuggerX();
+		DebuggerX(const DebuggerX&) = delete;
+		DebuggerX& operator=(const DebuggerX&) = delete;
 
 		HRESULT Create(DWORD notifyThreadId);
 		HRESULT Create(HWND hWndNotify);
 
+		HRESULT OpenDumpFile(PCWSTR filename);
 		HRESULT AttachToProcess(DWORD pid, AttachType attach = AttachType::Default);
 		HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, PCWSTR workingDir = nullptr, AttachType attach = AttachType::Default);
 		HRESULT ExecuteCommand(PCWSTR command);
@@ -131,18 +163,22 @@ namespace DebugEngine {
 		HRESULT Stop();
 		ExecutionStatus GetExecutionStatus();
 		ExecutionStatus GetExecutionStatusAsync() const;
+		TargetType GetTargetType() const;
+		bool IsLocalKernelDebuggerAvailable() const;
+		bool IsBusy() const;
 
 		HRESULT OutputPrompt();
 
 		HRESULT EnumModules(std::vector<ModuleInfo>& modules);
+		HRESULT EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
 
 		void FreeNotification(WPARAM id);
 
 		// run code on the debugger's thread
 		void RunAsync(std::function<void(IDebugClient*)> func);
 
-	private:
 		struct Impl;
+	private:
 		Impl* _impl;
 
 	};

@@ -24,7 +24,7 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	cf.dwMask = CFM_COLOR | CFM_FACE;
 	::wcscpy_s(cf.szFaceName, L"Consolas");
 	m_Text.SetDefaultCharFormat(cf);
-	DebugManager::Get()->RegisterWindow(*this);
+	DebugManager::Get().RegisterWindow(*this);
 
 	CFontHandle font;
 	font.CreatePointFont(90, L"Consolas");
@@ -48,7 +48,8 @@ HWND CCommandView::Create(HWND hParent) {
 }
 
 BOOL CCommandView::OnIdle() {
-	auto status = DebugManager::Debugger().GetExecutionStatusAsync();
+	const auto& dbg = DebugManager::DebuggerX();
+	auto status = dbg.GetExecutionStatusAsync();
 
 	m_CommandEdit.EnableWindow(status == ExecutionStatus::Break);
 	m_Execute.EnableWindow(status == ExecutionStatus::Break);
@@ -57,7 +58,7 @@ BOOL CCommandView::OnIdle() {
 }
 
 LRESULT CCommandView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
-	DebugManager::Get()->UnregisterWindow(*this);
+	DebugManager::Get().UnregisterWindow(*this);
 	_Module.GetMessageLoop()->RemoveIdleHandler(this);
 
 	handled = FALSE;
@@ -137,11 +138,25 @@ void CCommandView::DoExecuteCommand(PCWSTR command) {
 	m_CommandEdit.SetWindowText(L"");
 	m_CommandEdit.EnableWindow(FALSE);
 	m_Execute.EnableWindow(FALSE);
-	DebugManager::Get()->Debugger().ExecuteCommand(cmd);
+	SetBusy();
+	DebugManager::Get().DebuggerX().ExecuteCommand(cmd);
+	SetBusy(false);
 	m_CommandEdit.SetFocus();
 }
 
-void CCommandView::AddDmlText(const CString& dml) {
+void CCommandView::AddDmlText(CString& dml) {
+	// remove <altlink markup for now
+	for (;;) {
+		int altStart = dml.Find(L"<altlink");
+		if (altStart >= 0) {
+			int altEnd = dml.Find(L'>', altStart + 5);
+			ATLASSERT(altEnd > altStart);
+			dml = dml.Left(altStart) + dml.Mid(altEnd + 1);
+		}
+		else
+			break;
+	}
+
 	CHARFORMAT old;
 	m_Text.GetSelectionCharFormat(old);
 
@@ -198,8 +213,20 @@ void CCommandView::AddDmlText(const CString& dml) {
 	m_Text.SetSelectionCharFormat(old);
 }
 
+void CCommandView::SetBusy(bool busy) {
+	m_IsBusy = busy;
+	if (busy) {
+		m_Prompt.SetWindowText(L"*BUSY*");
+		m_Execute.EnableWindow(FALSE);
+	}
+	else {
+		DebugManager::DebuggerX().OutputPrompt();
+		m_Execute.EnableWindow();
+	}
+}
+
 LRESULT CCommandView::OnEditChar(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
-	if (wParam == VK_RETURN) {
+	if (wParam == VK_RETURN && !m_IsBusy) {
 		DoExecuteCommand();
 	}
 	else {

@@ -24,7 +24,7 @@ void CKernelProcessesView::Refresh() {
 	m_Items.Reserve(256);
 	SetTimer(1, 1000, nullptr);
 
-	DebugManager::Debugger().RunAsync([&](IDebugClient* client) {
+	DebugManager::DebuggerX().RunAsync([&](IDebugClient* client) {
 		using namespace DebugX::Analysis;
 		KernelProcessEnumerator enumerator(client);
 		KernelProcessAnalyzer* p;
