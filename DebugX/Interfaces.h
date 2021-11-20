@@ -2,6 +2,7 @@
 
 struct IMainFrame {
 	virtual UINT TrackPopupMenu(HMENU hMenu, POINT* pt = nullptr, DWORD flags = 0) = 0;
+	virtual CUpdateUIBase* GerUIUpdate() = 0;
 };
 
 struct IDebugXView {

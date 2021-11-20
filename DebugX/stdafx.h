@@ -33,6 +33,7 @@ extern CAppModule _Module;
 #include <wrl/client.h>
 #include <wrl/implements.h>
 #include <wrl/module.h>
+#include <algorithm>
 #include <DbgModel.h>
 #include "DbgModelClientEx.h"
 

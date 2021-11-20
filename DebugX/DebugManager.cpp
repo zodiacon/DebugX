@@ -28,12 +28,21 @@ bool DebugManager::RegisterWindow(HWND hNotify) {
 }
 
 bool DebugManager::UnregisterWindow(HWND hNotify) {
+	decltype(_registeredHwnds.begin()) it;
+
+	{
+		std::shared_lock locker(_registeredHwndsLock);
+		it = std::find(_registeredHwnds.begin(), _registeredHwnds.end(), hNotify);
+		if (it == _registeredHwnds.end())
+			return false;
+	}
 	std::lock_guard locker(_registeredHwndsLock);
-	auto it = std::find(_registeredHwnds.begin(), _registeredHwnds.end(), hNotify);
-	if (it == _registeredHwnds.end())
-		return false;
 	_registeredHwnds.erase(it);
 	return true;
+}
+
+bool DebugManager::IsAlive() const {
+	return Dbg != nullptr;
 }
 
 DebugEngine::DebuggerX& DebugManager::DebuggerX() {
@@ -54,7 +63,7 @@ DWORD DebugManager::NotifyThread() {
 	return 0;
 }
 
-HRESULT DebugManager::Init(IMessageLoop* ml) {
+HRESULT DebugManager::Init() {
 	if (this != DbgMgr)
 		return E_UNEXPECTED;
 	if (_hNotifyThread)
@@ -65,7 +74,7 @@ HRESULT DebugManager::Init(IMessageLoop* ml) {
 		return ((DebugManager*)p)->NotifyThread();
 		}, this, 0, &id));
 
-	Dbg = std::make_unique<DebugEngine::DebuggerX>(ml);
+	Dbg = std::make_unique<DebugEngine::DebuggerX>();
 	return Dbg->Create(id);
 }
 

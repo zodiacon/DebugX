@@ -10,9 +10,10 @@ public:
 
 	bool RegisterWindow(HWND hNotify);
 	bool UnregisterWindow(HWND hNotify);
+	bool IsAlive() const;
 
 	static DebugEngine::DebuggerX& DebuggerX();
-	HRESULT Init(DebugEngine::IMessageLoop* ml);
+	HRESULT Init();
 
 private:
 	DebugManager();

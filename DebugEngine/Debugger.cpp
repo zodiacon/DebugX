@@ -38,16 +38,22 @@ struct DebuggerX::Impl :
 		return m_spDebugHost.p;
 	}
 
-	void SetMessageLoop(IMessageLoop* ml) {
-		_ml = ml;
-	}
-
 	ExecutionStatus GetExecutionStatusAsync() const {
 		return static_cast<ExecutionStatus>(_status);
 	}
 
 	void FreeNotification(WPARAM id) {
 		delete ((void*)id);
+	}
+
+	HRESULT DetachAll() {
+		return RunAsync([&]() {
+			return m_spClient->DetachProcesses();
+			});
+	}
+
+	HRESULT ExitDispatch() {
+		return m_spClient->ExitDispatch(CComQIPtr<IDebugClient>(m_spClient));
 	}
 
 	void RunAsync(std::function<void(IDebugClient*)> func) {
@@ -90,6 +96,11 @@ struct DebuggerX::Impl :
 		return true;
 	}
 
+	void DispatchCallbacks(ULONG msec) {
+		if (m_spClient)
+			m_spClient->DispatchCallbacks(msec);
+	}
+
 	HRESULT Create(DWORD notifyThreadId, HWND hWndNotify);
 	HRESULT AttachToProcess(DWORD pid, AttachType attach);
 	HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach);
@@ -105,7 +116,7 @@ struct DebuggerX::Impl :
 	HRESULT EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads);
 	HRESULT EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
 	HRESULT Evaluate(PCSTR text, DEBUG_VALUE* value);
-	bool IsLocalKernelDebuggerAvailable() const;
+	bool IsLocalKernelDebuggerAvailable();
 	bool IsBusy() const {
 		return _isBusy;
 	}
@@ -145,7 +156,7 @@ private:
 	DWORD DebuggerThread();
 
 	template<typename F, typename T1>
-	HRESULT RunAsync(F action, T1 arg) const {
+	HRESULT RunAsync(F action, T1 arg) {
 		ApcData1<F, T1> data(action);
 		data.Arg1 = arg;
 		data.hEvent = m_hAsyncEvent.get();
@@ -180,7 +191,7 @@ private:
 	}
 
 	template<typename F>
-	HRESULT RunAsync(F action) const {
+	HRESULT RunAsync(F action) {
 		ApcData<F> data(action);
 		data.hEvent = m_hAsyncEvent.get();
 
@@ -201,7 +212,7 @@ private:
 
 private:
 	void UpdateStatus();
-	void WaitWithMessages(HANDLE hEvent) const;
+	void WaitWithMessages(HANDLE hEvent);
 
 	IMessageLoop* _ml;
 	ULONG _status = DEBUG_STATUS_NO_CHANGE;
@@ -256,6 +267,10 @@ private:
 		data->Handle = (HANDLE)Handle;
 		data->Teb = DataOffset;
 		data->StartAddress = StartOffset;
+		m_spSystem->GetCurrentThreadId(&data->Id);
+		m_spSystem->GetCurrentThreadSystemId(&data->ThreadId);
+		m_spSystem->GetCurrentProcessSystemId(&data->Pid);
+
 		PostNotification(DebuggerNotificationType::ThreadCreated, data);
 
 		return DEBUG_STATUS_NO_CHANGE;
@@ -263,6 +278,8 @@ private:
 	virtual HRESULT __stdcall ExitThread(ULONG ExitCode) override {
 		auto data = new ExitThreadData;
 		data->ExitCode = ExitCode;
+		m_spSystem->GetCurrentThreadId(&data->Id);
+		m_spSystem->GetCurrentThreadSystemId(&data->ThreadId);
 		PostNotification(DebuggerNotificationType::ExitThread, data);
 
 		return DEBUG_STATUS_NO_CHANGE;
@@ -272,7 +289,7 @@ private:
 		data->ExitCode = ExitCode;
 		PostNotification(DebuggerNotificationType::ExitProcess, data);
 
-		return DEBUG_STATUS_NO_CHANGE;
+		return DEBUG_STATUS_BREAK;
 	}
 	virtual HRESULT __stdcall LoadModule(ULONG64 ImageFileHandle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName, ULONG CheckSum, ULONG TimeDateStamp) override {
 		return DEBUG_STATUS_NO_CHANGE;
@@ -415,17 +432,20 @@ void DebuggerX::Impl::UpdateStatus() {
 	}
 }
 
-void DebuggerX::Impl::WaitWithMessages(HANDLE hEvent) const {
-	while (::MsgWaitForMultipleObjects(1, &hEvent, FALSE, INFINITE, QS_ALLEVENTS) == WAIT_OBJECT_0 + 1) {
+void DebuggerX::Impl::WaitWithMessages(HANDLE hEvent) {
+	_isBusy = true;
+	for (;;) {
+		if (::WaitForSingleObject(hEvent, 0) == WAIT_OBJECT_0)
+			break;
+
+		DispatchCallbacks(10);
 		MSG msg;
 		while (::PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
 			::TranslateMessage(&msg);
 			::DispatchMessage(&msg);
 		}
-		if (_ml) {
-			_ml->ProcessIdle();
-		}
 	}
+	_isBusy = false;
 }
 
 HRESULT DebuggerX::Impl::Create(DWORD notifyThreadId, HWND hNotifyWnd) {
@@ -622,7 +642,7 @@ HRESULT DebuggerX::Impl::EnumThreads(const ProcessInfo& pi, std::vector<ThreadIn
 	return S_OK;
 }
 
-bool DebuggerX::Impl::IsLocalKernelDebuggerAvailable() const {
+bool DebuggerX::Impl::IsLocalKernelDebuggerAvailable() {
 	auto hr = RunAsync([this]() {
 		return m_spClient->IsKernelDebuggerEnabled();
 		});
@@ -644,8 +664,7 @@ DWORD DebuggerX::Impl::DebuggerThread() {
 	return 0;
 }
 
-DebuggerX::DebuggerX(IMessageLoop* ml) : _impl(new CComObject<Impl>) {
-	_impl->SetMessageLoop(ml);
+DebuggerX::DebuggerX() : _impl(new CComObject<Impl>) {
 }
 
 DebuggerX::~DebuggerX() {
@@ -721,7 +740,7 @@ HRESULT DebuggerX::OpenDumpFile(PCWSTR filename) {
 }
 
 
-bool DebuggerX::IsLocalKernelDebuggerAvailable() const {
+bool DebuggerX::IsLocalKernelDebuggerAvailable() {
 	return _impl->IsLocalKernelDebuggerAvailable();
 }
 
@@ -729,8 +748,20 @@ bool DebuggerX::IsBusy() const {
 	return _impl->IsBusy();
 }
 
+HRESULT DebuggerX::DetachAll() {
+	return _impl->DetachAll();
+}
+
 HRESULT DebuggerX::EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads) {
 	return _impl->EnumProcesses(processes, threads);
+}
+
+void DebugEngine::DebuggerX::DispatchCallbacks(ULONG msec) {
+	_impl->DispatchCallbacks(msec);
+}
+
+HRESULT DebuggerX::ExitDispatch() {
+	return _impl->ExitDispatch();
 }
 
 namespace Debugger::DataModel::ClientEx {

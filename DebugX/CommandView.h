@@ -12,7 +12,7 @@ class CCommandView :
 public:
 	using BaseFrame = CFrameWindowImpl<CCommandView, CWindow, CControlWinTraits>;
 
-	CCommandView();
+	CCommandView(IMainFrame* frame);
 
 	// Inherited via IDebugXView
 	virtual HICON GetIcon() const override;
@@ -26,6 +26,7 @@ public:
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		MESSAGE_HANDLER((UINT)DebugEngine::DebuggerNotificationType::Output, OnDebugOutput)
+		MESSAGE_HANDLER((UINT)DebugEngine::DebuggerNotificationType::StatusChanged, OnStatusChanged)
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		COMMAND_HANDLER(ExecuteId, BN_CLICKED, OnExecuteCommand)
@@ -51,6 +52,7 @@ private:
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugOutput(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
+	LRESULT OnStatusChanged(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnSetFocus(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnExecuteCommand(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditChar(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
@@ -69,6 +71,7 @@ private:
 	std::unordered_map<int, CString> m_Links;
 	std::vector<CString> m_CommandHistory;
 	int m_CommandHistoryIndex = 0;
+	IMainFrame* m_pFrame;
 	bool m_IsBusy{ false };
 
 };

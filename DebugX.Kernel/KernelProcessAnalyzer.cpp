@@ -75,7 +75,7 @@ ULONG DebugX::Analysis::KernelProcessAnalyzer::GetHandleCount() const {
 
 	auto nextHandleNeedingPool = ReadVirtual<ULONG>(table + GetFieldOffset(GetTypeId("_HANDLE_TABLE"), "NextHandleNeedingPool"));
 	auto maxHandles = nextHandleNeedingPool / 4;
-	const auto count = (1 << 12) / _globals.GetVariable("KeMaximumProcessors");
+	const auto count = (1 << 12) / (ULONG)_globals.GetVariable("KeMaximumProcessors");
 	maxHandles = maxHandles * (count - 1) / count;
 	// incomplete
 	return maxHandles;

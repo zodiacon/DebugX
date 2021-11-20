@@ -13,10 +13,14 @@ public:
 	using BaseFrame = CFrameWindowImpl<CUserThreadsView, CWindow, CControlWinTraits>;
 
 	CString GetColumnText(HWND hWnd, int row, int column) const;
+	int GetRowImage(int row) const;
+	void DoSort(const SortInfo* si);
 
 	BEGIN_MSG_MAP(CUserThreadsView)
 		MESSAGE_HANDLER((UINT)DebugEngine::DebuggerNotificationType::StatusChanged, OnStatusChanged)
 		MESSAGE_HANDLER((UINT)DebugEngine::DebuggerNotificationType::ThreadCreated, OnThreadCreated)
+		MESSAGE_HANDLER((UINT)DebugEngine::DebuggerNotificationType::ExitThread, OnThreadExit)
+		MESSAGE_HANDLER((UINT)DebugEngine::DebuggerNotificationType::Breakpoint, OnBreakpoint)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 		//		COMMAND_ID_HANDLER(ID_VIEW_REFRESH, OnViewRefresh)
@@ -29,12 +33,16 @@ public:
 	virtual CString GetHeader() const override;
 	virtual HWND Create(HWND hParent) override;
 
+	void UpdateList();
+
 private:
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnThreadCreated(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
+	LRESULT OnThreadExit(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnStatusChanged(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnViewRefresh(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnBreakpoint(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 
 	void Refresh();
 

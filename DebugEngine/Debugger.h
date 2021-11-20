@@ -108,6 +108,8 @@ namespace DebugEngine {
 
 	struct ExitThreadData {
 		ULONG ExitCode;
+		ULONG Id;
+		ULONG ThreadId;
 	};
 
 	struct BreakpointData {
@@ -141,11 +143,14 @@ namespace DebugEngine {
 		HANDLE Handle;
 		ULONG64 Teb;
 		ULONG64 StartAddress;
+		ULONG ThreadId;
+		ULONG Id;
+		ULONG Pid;
 	};
 
 	class DebuggerX sealed {
 	public:
-		DebuggerX(IMessageLoop* msgLoop = nullptr);
+		DebuggerX();
 		~DebuggerX();
 		DebuggerX(const DebuggerX&) = delete;
 		DebuggerX& operator=(const DebuggerX&) = delete;
@@ -164,13 +169,17 @@ namespace DebugEngine {
 		ExecutionStatus GetExecutionStatus();
 		ExecutionStatus GetExecutionStatusAsync() const;
 		TargetType GetTargetType() const;
-		bool IsLocalKernelDebuggerAvailable() const;
+		bool IsLocalKernelDebuggerAvailable();
 		bool IsBusy() const;
+		HRESULT DetachAll();
 
 		HRESULT OutputPrompt();
 
 		HRESULT EnumModules(std::vector<ModuleInfo>& modules);
 		HRESULT EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
+
+		void DispatchCallbacks(ULONG msec);
+		HRESULT ExitDispatch();
 
 		void FreeNotification(WPARAM id);
 

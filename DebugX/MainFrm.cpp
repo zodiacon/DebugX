@@ -36,6 +36,7 @@ BOOL CMainFrame::PreTranslateMessage(MSG* pMsg) {
 BOOL CMainFrame::OnIdle() {
 	UpdateUI();
 	UIUpdateToolBar();
+
 	return FALSE;
 }
 
@@ -56,14 +57,18 @@ HWND CMainFrame::InitView(IDebugXView* view) {
 	return hWnd;
 }
 
-LRESULT CMainFrame::OnKickIdle(UINT, WPARAM, LPARAM, BOOL&) {
-	_Module.GetMessageLoop()->OnIdle(0);
+LRESULT CMainFrame::OnStatusChanged(UINT, WPARAM, LPARAM, BOOL&) {
+	UpdateUI(true);
 	return 0;
 }
 
 LRESULT CMainFrame::OnTimer(UINT, WPARAM id, LPARAM, BOOL&) {
-	if (id == 1)
-		UpdateUI(true);
+	if (id == 1) {
+		UpdateUI();
+		UIUpdateToolBar();
+//		DebugManager::DebuggerX().DispatchCallbacks(50);
+	}
+
 	return 0;
 }
 
@@ -77,6 +82,8 @@ LRESULT CMainFrame::OnForward(WORD, WORD, HWND, BOOL&) {
 
 LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
 	::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+
+	SetTimer(1, 1000, nullptr);
 
 	// create command bar window
 	HWND hWndCmdBar = m_CmdBar.Create(m_hWnd, rcDefault, nullptr, ATL_SIMPLE_CMDBAR_PANE_STYLE);
@@ -118,15 +125,19 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	m_view.SetWindowMenu(menuMain.GetSubMenu(WINDOW_MENU_POSITION));
 
 	if (s_FrameWindowCount == 1)
-		DebugManager::Get().Init(this);
+		DebugManager::Get().Init();
 
-	auto pView = new CCommandView;
+	auto pView = new CCommandView(this);
 	InitView(pView);
+
+	DebugManager::Get().RegisterWindow(*this);
 
 	return 0;
 }
 
 LRESULT CMainFrame::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled) {
+	DebugManager::Get().UnregisterWindow(*this);
+
 	// unregister message filtering and idle updates
 	CMessageLoop* pLoop = _Module.GetMessageLoop();
 	ATLASSERT(pLoop != nullptr);
@@ -134,6 +145,17 @@ LRESULT CMainFrame::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*
 	pLoop->RemoveIdleHandler(this);
 
 	bHandled = FALSE;
+	return 0;
+}
+
+LRESULT CMainFrame::OnClose(UINT, WPARAM, LPARAM, BOOL& bHandled) {
+	if ((DebugManager::DebuggerX().GetTargetType() & TargetType::Live) == TargetType::Live) {
+		DebugManager::DebuggerX().ExitDispatch();
+		DebugManager::DebuggerX().DetachAll();
+	}
+
+	bHandled = FALSE;
+
 	return 0;
 }
 
@@ -153,7 +175,7 @@ LRESULT CMainFrame::OnAttachLocalKernel(WORD /*wNotifyCode*/, WORD /*wID*/, HWND
 		return 0;
 	}
 	auto& dbg = DebugManager::DebuggerX();
-	dbg.AttachLocalKernel();
+	auto hr = dbg.AttachLocalKernel();
 	dbg.OutputPrompt();
 
 	UIEnable(ID_DEBUG_ATTACHTOKERNEL, false);
@@ -300,6 +322,14 @@ LRESULT CMainFrame::OnDebugStepInto(WORD, WORD, HWND, BOOL&) {
 	return 0;
 }
 
+UINT CMainFrame::TrackPopupMenu(HMENU hMenu, POINT* pt, DWORD flags) {
+	return 0;
+}
+
+CUpdateUIBase* CMainFrame::GerUIUpdate() {
+	return this;
+}
+
 void CMainFrame::ProcessIdle() {
 	if (::GetCurrentThreadId() == _Module.m_dwMainThreadID)
 		_Module.GetMessageLoop()->OnIdle(0);
@@ -378,7 +408,7 @@ void CMainFrame::UpdateUI(bool force) {
 	auto target = DebugManager::DebuggerX().GetTargetType();
 
 	UIEnable(ID_DEBUG_GO, status == ExecutionStatus::Break && target != TargetType::LocalKernel, force);
-	UIEnable(ID_DEBUG_BREAK, status == ExecutionStatus::Go, force);
+	UIEnable(ID_DEBUG_BREAK, status == ExecutionStatus::Go || DebugManager::DebuggerX().IsBusy(), force);
 	UIEnable(ID_DEBUG_STOP, status != ExecutionStatus::NoDebuggee, force);
 	UIEnable(ID_DEBUG_STEPOVER, status == ExecutionStatus::Break && target != TargetType::LocalKernel, force);
 	UIEnable(ID_DEBUG_STEPINTO, status == ExecutionStatus::Break && target != TargetType::LocalKernel, force);

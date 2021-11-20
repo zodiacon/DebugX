@@ -2,10 +2,11 @@
 #include "CommandView.h"
 #include "DebugManager.h"
 #include "resource.h"
+#include "Interfaces.h"
 
 using namespace DebugEngine;
 
-CCommandView::CCommandView() : m_CommandEdit(this, 1), m_Text(this, 2) {
+CCommandView::CCommandView(IMainFrame* frame) : m_pFrame(frame), m_CommandEdit(this, 1), m_Text(this, 2) {
 }
 
 void CCommandView::OnFinalMessage(HWND) {
@@ -53,6 +54,7 @@ BOOL CCommandView::OnIdle() {
 
 	m_CommandEdit.EnableWindow(status == ExecutionStatus::Break);
 	m_Execute.EnableWindow(status == ExecutionStatus::Break);
+	m_pFrame->GerUIUpdate()->UIEnable(ID_DEBUG_BREAK, m_IsBusy);
 
 	return FALSE;
 }
@@ -109,6 +111,14 @@ LRESULT CCommandView::OnDebugOutput(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	return 0;
 }
 
+LRESULT CCommandView::OnStatusChanged(UINT, WPARAM, LPARAM, BOOL&) {
+	auto busy = DebugManager::DebuggerX().IsBusy();
+	if(busy != m_IsBusy)
+		SetBusy(busy);
+
+	return 0;
+}
+
 LRESULT CCommandView::OnSetFocus(UINT, WPARAM, LPARAM, BOOL&) {
 	m_CommandEdit.SetFocus();
 	return 0;
@@ -138,10 +148,7 @@ void CCommandView::DoExecuteCommand(PCWSTR command) {
 	m_CommandEdit.SetWindowText(L"");
 	m_CommandEdit.EnableWindow(FALSE);
 	m_Execute.EnableWindow(FALSE);
-	SetBusy();
-	DebugManager::Get().DebuggerX().ExecuteCommand(cmd);
-	SetBusy(false);
-	m_CommandEdit.SetFocus();
+	DebugManager::DebuggerX().ExecuteCommand(cmd);
 }
 
 void CCommandView::AddDmlText(CString& dml) {
@@ -218,10 +225,15 @@ void CCommandView::SetBusy(bool busy) {
 	if (busy) {
 		m_Prompt.SetWindowText(L"*BUSY*");
 		m_Execute.EnableWindow(FALSE);
+		m_pFrame->GerUIUpdate()->UIEnable(ID_DEBUG_BREAK, true, true);
 	}
 	else {
-		DebugManager::DebuggerX().OutputPrompt();
+		m_pFrame->GerUIUpdate()->UIEnable(ID_DEBUG_BREAK, false, true);
+		if (DebugManager::Get().IsAlive()) {
+			DebugManager::DebuggerX().OutputPrompt();
+		}
 		m_Execute.EnableWindow();
+		m_CommandEdit.SetFocus();
 	}
 }
 
