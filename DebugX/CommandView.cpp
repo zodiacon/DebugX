@@ -44,6 +44,14 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	return 0;
 }
 
+LRESULT CCommandView::OnSetCursor(UINT, WPARAM, LPARAM, BOOL&) {
+	if (m_hCursor) {
+		::SetCursor(m_hCursor);
+		return TRUE;
+	}
+	return FALSE;
+}
+
 HWND CCommandView::Create(HWND hParent) {
 	return __super::Create(hParent, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
 }
@@ -322,6 +330,7 @@ LRESULT CCommandView::OnClickLink(int, LPNMHDR, BOOL&) {
 
 LRESULT CCommandView::OnRichEditSetCursor(UINT, WPARAM, LPARAM lParam, BOOL& handled) {
 	if (LOWORD(lParam) == HTCLIENT) {
+		m_hCursor = AtlLoadSysCursor(IDC_ARROW);
 		POINT pt;
 		::GetCursorPos(&pt);
 		m_Text.ScreenToClient(&pt);
@@ -332,7 +341,7 @@ LRESULT CCommandView::OnRichEditSetCursor(UINT, WPARAM, LPARAM lParam, BOOL& han
 			left++;
 
 		if (auto it = m_Links.find(left); it != m_Links.end()) {
-			::SetCursor(AtlLoadSysCursor(IDI_HAND));
+			::SetCursor(m_hCursor = AtlLoadSysCursor(IDC_HAND));
 			return TRUE;
 		}
 	}

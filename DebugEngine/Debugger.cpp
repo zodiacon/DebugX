@@ -5,7 +5,7 @@
 #include <atlstr.h>
 #include <wil\resource.h>
 #include <DbgModel.h>
-#include "DbgModelClientEx.h"
+//#include <DbgModelClientEx.h>
 
 #pragma comment(lib, "dbgeng")
 
@@ -15,8 +15,7 @@ DebuggerX::Impl* g_Debugger;
 
 #define HR(x) { auto _hr = (x); if(FAILED(_hr)) return _hr; }
 
-struct DebuggerX::Impl :
-	CComObjectRoot,
+struct DebuggerX::Impl : CComObjectRoot,
 	IDebugEventCallbacks,
 	IDebugOutputCallbacksWide,
 	IDebugOutputCallbacks2 {

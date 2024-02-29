@@ -35,6 +35,7 @@ void CKernelProcessesView::Refresh() {
 			kp.ImageName = p->GetImageName();
 			kp.ThreadCount = p->GetThreadCount();
 			kp.CreateTime = p->GetCreateTime();
+			kp.ExitTime = p->GetExitTime();
 			kp.SessionId = p->GetSessionId();
 			kp.DirBase = p->GetDirectoryTableBase();
 			kp.Peb = p->GetPeb();
@@ -67,6 +68,7 @@ void CKernelProcessesView::DoSort(const SortInfo* si) {
 			case 5: return SortHelper::SortNumbers(p1.CreateTime.QuadPart, p2.CreateTime.QuadPart, asc);
 			case 6: return SortHelper::SortNumbers(p1.DirBase, p2.DirBase, asc);
 			case 7: return SortHelper::SortNumbers(p1.Peb, p2.Peb, asc);
+			case 8: return SortHelper::SortNumbers(p1.ExitTime.QuadPart, p2.ExitTime.QuadPart, asc);
 			default: return false;
 		}
 		});
@@ -85,6 +87,7 @@ LRESULT CKernelProcessesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_List.InsertColumn(5, L"Create Time", LVCFMT_RIGHT, 120);
 	m_List.InsertColumn(6, L"Dir Base", LVCFMT_RIGHT, 120);
 	m_List.InsertColumn(7, L"PEB", LVCFMT_RIGHT, 100);
+	m_List.InsertColumn(8, L"Exit Time", LVCFMT_RIGHT, 120);
 	//m_List.InsertColumn(6, L"Kernel Time", LVCFMT_RIGHT, 120);
 	//m_List.InsertColumn(7, L"User Time", LVCFMT_RIGHT, 120);
 
@@ -126,6 +129,12 @@ LRESULT CKernelProcessesView::OnListGetDispInfo(int, LPNMHDR hdr, BOOL&) {
 		[](auto& data, auto& item) { ::StringCchCopy(item.pszText, item.cchTextMax, (PCWSTR)CTime(*(FILETIME*)&data.CreateTime).Format(L"%D %X")); },
 		[](auto& data, auto& item) { ::StringCchPrintf(item.pszText, item.cchTextMax, L"0x%llX", data.DirBase);	},
 		[](auto& data, auto& item) { ::StringCchPrintf(item.pszText, item.cchTextMax, L"0x%llX", data.Peb);	},
+		[](auto& data, auto& item) { 
+			if (data.ExitTime.QuadPart)
+				::StringCchCopy(item.pszText, item.cchTextMax, (PCWSTR)CTime(*(FILETIME*)&data.ExitTime).Format(L"%D %X"));
+			else
+				::StringCchCopy(item.pszText, item.cchTextMax, L"(still running)");
+	},
 		//[](auto& data, auto& item) { ::StringCchCopy(item.pszText, item.cchTextMax, CTimeSpan(data.KernelTime / 10000000LL).Format(L"%D %H:%M:%S")); },
 		//[](auto& data, auto& item) { ::StringCchCopy(item.pszText, item.cchTextMax, CTimeSpan(data.UserTime / 10000000LL).Format(L"%D %H:%M:%S")); },
 

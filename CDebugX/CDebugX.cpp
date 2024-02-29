@@ -14,7 +14,7 @@
 #include <wrl/client.h>
 #include <wrl/implements.h>
 #include <wrl/module.h>
-#include "DbgModelClientEx.h"
+//#include "DbgModelClientEx.h"
 
 #include "DebugX.Kernel.h"
 
@@ -262,21 +262,22 @@ HRESULT RunSimpleDebugger2(int argc, wchar_t* argv[]) {
 		if (::_wcsicmp(argv[1], L"-lk") == 0)
 			hr = spClient->AttachKernel(DEBUG_ATTACH_LOCAL_KERNEL, nullptr);
 		else
-			hr = spClient->CreateProcessAndAttachWide(0, argv[1], DEBUG_PROCESS, 0, DEBUG_ATTACH_DEFAULT);
+			hr = spClient->OpenDumpFileWide(argv[1], 0);
+			//hr = spClient->CreateProcessAndAttachWide(0, argv[1], DEBUG_PROCESS, 0, DEBUG_ATTACH_DEFAULT);
 	}
 	if (FAILED(hr))
 		return hr;
 
 	spControl->WaitForEvent(0, INFINITE);
 
-	auto session = Debugger::DataModel::ClientEx::Object::CurrentSession();
-	for (auto key : session.Keys()) {
-		ATLTRACE(L"%s\n", std::get<0>(key).c_str());
-	}
-	auto processes = session.KeyValue(L"Processes");
-	for (const auto& p : processes) {
-		ATLTRACE(L"%s\n", p.KeyValue(L"Name").ToDisplayString().c_str());
-	}
+	//auto session = Debugger::DataModel::ClientEx::Object::CurrentSession();
+	//for (auto key : session.Keys()) {
+	//	ATLTRACE(L"%s\n", std::get<0>(key).c_str());
+	//}
+	//auto processes = session.KeyValue(L"Processes");
+	//for (const auto& p : processes) {
+	//	ATLTRACE(L"%s\n", p.KeyValue(L"Name").ToDisplayString().c_str());
+	//}
 
 	//CComQIPtr<IDebugSymbols3> spSymbols(spClient);
 	//ATLASSERT(spSymbols);

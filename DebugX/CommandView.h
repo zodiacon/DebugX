@@ -23,6 +23,7 @@ public:
 	enum { TextId = 123, ExecuteId };
 
 	BEGIN_MSG_MAP(CCommandView)
+		MESSAGE_HANDLER(WM_SETCURSOR, OnSetCursor)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		MESSAGE_HANDLER((UINT)DebugEngine::DebuggerNotificationType::Output, OnDebugOutput)
@@ -49,6 +50,7 @@ private:
 	void SetBusy(bool busy = true);
 
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
+	LRESULT OnSetCursor(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugOutput(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
@@ -72,6 +74,7 @@ private:
 	std::vector<CString> m_CommandHistory;
 	int m_CommandHistoryIndex = 0;
 	IMainFrame* m_pFrame;
+	HCURSOR m_hCursor{ nullptr };
 	bool m_IsBusy{ false };
 
 };

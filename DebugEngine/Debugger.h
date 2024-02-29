@@ -7,13 +7,13 @@ struct IDebugClient;
 
 namespace DebugEngine {
 	enum class AttachType {
-		Default = 0,					// DEBUG_ATTACH_DEFAULT (invasive)
-		NonInvasive = 1,				// DEBUG_ATTACH_NONINVASIVE
-		Existing = 2,					// DEBUG_ATTACH_EXISTING
-		NonInvasiveNoSuspend = 4,		// DEBUG_ATTACH_NONINVASIVE_NO_SUSPEND
-		InvasiveNoInitialBreak = 8,		// DEBUG_ATTACH_INVASIVE_NO_INITIAL_BREAK
-		InvasiveResumeProcess = 0x10,	// DEBUG_ATTACH_INVASIVE_RESUME_PROCESS
-		NonInvasicAllowPartial = 0x20,	// DEBUG_ATTACH_NONINVASIVE_ALLOW_PARTIAL
+		Default = 					DEBUG_ATTACH_DEFAULT,
+		NonInvasive = 				DEBUG_ATTACH_NONINVASIVE,
+		Existing = 					DEBUG_ATTACH_EXISTING,
+		NonInvasiveNoSuspend = 		DEBUG_ATTACH_NONINVASIVE_NO_SUSPEND,
+		InvasiveNoInitialBreak =	DEBUG_ATTACH_INVASIVE_NO_INITIAL_BREAK,
+		InvasiveResumeProcess =		DEBUG_ATTACH_INVASIVE_RESUME_PROCESS,
+		NonInvasicAllowPartial =	DEBUG_ATTACH_NONINVASIVE_ALLOW_PARTIAL,
 	};
 	DEFINE_ENUM_FLAG_OPERATORS(DebugEngine::AttachType);
 

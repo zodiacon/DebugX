@@ -13,6 +13,15 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="x86">
+      <UniqueIdentifier>{4c870b99-099e-44cf-99a8-e170005f72ef}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="arm64">
+      <UniqueIdentifier>{486a371b-6a45-4bed-a713-c00577ed5f64}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="amd64">
+      <UniqueIdentifier>{4fb05275-5786-4521-9349-052a1ab14c48}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -35,5 +44,44 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+    <None Include="x86\dbgmodel.dll">
+      <Filter>x86</Filter>
+    </None>
+    <None Include="x86\dbghelp.dll">
+      <Filter>x86</Filter>
+    </None>
+    <None Include="x86\dbgeng.dll">
+      <Filter>x86</Filter>
+    </None>
+    <None Include="x86\dbgcore.dll">
+      <Filter>x86</Filter>
+    </None>
+    <None Include="arm64\dbgmodel.dll">
+      <Filter>arm64</Filter>
+    </None>
+    <None Include="arm64\dbghelp.dll">
+      <Filter>arm64</Filter>
+    </None>
+    <None Include="arm64\dbgeng.dll">
+      <Filter>arm64</Filter>
+    </None>
+    <None Include="arm64\dbgcore.dll">
+      <Filter>arm64</Filter>
+    </None>
+    <None Include="amd64\dbgmodel.dll">
+      <Filter>amd64</Filter>
+    </None>
+    <None Include="amd64\dbghelp.dll">
+      <Filter>amd64</Filter>
+    </None>
+    <None Include="amd64\dbgeng.dll">
+      <Filter>amd64</Filter>
+    </None>
+    <None Include="amd64\dbgcore.dll">
+      <Filter>amd64</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="$(MSBuildThisFileDirectory)..\..\natvis\wil.natvis" />
   </ItemGroup>
 </Project>

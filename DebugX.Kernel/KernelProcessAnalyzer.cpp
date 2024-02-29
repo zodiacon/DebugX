@@ -124,6 +124,10 @@ LARGE_INTEGER KernelProcessAnalyzer::GetCreateTime() const {
 	return ReadVirtual<LARGE_INTEGER>(_processAddress + GetFieldOffset(EProcessTypeId, "CreateTime"));
 }
 
+LARGE_INTEGER KernelProcessAnalyzer::GetExitTime() const {
+	return ReadVirtual<LARGE_INTEGER>(_processAddress + GetFieldOffset(EProcessTypeId, "ExitTime"));
+}
+
 ULONG64 KernelProcessAnalyzer::GetKernelTime() const {
 	auto time = ReadVirtual<ULONG>(_processAddress + GetFieldOffset(KProcessTypeId, "KernelTime"));
 	KernelProcessThreadEnumerator tenum(_processAddress, CComQIPtr<IDebugClient>(Client()));

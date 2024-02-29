@@ -33,10 +33,11 @@ public:
 		CString ImageName;
 		ULONG ThreadCount;
 		LARGE_INTEGER CreateTime;
+		LARGE_INTEGER ExitTime;
 		ULONG SessionId;
 		ULONG64 DirBase;
 		ULONG64 Peb;
-//		ULONG64 KernelTime, UserTime;
+		ULONG64 KernelTime, UserTime;
 	};
 
 	void Refresh();

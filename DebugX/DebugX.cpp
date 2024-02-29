@@ -2,10 +2,7 @@
 //
 
 #include "stdafx.h"
-
 #include "resource.h"
-
-#include "View.h"
 #include "aboutdlg.h"
 #include "MainFrm.h"
 

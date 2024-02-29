@@ -23,6 +23,7 @@ namespace DebugX::Analysis {
 		CString GetImageName() const;
 		CString GetFullImageName() const;
 		LARGE_INTEGER GetCreateTime() const;
+		LARGE_INTEGER GetExitTime() const;
 		ULONG64 GetKernelTime() const;
 		ULONG64 GetUserTime() const;
 		ULONG GetThreadCount() const;
