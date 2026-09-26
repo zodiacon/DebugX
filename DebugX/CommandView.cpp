@@ -156,7 +156,7 @@ void CCommandView::DoExecuteCommand(PCWSTR command) {
 	m_CommandEdit.SetWindowText(L"");
 	m_CommandEdit.EnableWindow(FALSE);
 	m_Execute.EnableWindow(FALSE);
-	DebugManager::DebuggerX().ExecuteCommand(cmd);
+	m_PendingCommand = DebugManager::DebuggerX().ExecuteCommandAsync(cmd);
 }
 
 void CCommandView::AddDmlText(CString& dml) {

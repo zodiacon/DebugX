@@ -5,19 +5,19 @@
 using namespace DebugX::Analysis;
 
 KernelProcessThreadEnumerator::KernelProcessThreadEnumerator(ULONG64 process, IDebugClient* client) : 
-	KernelAnalyzerBase(client), _process(process) {
+	KernelAnalyzerBase(client), m_Process(process) {
 	auto offset = GetFieldOffset(GetTypeId("_EPROCESS"), "ThreadListHead");
 	auto entry = ReadVirtual<LIST_ENTRY>(process + offset);
-	_head = (ULONG64)entry.Flink;
-	_threadAnalyzer = std::make_unique<KernelThreadAnalyzer>(_head - GetFieldOffset(GetTypeId("_ETHREAD"), "ThreadListEntry"), client);
-	_head = process + offset;
+	m_Head = (ULONG64)entry.Flink;
+	m_ThreadAnalyzer = std::make_unique<KernelThreadAnalyzer>(m_Head - GetFieldOffset(GetTypeId("_ETHREAD"), "ThreadListEntry"), client);
+	m_Head = process + offset;
 }
 
 KernelProcessThreadEnumerator::~KernelProcessThreadEnumerator() = default;
 
 KernelThreadAnalyzer* KernelProcessThreadEnumerator::GetNextThread() {
-	if(_threadAnalyzer->GetNextThreadLink() == _head)
+	if(m_ThreadAnalyzer->GetNextThreadLink() == m_Head)
 		return nullptr;
-	_threadAnalyzer->MoveToNextThread();
-	return _threadAnalyzer.get();
+	m_ThreadAnalyzer->MoveToNextThread();
+	return m_ThreadAnalyzer.get();
 }

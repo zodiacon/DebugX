@@ -15,28 +15,28 @@ struct std::hash<PairType> {
 };
 
 KernelAnalyzerBase::KernelAnalyzerBase(IDebugClient* client) {
-	_symbols = client;
-	_client = client;
-	_data = client;
-	ATLASSERT(_symbols && _client && _data);
+	m_Symbols = client;
+	m_Client = client;
+	m_Data = client;
+	ATLASSERT(m_Symbols && m_Client && m_Data);
 
-	_symbols->GetModuleByModuleName("nt", 0, nullptr, &_ntBase);
+	m_Symbols->GetModuleByModuleName("nt", 0, nullptr, &m_NtBase);
 }
 
 IDebugClient7* KernelAnalyzerBase::Client() const {
-	return _client.p;
+	return m_Client.p;
 }
 
 IDebugSymbols3* KernelAnalyzerBase::Symbols() const {
-	return _symbols.p;
+	return m_Symbols.p;
 }
 
 IDebugDataSpaces4* KernelAnalyzerBase::Data() const {
-	return _data.p;
+	return m_Data.p;
 }
 
 ULONG64 KernelAnalyzerBase::KernelBase() const {
-	return _ntBase;
+	return m_NtBase;
 }
 
 int KernelAnalyzerBase::GetFieldOffset(ULONG typeId, PCSTR name) const {

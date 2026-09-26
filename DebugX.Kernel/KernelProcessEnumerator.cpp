@@ -8,24 +8,24 @@ KernelProcessEnumerator::KernelProcessEnumerator(IDebugClient* client) {
 	CComQIPtr<IDebugSymbols3> spSymbols(client);
 	ATLASSERT(spSymbols);
 
-	auto hr = spSymbols->GetOffsetByName("nt!PsActiveProcessHead", &_head);
+	auto hr = spSymbols->GetOffsetByName("nt!PsActiveProcessHead", &m_Head);
 	ATLASSERT(SUCCEEDED(hr));
 
-	_analyzer.reset(new KernelProcessAnalyzer(client));
+	m_Analyzer.reset(new KernelProcessAnalyzer(client));
 	Reset();
 }
 
 KernelProcessEnumerator::~KernelProcessEnumerator() = default;
 
 KernelProcessAnalyzer* KernelProcessEnumerator::GetNextProcess() {
-	auto address = _analyzer->GetNextProcessLink();
-	if (address == _head)
+	auto address = m_Analyzer->GetNextProcessLink();
+	if (address == m_Head)
 		return nullptr;
 	
-	_analyzer->MoveToNextProcess();
-	return _analyzer.get();
+	m_Analyzer->MoveToNextProcess();
+	return m_Analyzer.get();
 }
 
 void KernelProcessEnumerator::Reset() {
-	_analyzer->SetProcessEntry(_head);
+	m_Analyzer->SetProcessEntry(m_Head);
 }

@@ -67,7 +67,7 @@ DWORD CALLBACK NotifyThread(PVOID) {
 
 		switch (static_cast<DebuggerNotificationType>(msg.message)) {
 			case DebuggerNotificationType::ProcessCreated:
-				debugger->FreeNotification(msg.wParam);
+				debugger->FreeNotification(DebuggerNotificationType::ProcessCreated, msg.wParam);
 				break;
 
 			case DebuggerNotificationType::Output:
@@ -81,7 +81,7 @@ DWORD CALLBACK NotifyThread(PVOID) {
 						printf("%ws", data->Text.c_str());
 						break;
 				}
-				debugger->FreeNotification(msg.wParam);
+				debugger->FreeNotification(DebuggerNotificationType::Output, msg.wParam);
 				break;
 		}
 	}

@@ -15,6 +15,29 @@ DebuggerX::Impl* g_Debugger;
 
 #define HR(x) { auto _hr = (x); if(FAILED(_hr)) return _hr; }
 
+namespace {
+	constexpr UINT WM_ASYNC_ENGINE_RESUME = WM_APP + 0x500;
+
+	// Carries a suspended coroutine's state across the hop from the debug
+	// thread (where the queued engine call actually runs) back to the
+	// thread that awaited it, via PostThreadMessage/WM_ASYNC_ENGINE_RESUME.
+	// Ownership passes to EngineAwaiter::await_resume(), which deletes it.
+	struct AsyncOpData {
+		std::function<HRESULT()> Action;
+		HRESULT Result{ E_FAIL };
+		DWORD CallerThreadId{};
+		std::coroutine_handle<> Handle;
+	};
+}
+
+bool DebugEngine::PumpAsyncResume(const MSG& msg) {
+	if (msg.message != WM_ASYNC_ENGINE_RESUME)
+		return false;
+
+	reinterpret_cast<AsyncOpData*>(msg.lParam)->Handle.resume();
+	return true;
+}
+
 struct DebuggerX::Impl : CComObjectRoot,
 	IDebugEventCallbacks,
 	IDebugOutputCallbacksWide,
@@ -38,11 +61,21 @@ struct DebuggerX::Impl : CComObjectRoot,
 	}
 
 	ExecutionStatus GetExecutionStatusAsync() const {
-		return static_cast<ExecutionStatus>(_status);
+		return static_cast<ExecutionStatus>(m_Status);
 	}
 
-	void FreeNotification(WPARAM id) {
-		delete ((void*)id);
+	void FreeNotification(DebuggerNotificationType type, WPARAM id) {
+		auto data = reinterpret_cast<void*>(id);
+		switch (type) {
+			case DebuggerNotificationType::ProcessCreated: delete static_cast<CreateProcessData*>(data); break;
+			case DebuggerNotificationType::ThreadCreated: delete static_cast<ThreadCreateData*>(data); break;
+			case DebuggerNotificationType::Output: delete static_cast<OutputData*>(data); break;
+			case DebuggerNotificationType::Breakpoint: delete static_cast<BreakpointData*>(data); break;
+			case DebuggerNotificationType::ExitProcess:
+			case DebuggerNotificationType::ExitThread: delete static_cast<ExitThreadData*>(data); break;
+			case DebuggerNotificationType::StatusChanged: delete static_cast<ULONG*>(data); break;
+			default: break;
+		}
 	}
 
 	HRESULT DetachAll() {
@@ -63,31 +96,38 @@ struct DebuggerX::Impl : CComObjectRoot,
 
 	}
 
+	Task<HRESULT> RunAsyncCo(std::function<HRESULT(IDebugClient*)> func) {
+		auto client = CComQIPtr<IDebugClient>(m_spClient).p;
+		co_return co_await EngineAwaiter{ this, [func = std::move(func), client]() {
+			return func(client);
+			} };
+	}
+
 	bool DoPostCommand() {
 		UpdateStatus();
 		m_spControl->OutputPromptWide(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
 
-		if (_status == DEBUG_STATUS_NO_DEBUGGEE) {
+		if (m_Status == DEBUG_STATUS_NO_DEBUGGEE) {
 			m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
 			return false;
 		}
 
-		if (_status == DEBUG_STATUS_GO || _status == DEBUG_STATUS_STEP_BRANCH || _status == DEBUG_STATUS_STEP_INTO || _status == DEBUG_STATUS_STEP_OVER) {
+		if (m_Status == DEBUG_STATUS_GO || m_Status == DEBUG_STATUS_STEP_BRANCH || m_Status == DEBUG_STATUS_STEP_INTO || m_Status == DEBUG_STATUS_STEP_OVER) {
 			auto hr = m_spControl->WaitForEvent(DEBUG_WAIT_DEFAULT, INFINITE);
 			UpdateStatus();
 			if (FAILED(hr)) {
-				if (_status == DEBUG_STATUS_NO_DEBUGGEE)
+				if (m_Status == DEBUG_STATUS_NO_DEBUGGEE)
 					return false;
 			}
-			if (_status == DEBUG_STATUS_BREAK)
+			if (m_Status == DEBUG_STATUS_BREAK)
 				m_spControl->OutputCurrentState(DEBUG_OUTCTL_THIS_CLIENT, DEBUG_CURRENT_DEFAULT);
-			_stateChanged = false;
+			m_StateChanged = false;
 		}
-		if (_stateChanged) {
-			if (_status == DEBUG_STATUS_NO_DEBUGGEE)
+		if (m_StateChanged) {
+			if (m_Status == DEBUG_STATUS_NO_DEBUGGEE)
 				return false;
-			if (_breakpointHit) {
-				_breakpointHit = false;
+			if (m_BreakpointHit) {
+				m_BreakpointHit = false;
 			}
 			m_spControl->OutputPromptWide(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
 		}
@@ -106,6 +146,7 @@ struct DebuggerX::Impl : CComObjectRoot,
 	HRESULT AttachLocalKernel();
 	HRESULT ExecuteCommand(PCSTR command);
 	HRESULT ExecuteCommand(PCWSTR command);
+	Task<HRESULT> ExecuteCommandAsync(PCWSTR command);
 	HRESULT OpenDumpFile(PCWSTR filename);
 	HRESULT Break();
 	HRESULT Stop();
@@ -117,11 +158,11 @@ struct DebuggerX::Impl : CComObjectRoot,
 	HRESULT Evaluate(PCSTR text, DEBUG_VALUE* value);
 	bool IsLocalKernelDebuggerAvailable();
 	bool IsBusy() const {
-		return _isBusy;
+		return m_IsBusy;
 	}
 
 	TargetType GetTargetType() const {
-		return _targetType;
+		return m_TargetType;
 	}
 
 private:
@@ -153,6 +194,32 @@ private:
 	};
 
 	DWORD DebuggerThread();
+
+	// Awaiter that queues an engine call to the debug thread (same as RunAsync)
+	// but suspends the calling coroutine instead of blocking the calling
+	// thread. Resumption happens via PumpAsyncResume() on the calling thread.
+	struct EngineAwaiter {
+		Impl* Self;
+		std::function<HRESULT()> Action;
+		AsyncOpData* Data{};
+
+		bool await_ready() const noexcept { return false; }
+
+		void await_suspend(std::coroutine_handle<> handle) {
+			Data = new AsyncOpData{ std::move(Action), E_FAIL, ::GetCurrentThreadId(), handle };
+			::QueueUserAPC([](ULONG_PTR p) {
+				auto* d = reinterpret_cast<AsyncOpData*>(p);
+				d->Result = d->Action();
+				::PostThreadMessage(d->CallerThreadId, WM_ASYNC_ENGINE_RESUME, 0, reinterpret_cast<LPARAM>(d));
+				}, Self->m_hDebugThread.get(), reinterpret_cast<ULONG_PTR>(Data));
+		}
+
+		HRESULT await_resume() const {
+			auto result = Data->Result;
+			delete Data;
+			return result;
+		}
+	};
 
 	template<typename F, typename T1>
 	HRESULT RunAsync(F action, T1 arg) {
@@ -213,8 +280,8 @@ private:
 	void UpdateStatus();
 	void WaitWithMessages(HANDLE hEvent);
 
-	IMessageLoop* _ml;
-	ULONG _status = DEBUG_STATUS_NO_CHANGE;
+	IMessageLoop* m_Ml;
+	ULONG m_Status = DEBUG_STATUS_NO_CHANGE;
 	wil::unique_handle m_hDebugThread;
 	wil::unique_handle m_hShutdownEvent;
 	wil::unique_handle m_hAsyncEvent;
@@ -230,10 +297,10 @@ private:
 	CComPtr<IDebugHost> m_spDebugHost;
 	CComPtr<IDataModelManager> m_spDataMgr;
 
-	TargetType _targetType = TargetType::Unknown;
-	bool _stateChanged : 1 { false};
-	bool _breakpointHit : 1 { false };
-	bool _isBusy : 1 { false};
+	TargetType m_TargetType = TargetType::Unknown;
+	bool m_StateChanged : 1 { false};
+	bool m_BreakpointHit : 1 { false };
+	bool m_IsBusy : 1 { false};
 
 	// Inherited via IDebugEventCallbacks
 
@@ -245,8 +312,8 @@ private:
 		return S_OK;
 	}
 	virtual HRESULT __stdcall Breakpoint(PDEBUG_BREAKPOINT Bp) override {
-		_breakpointHit = true;
-		_stateChanged = true;
+		m_BreakpointHit = true;
+		m_StateChanged = true;
 
 		auto data = new BreakpointData;
 		data->Breakpoint = Bp;
@@ -255,10 +322,10 @@ private:
 		return DEBUG_STATUS_BREAK;
 	}
 	virtual HRESULT __stdcall Exception(PEXCEPTION_RECORD64 Exception, ULONG FirstChance) override {
-		_breakpointHit = Exception->ExceptionCode == 0x80000004 || Exception->ExceptionCode == 0x80000003 || FirstChance == 0;
-		_stateChanged = true;
+		m_BreakpointHit = Exception->ExceptionCode == 0x80000004 || Exception->ExceptionCode == 0x80000003 || FirstChance == 0;
+		m_StateChanged = true;
 
-		return _breakpointHit ? DEBUG_STATUS_BREAK : DEBUG_STATUS_NO_CHANGE;
+		return m_BreakpointHit ? DEBUG_STATUS_BREAK : DEBUG_STATUS_NO_CHANGE;
 	}
 
 	virtual HRESULT __stdcall CreateThread(ULONG64 Handle, ULONG64 DataOffset, ULONG64 StartOffset) override {
@@ -305,12 +372,12 @@ private:
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeDebuggeeState(ULONG Flags, ULONG64 Argument) override {
-		_stateChanged = true;
+		m_StateChanged = true;
 		UpdateStatus();
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeEngineState(ULONG Flags, ULONG64 Argument) override {
-		_stateChanged = true;
+		m_StateChanged = true;
 		UpdateStatus();
 		return S_OK;
 	}
@@ -414,7 +481,7 @@ HRESULT DebuggerX::Impl::AttachToProcessInternal(DWORD pid, AttachType attach) {
 		return m_spControl->WaitForEvent(0, INFINITE);
 		}, pid, attach);
 	if (SUCCEEDED(hr))
-		_targetType = TargetType::LiveUser;
+		m_TargetType = TargetType::LiveUser;
 	return hr;
 }
 
@@ -423,16 +490,16 @@ HRESULT DebuggerX::Impl::WaitForEventInternal(ULONG timeout) {
 }
 
 void DebuggerX::Impl::UpdateStatus() {
-	auto oldStatus = _status;
-	m_spControl->GetExecutionStatus(&_status);
-	if (_status != oldStatus) {
-		auto data = new ULONG(_status);
+	auto oldStatus = m_Status;
+	m_spControl->GetExecutionStatus(&m_Status);
+	if (m_Status != oldStatus) {
+		auto data = new ULONG(m_Status);
 		PostNotification(DebuggerNotificationType::StatusChanged, data);
 	}
 }
 
 void DebuggerX::Impl::WaitWithMessages(HANDLE hEvent) {
-	_isBusy = true;
+	m_IsBusy = true;
 	for (;;) {
 		if (::WaitForSingleObject(hEvent, 0) == WAIT_OBJECT_0)
 			break;
@@ -444,7 +511,7 @@ void DebuggerX::Impl::WaitWithMessages(HANDLE hEvent) {
 			::DispatchMessage(&msg);
 		}
 	}
-	_isBusy = false;
+	m_IsBusy = false;
 }
 
 HRESULT DebuggerX::Impl::Create(DWORD notifyThreadId, HWND hNotifyWnd) {
@@ -487,7 +554,7 @@ HRESULT DebuggerX::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs,
 		return S_OK;
 		});
 	if (SUCCEEDED(hr))
-		_targetType = TargetType::LiveUser;
+		m_TargetType = TargetType::LiveUser;
 	return hr;
 }
 
@@ -497,7 +564,7 @@ HRESULT DebuggerX::Impl::AttachLocalKernel() {
 		return m_spControl->WaitForEvent(0, INFINITE);
 		});
 	if (SUCCEEDED(hr))
-		_targetType = TargetType::LocalKernel;
+		m_TargetType = TargetType::LocalKernel;
 	return hr;
 
 }
@@ -511,13 +578,25 @@ HRESULT DebuggerX::Impl::ExecuteCommand(PCSTR command) {
 }
 
 HRESULT DebuggerX::Impl::ExecuteCommand(PCWSTR command) {
-	_isBusy = true;
+	m_IsBusy = true;
 	return RunAsync([this](auto cmd) {
 		HR(m_spControl->ExecuteWide(DEBUG_OUTCTL_ALL_CLIENTS, cmd, DEBUG_EXECUTE_DEFAULT));
 		DoPostCommand();
-		_isBusy = false;
+		m_IsBusy = false;
 		return S_OK;
 		}, command);
+}
+
+Task<HRESULT> DebuggerX::Impl::ExecuteCommandAsync(PCWSTR command) {
+	m_IsBusy = true;
+	// command is copied up front (before the first suspension point) since the
+	// underlying engine call only runs later, on the debug thread.
+	co_return co_await EngineAwaiter{ this, [this, cmd = std::wstring(command)]() {
+		HR(m_spControl->ExecuteWide(DEBUG_OUTCTL_ALL_CLIENTS, cmd.c_str(), DEBUG_EXECUTE_DEFAULT));
+		DoPostCommand();
+		m_IsBusy = false;
+		return S_OK;
+		} };
 }
 
 HRESULT DebuggerX::Impl::OpenDumpFile(PCWSTR filename) {
@@ -527,7 +606,7 @@ HRESULT DebuggerX::Impl::OpenDumpFile(PCWSTR filename) {
 		return S_OK;
 		});
 	if (SUCCEEDED(hr))
-		_targetType = TargetType::Dump;
+		m_TargetType = TargetType::Dump;
 	return hr;
 }
 
@@ -537,7 +616,7 @@ HRESULT DebuggerX::Impl::Break() {
 
 HRESULT DebuggerX::Impl::Stop() {
 	return RunAsync([this]() {
-		_ml = nullptr;
+		m_Ml = nullptr;
 		return m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
 		});
 }
@@ -663,104 +742,112 @@ DWORD DebuggerX::Impl::DebuggerThread() {
 	return 0;
 }
 
-DebuggerX::DebuggerX() : _impl(new CComObject<Impl>) {
+DebuggerX::DebuggerX() : m_Impl(new CComObject<Impl>) {
 }
 
 DebuggerX::~DebuggerX() {
-	_impl->Release();
+	delete m_Impl;
 }
 
 HRESULT DebuggerX::Create(DWORD notifyThreadId) {
-	return _impl->Create(notifyThreadId, nullptr);
+	return m_Impl->Create(notifyThreadId, nullptr);
 }
 
 HRESULT DebuggerX::Create(HWND notifyHwnd) {
-	return _impl->Create(0, notifyHwnd);
+	return m_Impl->Create(0, notifyHwnd);
 }
 
 HRESULT DebuggerX::AttachToProcess(DWORD pid, AttachType attach) {
-	return _impl->AttachToProcess(pid, attach);
+	return m_Impl->AttachToProcess(pid, attach);
 }
 
 HRESULT DebuggerX::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach) {
-	return _impl->LaunchAndAttach(exeName, commandLineArgs, workingDir, attach);
+	return m_Impl->LaunchAndAttach(exeName, commandLineArgs, workingDir, attach);
 }
 
 HRESULT DebuggerX::ExecuteCommand(PCSTR command) {
-	return _impl->ExecuteCommand(command);
+	return m_Impl->ExecuteCommand(command);
 }
 
 HRESULT DebuggerX::ExecuteCommand(PCWSTR command) {
-	return _impl->ExecuteCommand(command);
+	return m_Impl->ExecuteCommand(command);
+}
+
+Task<HRESULT> DebuggerX::ExecuteCommandAsync(PCWSTR command) {
+	return m_Impl->ExecuteCommandAsync(command);
 }
 
 HRESULT DebuggerX::AttachLocalKernel() {
-	return _impl->AttachLocalKernel();
+	return m_Impl->AttachLocalKernel();
 }
 
 HRESULT DebuggerX::Break() {
-	return _impl->Break();
+	return m_Impl->Break();
 }
 
 HRESULT DebugEngine::DebuggerX::Stop() {
-	return _impl->Stop();
+	return m_Impl->Stop();
 }
 
 ExecutionStatus DebugEngine::DebuggerX::GetExecutionStatus() {
-	return _impl->GetExecutionStatus();
+	return m_Impl->GetExecutionStatus();
 }
 
 HRESULT DebugEngine::DebuggerX::OutputPrompt() {
-	return _impl->OutputPrompt();
+	return m_Impl->OutputPrompt();
 }
 
 HRESULT DebuggerX::EnumModules(std::vector<ModuleInfo>& modules) {
-	return _impl->EnumModules(modules);
+	return m_Impl->EnumModules(modules);
 }
 
-void DebuggerX::FreeNotification(WPARAM id) {
-	return _impl->FreeNotification(id);
+void DebuggerX::FreeNotification(DebuggerNotificationType type, WPARAM id) {
+	return m_Impl->FreeNotification(type, id);
 }
 
 void DebuggerX::RunAsync(std::function<void(IDebugClient*)> func) {
-	_impl->RunAsync(func);
+	m_Impl->RunAsync(func);
+}
+
+Task<HRESULT> DebuggerX::RunAsyncCo(std::function<HRESULT(IDebugClient*)> func) {
+	return m_Impl->RunAsyncCo(std::move(func));
 }
 
 ExecutionStatus DebuggerX::GetExecutionStatusAsync() const {
-	return _impl->GetExecutionStatusAsync();
+	return m_Impl->GetExecutionStatusAsync();
 }
 
 TargetType DebuggerX::GetTargetType() const {
-	return _impl->GetTargetType();
+	return m_Impl->GetTargetType();
 }
 
 HRESULT DebuggerX::OpenDumpFile(PCWSTR filename) {
-	return _impl->OpenDumpFile(filename);
+	return m_Impl->OpenDumpFile(filename);
 }
 
 
 bool DebuggerX::IsLocalKernelDebuggerAvailable() {
-	return _impl->IsLocalKernelDebuggerAvailable();
+	return m_Impl->IsLocalKernelDebuggerAvailable();
 }
 
 bool DebuggerX::IsBusy() const {
-	return _impl->IsBusy();
+	return m_Impl->IsBusy();
 }
 
 HRESULT DebuggerX::DetachAll() {
-	return _impl->DetachAll();
+	return m_Impl->DetachAll();
 }
 
 HRESULT DebuggerX::EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads) {
-	return _impl->EnumProcesses(processes, threads);
+	return m_Impl->EnumProcesses(processes, threads);
 }
 
 void DebugEngine::DebuggerX::DispatchCallbacks(ULONG msec) {
-	_impl->DispatchCallbacks(msec);
+	m_Impl->DispatchCallbacks(msec);
 }
 
 HRESULT DebuggerX::ExitDispatch() {
-	return _impl->ExitDispatch();
+	return m_Impl->ExitDispatch();
 }
 
 namespace Debugger::DataModel::ClientEx {

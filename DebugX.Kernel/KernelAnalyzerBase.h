@@ -18,16 +18,16 @@ namespace DebugX::Analysis {
 		IDebugDataSpaces4* Data() const;
 
 	private:
-		ULONG64 _ntBase;
-		CComQIPtr<IDebugClient7> _client;
-		CComQIPtr<IDebugSymbols3> _symbols;
-		CComQIPtr<IDebugDataSpaces4> _data;
+		ULONG64 m_NtBase;
+		CComQIPtr<IDebugClient7> m_Client;
+		CComQIPtr<IDebugSymbols3> m_Symbols;
+		CComQIPtr<IDebugDataSpaces4> m_Data;
 	};
 
 	template<typename T>
 	inline T KernelAnalyzerBase::ReadVirtual(ULONG64 address, HRESULT* phr) const {
 		T value{};
-		auto hr = _data->ReadVirtual(address, &value, sizeof(value), nullptr);
+		auto hr = m_Data->ReadVirtual(address, &value, sizeof(value), nullptr);
 		if (phr)
 			*phr = hr;
 		return value;

@@ -76,6 +76,10 @@ private:
 	IMainFrame* m_pFrame;
 	HCURSOR m_hCursor{ nullptr };
 	bool m_IsBusy{ false };
+	// Keeps the in-flight ExecuteCommandAsync coroutine frame alive until it
+	// completes; the UI disables command entry while busy, so at most one is
+	// ever in flight and it's always done by the time the next one is assigned.
+	DebugEngine::Task<HRESULT> m_PendingCommand;
 
 };
 

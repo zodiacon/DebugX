@@ -8,6 +8,6 @@ namespace DebugX::Analysis {
 		ULONG64 GetVariable(PCSTR name) const;
 
 	private:
-		CComQIPtr<IDebugSymbols> _symbols;
+		CComQIPtr<IDebugSymbols> m_Symbols;
 	};
 }

@@ -22,7 +22,7 @@ namespace DebugX::Analysis {
 		ULONG64 MoveToNextThread();
 
 	private:
-		ULONG64 _address;
+		ULONG64 m_Address;
 	};
 }
 

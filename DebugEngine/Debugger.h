@@ -2,6 +2,7 @@
 
 #include <string>
 #include <functional>
+#include "AsyncTask.h"
 
 struct IDebugClient;
 
@@ -148,7 +149,7 @@ namespace DebugEngine {
 		ULONG Pid;
 	};
 
-	class DebuggerX sealed {
+	class DebuggerX final {
 	public:
 		DebuggerX();
 		~DebuggerX();
@@ -163,14 +164,16 @@ namespace DebugEngine {
 		HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, PCWSTR workingDir = nullptr, AttachType attach = AttachType::Default);
 		HRESULT ExecuteCommand(PCWSTR command);
 		HRESULT ExecuteCommand(PCSTR command);
+		// coroutine-friendly equivalent of ExecuteCommand(PCWSTR); see RunAsyncCo.
+		Task<HRESULT> ExecuteCommandAsync(PCWSTR command);
 		HRESULT AttachLocalKernel();
 		HRESULT Break();
 		HRESULT Stop();
-		ExecutionStatus GetExecutionStatus();
-		ExecutionStatus GetExecutionStatusAsync() const;
+		[[nodiscard]] ExecutionStatus GetExecutionStatus();
+		[[nodiscard]] ExecutionStatus GetExecutionStatusAsync() const;
 		TargetType GetTargetType() const;
-		bool IsLocalKernelDebuggerAvailable();
-		bool IsBusy() const;
+		[[nodiscard]] bool IsLocalKernelDebuggerAvailable();
+		[[nodiscard]] bool IsBusy() const;
 		HRESULT DetachAll();
 
 		HRESULT OutputPrompt();
@@ -181,14 +184,19 @@ namespace DebugEngine {
 		void DispatchCallbacks(ULONG msec);
 		HRESULT ExitDispatch();
 
-		void FreeNotification(WPARAM id);
+		void FreeNotification(DebuggerNotificationType type, WPARAM id);
 
 		// run code on the debugger's thread
 		void RunAsync(std::function<void(IDebugClient*)> func);
 
+		// coroutine-friendly equivalent: suspends the calling coroutine instead of
+		// blocking the calling thread. Requires the calling thread to pump
+		// PumpAsyncResume() in its message loop to be resumed.
+		Task<HRESULT> RunAsyncCo(std::function<HRESULT(IDebugClient*)> func);
+
 		struct Impl;
 	private:
-		Impl* _impl;
+		Impl* m_Impl;
 
 	};
 }

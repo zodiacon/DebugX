@@ -13,9 +13,9 @@ namespace DebugX::Analysis {
 		KernelThreadAnalyzer* GetNextThread();
 
 	private:
-		ULONG64 _process;
-		ULONG64 _head;
-		std::unique_ptr<KernelThreadAnalyzer> _threadAnalyzer;
+		ULONG64 m_Process;
+		ULONG64 m_Head;
+		std::unique_ptr<KernelThreadAnalyzer> m_ThreadAnalyzer;
 	};
 }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <shared_mutex>
+#include <mutex>
 #include "..\DebugEngine\Debugger.h"
 
 class DebugManager final {
@@ -23,8 +23,8 @@ private:
 	DWORD NotifyThread();
 
 	static DebugManager* DbgMgr;
-	wil::unique_handle _hNotifyThread;
-	std::vector<HWND> _registeredHwnds;
-	std::shared_mutex _registeredHwndsLock;
+	wil::unique_handle m_hNotifyThread;
+	std::vector<HWND> m_RegisteredHwnds;
+	std::recursive_mutex m_RegisteredHwndsLock;
 };
 

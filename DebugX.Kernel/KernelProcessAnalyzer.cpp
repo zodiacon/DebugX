@@ -20,7 +20,7 @@ struct SE_AUDIT_PROCESS_CREATION_INFO {
 };
 
 KernelProcessAnalyzer::KernelProcessAnalyzer(IDebugClient* pClient) : 
-	KernelAnalyzerBase(pClient), _globals(CComQIPtr<IDebugSymbols>(pClient)) {
+	KernelAnalyzerBase(pClient), m_Globals(CComQIPtr<IDebugSymbols>(pClient)) {
 	if (EProcessTypeId == 0) {
 		auto hr = Symbols()->GetTypeId(KernelBase(), "_EPROCESS", &EProcessTypeId);
 		ATLASSERT(SUCCEEDED(hr));
@@ -33,8 +33,8 @@ KernelProcessAnalyzer::KernelProcessAnalyzer(IDebugClient* pClient) :
 DebugX::Analysis::KernelProcessAnalyzer::~KernelProcessAnalyzer() = default;
 
 bool KernelProcessAnalyzer::SetProcess(ULONG64 processAddress) {
-	_processAddress = processAddress;
-	_processEntry = processAddress + ActiveProcessLinksOffset;
+	m_ProcessAddress = processAddress;
+	m_ProcessEntry = processAddress + ActiveProcessLinksOffset;
 
 	return true;
 }
@@ -45,27 +45,27 @@ bool KernelProcessAnalyzer::SetProcessEntry(ULONG64 processEntry) {
 
 ULONG DebugX::Analysis::KernelProcessAnalyzer::GetThreadCount() const {
 	ULONG count = 0;
-	Data()->ReadVirtual(_processAddress + GetFieldOffset(EProcessTypeId, "ActiveThreads"), &count, sizeof(count), nullptr);
+	Data()->ReadVirtual(m_ProcessAddress + GetFieldOffset(EProcessTypeId, "ActiveThreads"), &count, sizeof(count), nullptr);
 	return count;
 }
 
 ULONG DebugX::Analysis::KernelProcessAnalyzer::GetSessionId() const {
 	auto offset = GetFieldOffset(EProcessTypeId, "Session");
-	auto sessionSpace = ReadVirtual<ULONG64>(_processAddress + offset);
+	auto sessionSpace = ReadVirtual<ULONG64>(m_ProcessAddress + offset);
 	auto offsetSessionId = GetFieldOffset(GetTypeId("_MM_SESSION_SPACE"), "SessionId");
 	return ReadVirtual<ULONG>(sessionSpace + offsetSessionId);
 }
 
 ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetDirectoryTableBase() const {
-	return ReadVirtual<ULONG64>(_processAddress + GetFieldOffset(KProcessTypeId, "DirectoryTableBase"));
+	return ReadVirtual<ULONG64>(m_ProcessAddress + GetFieldOffset(KProcessTypeId, "DirectoryTableBase"));
 }
 
 ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetPeb() const {
-	return ReadVirtual<ULONG64>(_processAddress + GetFieldOffset(EProcessTypeId, "Peb"));
+	return ReadVirtual<ULONG64>(m_ProcessAddress + GetFieldOffset(EProcessTypeId, "Peb"));
 }
 
 ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetHandleTable() const {
-	return (ULONG64)ReadVirtual<PVOID>(_processAddress + GetFieldOffset(EProcessTypeId, "ObjectTable"));
+	return (ULONG64)ReadVirtual<PVOID>(m_ProcessAddress + GetFieldOffset(EProcessTypeId, "ObjectTable"));
 }
 
 ULONG DebugX::Analysis::KernelProcessAnalyzer::GetHandleCount() const {
@@ -75,19 +75,19 @@ ULONG DebugX::Analysis::KernelProcessAnalyzer::GetHandleCount() const {
 
 	auto nextHandleNeedingPool = ReadVirtual<ULONG>(table + GetFieldOffset(GetTypeId("_HANDLE_TABLE"), "NextHandleNeedingPool"));
 	auto maxHandles = nextHandleNeedingPool / 4;
-	const auto count = (1 << 12) / (ULONG)_globals.GetVariable("KeMaximumProcessors");
+	const auto count = (1 << 12) / (ULONG)m_Globals.GetVariable("KeMaximumProcessors");
 	maxHandles = maxHandles * (count - 1) / count;
 	// incomplete
 	return maxHandles;
 }
 
 ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetJob() const {
-	return (ULONG64)ReadVirtual<PVOID>(_processAddress + GetFieldOffset(EProcessTypeId, "Job"));
+	return (ULONG64)ReadVirtual<PVOID>(m_ProcessAddress + GetFieldOffset(EProcessTypeId, "Job"));
 }
 
 ULONG DebugX::Analysis::KernelProcessAnalyzer::GetProcessId() const {
 	PVOID data = nullptr;
-	Data()->ReadVirtual(_processAddress + GetFieldOffset(EProcessTypeId, "UniqueProcessId"), &data, sizeof(data), nullptr);
+	Data()->ReadVirtual(m_ProcessAddress + GetFieldOffset(EProcessTypeId, "UniqueProcessId"), &data, sizeof(data), nullptr);
 	return PtrToUlong(data);
 }
 
@@ -101,7 +101,7 @@ CString KernelProcessAnalyzer::GetFullImageName() const {
 	CString name;
 	SE_AUDIT_PROCESS_CREATION_INFO apci;
 	auto offset = GetFieldOffset(EProcessTypeId, "SeAuditProcessCreationInfo");
-	Data()->ReadVirtual(_processAddress + offset, &apci, sizeof(apci), nullptr);
+	Data()->ReadVirtual(m_ProcessAddress + offset, &apci, sizeof(apci), nullptr);
 	auto info = &apci;
 	auto nameInfo = info->ImageFileName;
 	OBJECT_NAME_INFORMATION nameInfoLocal;
@@ -114,43 +114,43 @@ CString KernelProcessAnalyzer::GetFullImageName() const {
 	}
 	if (name.IsEmpty()) {
 		CStringA namea;
-		Data()->ReadVirtual(_processAddress + GetFieldOffset(EProcessTypeId, "ImageFileName"), namea.GetBufferSetLength(15), 15, nullptr);
+		Data()->ReadVirtual(m_ProcessAddress + GetFieldOffset(EProcessTypeId, "ImageFileName"), namea.GetBufferSetLength(15), 15, nullptr);
 		name = namea.TrimRight();
 	}
 	return name;
 }
 
 LARGE_INTEGER KernelProcessAnalyzer::GetCreateTime() const {
-	return ReadVirtual<LARGE_INTEGER>(_processAddress + GetFieldOffset(EProcessTypeId, "CreateTime"));
+	return ReadVirtual<LARGE_INTEGER>(m_ProcessAddress + GetFieldOffset(EProcessTypeId, "CreateTime"));
 }
 
 LARGE_INTEGER KernelProcessAnalyzer::GetExitTime() const {
-	return ReadVirtual<LARGE_INTEGER>(_processAddress + GetFieldOffset(EProcessTypeId, "ExitTime"));
+	return ReadVirtual<LARGE_INTEGER>(m_ProcessAddress + GetFieldOffset(EProcessTypeId, "ExitTime"));
 }
 
 ULONG64 KernelProcessAnalyzer::GetKernelTime() const {
-	auto time = ReadVirtual<ULONG>(_processAddress + GetFieldOffset(KProcessTypeId, "KernelTime"));
-	KernelProcessThreadEnumerator tenum(_processAddress, CComQIPtr<IDebugClient>(Client()));
+	auto time = ReadVirtual<ULONG>(m_ProcessAddress + GetFieldOffset(KProcessTypeId, "KernelTime"));
+	KernelProcessThreadEnumerator tenum(m_ProcessAddress, CComQIPtr<IDebugClient>(Client()));
 	KernelThreadAnalyzer* ta;
 
 	while (ta = tenum.GetNextThread()) {
 		time += ta->GetKernelTime();
 	}
-	return time * (ULONG64)ReadVirtual<ULONG>(_globals.GetVariable("KeMaximumIncrement"));
+	return time * (ULONG64)ReadVirtual<ULONG>(m_Globals.GetVariable("KeMaximumIncrement"));
 }
 
 ULONG64 KernelProcessAnalyzer::GetUserTime() const {
-	auto time = ReadVirtual<ULONG>(_processAddress + GetFieldOffset(KProcessTypeId, "UserTime"));
-	return time * (ULONG64)ReadVirtual<ULONG>(_globals.GetVariable("KeMaximumIncrement"));
+	auto time = ReadVirtual<ULONG>(m_ProcessAddress + GetFieldOffset(KProcessTypeId, "UserTime"));
+	return time * (ULONG64)ReadVirtual<ULONG>(m_Globals.GetVariable("KeMaximumIncrement"));
 }
 
 ULONG64 KernelProcessAnalyzer::GetProcessAddress() const {
-	return _processAddress;
+	return m_ProcessAddress;
 }
 
 ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetNextProcessLink() const {
 	LIST_ENTRY entry;
-	auto hr = Data()->ReadVirtual(_processAddress + ActiveProcessLinksOffset, &entry, sizeof(entry), nullptr);
+	auto hr = Data()->ReadVirtual(m_ProcessAddress + ActiveProcessLinksOffset, &entry, sizeof(entry), nullptr);
 	ATLASSERT(SUCCEEDED(hr));
 	return (ULONG64)entry.Flink;
 }
@@ -162,6 +162,6 @@ ULONG64 KernelProcessAnalyzer::MoveToNextProcess() {
 }
 
 std::unique_ptr<KernelProcessThreadEnumerator> DebugX::Analysis::KernelProcessAnalyzer::GetThreadEnumerator() const {
-	return std::make_unique<KernelProcessThreadEnumerator>(_processAddress, CComQIPtr<IDebugClient>(Client()));
+	return std::make_unique<KernelProcessThreadEnumerator>(m_ProcessAddress, CComQIPtr<IDebugClient>(Client()));
 }
 

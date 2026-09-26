@@ -27,6 +27,9 @@ CMainFrame::CMainFrame() {
 }
 
 BOOL CMainFrame::PreTranslateMessage(MSG* pMsg) {
+	if (DebugEngine::PumpAsyncResume(*pMsg))
+		return TRUE;
+
 	if (CFrameWindowImpl<CMainFrame>::PreTranslateMessage(pMsg))
 		return TRUE;
 
@@ -136,6 +139,9 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 }
 
 LRESULT CMainFrame::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled) {
+	if(--s_FrameWindowCount == 0)
+		bHandled = FALSE;
+
 	DebugManager::Get().UnregisterWindow(*this);
 
 	// unregister message filtering and idle updates
@@ -144,7 +150,6 @@ LRESULT CMainFrame::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*
 	pLoop->RemoveMessageFilter(this);
 	pLoop->RemoveIdleHandler(this);
 
-	bHandled = FALSE;
 	return 0;
 }
 

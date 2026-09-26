@@ -35,8 +35,8 @@ namespace DebugX::Analysis {
 		ULONG64 GetJob() const;
 
 	private:
-		KernelGlobals _globals;
-		ULONG64 _processAddress = 0, _processEntry = 0;
+		KernelGlobals m_Globals;
+		ULONG64 m_ProcessAddress = 0, m_ProcessEntry = 0;
 	};
 }
 

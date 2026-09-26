@@ -9,74 +9,74 @@ template<typename T>
 class SortedFilteredVector {
 public:
 	SortedFilteredVector(size_t capacity = 16) {
-		_items.reserve(capacity);
-		_indices.reserve(capacity);
+		m_Items.reserve(capacity);
+		m_Indices.reserve(capacity);
 	}
 
 	void Add(const T& value) {
-		_items.push_back(value);
-		_indices.push_back(_items.size() - 1);
-		assert(_items.size() == _indices.size());
+		m_Items.push_back(value);
+		m_Indices.push_back(m_Items.size() - 1);
+		assert(m_Items.size() == m_Indices.size());
 	}
 
 	void Clear() {
-		_items.clear();
-		_indices.clear();
+		m_Items.clear();
+		m_Indices.clear();
 	}
 
 	void Reserve(size_t capacity) {
-		_items.reserve(capacity);
-		_indices.reserve(capacity);
+		m_Items.reserve(capacity);
+		m_Indices.reserve(capacity);
 	}
 
 	void Set(std::vector<T> items) {
-		_items = std::move(items);
-		auto count = _items.size();
-		_indices.clear();
-		_indices.reserve(count);
+		m_Items = std::move(items);
+		auto count = m_Items.size();
+		m_Indices.clear();
+		m_Indices.reserve(count);
 		for (decltype(count) i = 0; i < count; i++)
-			_indices.push_back(i);
+			m_Indices.push_back(i);
 	}
 
 	const T& operator[](size_t index) const {
-		return _items[_indices[index]];
+		return m_Items[m_Indices[index]];
 	}
 
 	T& operator[](size_t index) {
-		return _items[_indices[index]];
+		return m_Items[m_Indices[index]];
 	}
 
 	void Sort(std::function<bool(const T & value1, const T & value2)> compare) {
-		std::sort(_indices.begin(), _indices.end(), [=](size_t i1, size_t i2) {
-			return compare(_items[i1], _items[i2]);
+		std::sort(m_Indices.begin(), m_Indices.end(), [=](size_t i1, size_t i2) {
+			return compare(m_Items[i1], m_Items[i2]);
 			});
 	}
 
 	size_t Size() const {
-		return _items.size();
+		return m_Items.size();
 	}
 
 	size_t FilteredSize() const {
-		return _indices.size();
+		return m_Indices.size();
 	}
 
 	void Filter(std::function<bool(const T & value)> predicate) {
-		_indices.clear();
+		m_Indices.clear();
 		if (predicate == nullptr) {
-			auto count = _items.size();
+			auto count = m_Items.size();
 			for (decltype(count) i = 0; i < count; i++)
-				_indices.push_back(i);
+				m_Indices.push_back(i);
 		}
 		else {
-			auto count = _items.size();
+			auto count = m_Items.size();
 			for (decltype(count) i = 0; i < count; i++)
-				if (predicate(_items[i]))
-					_indices.push_back(i);
+				if (predicate(m_Items[i]))
+					m_Indices.push_back(i);
 		}
 	}
 
 private:
-	std::vector<T> _items;
-	std::vector<size_t> _indices;
+	std::vector<T> m_Items;
+	std::vector<size_t> m_Indices;
 };
 

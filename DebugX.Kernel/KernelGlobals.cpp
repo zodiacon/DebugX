@@ -5,7 +5,7 @@
 
 using namespace DebugX::Analysis;
 
-KernelGlobals::KernelGlobals(IDebugSymbols* symbols) : _symbols(symbols) {
+KernelGlobals::KernelGlobals(IDebugSymbols* symbols) : m_Symbols(symbols) {
 }
 
 ULONG64 KernelGlobals::GetVariable(PCSTR name) const {
@@ -14,7 +14,7 @@ ULONG64 KernelGlobals::GetVariable(PCSTR name) const {
 		return it->second;
 
 	ULONG64 offset;
-	auto hr = _symbols->GetOffsetByName(("nt!" + std::string(name)).c_str(), &offset);
+	auto hr = m_Symbols->GetOffsetByName(("nt!" + std::string(name)).c_str(), &offset);
 	if (SUCCEEDED(hr)) {
 		symbols.insert({ name, offset });
 		return offset;

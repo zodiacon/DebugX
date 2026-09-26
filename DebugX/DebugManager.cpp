@@ -12,32 +12,29 @@ DebugManager& DebugManager::Get() {
 }
 
 void DebugManager::Destroy() {
-	::PostThreadMessage(::GetThreadId(_hNotifyThread.get()), WM_QUIT, 0, 0);
+	::PostThreadMessage(::GetThreadId(m_hNotifyThread.get()), WM_QUIT, 0, 0);
 	Dbg = nullptr;
 	DbgMgr = nullptr;
-	::WaitForSingleObject(_hNotifyThread.get(), 1000);
+	::WaitForSingleObject(m_hNotifyThread.get(), 1000);
 }
 
 bool DebugManager::RegisterWindow(HWND hNotify) {
-	std::lock_guard locker(_registeredHwndsLock);
-	auto it = std::find(_registeredHwnds.begin(), _registeredHwnds.end(), hNotify);
-	if (it != _registeredHwnds.end())
+	std::lock_guard locker(m_RegisteredHwndsLock);
+	auto it = std::find(m_RegisteredHwnds.begin(), m_RegisteredHwnds.end(), hNotify);
+	if (it != m_RegisteredHwnds.end())
 		return true;
-	_registeredHwnds.push_back(hNotify);
+	m_RegisteredHwnds.push_back(hNotify);
 	return true;
 }
 
 bool DebugManager::UnregisterWindow(HWND hNotify) {
-	decltype(_registeredHwnds.begin()) it;
+	decltype(m_RegisteredHwnds.begin()) it;
 
-	{
-		std::shared_lock locker(_registeredHwndsLock);
-		it = std::find(_registeredHwnds.begin(), _registeredHwnds.end(), hNotify);
-		if (it == _registeredHwnds.end())
-			return false;
-	}
-	std::lock_guard locker(_registeredHwndsLock);
-	_registeredHwnds.erase(it);
+	std::lock_guard locker(m_RegisteredHwndsLock);
+	it = std::find(m_RegisteredHwnds.begin(), m_RegisteredHwnds.end(), hNotify);
+	if (it == m_RegisteredHwnds.end())
+		return false;
+	m_RegisteredHwnds.erase(it);
 	return true;
 }
 
@@ -53,11 +50,11 @@ DebugEngine::DebuggerX& DebugManager::DebuggerX() {
 DWORD DebugManager::NotifyThread() {
 	MSG msg;
 	while (::GetMessage(&msg, nullptr, 0, 0)) {
-		std::shared_lock locker(_registeredHwndsLock);
-		for (auto h : _registeredHwnds) {
+		std::lock_guard locker(m_RegisteredHwndsLock);
+		for (auto h : m_RegisteredHwnds) {
 			::SendMessage(h, msg.message, 0, msg.lParam);
 		}
-		Dbg->FreeNotification(msg.wParam);
+		Dbg->FreeNotification(static_cast<DebuggerNotificationType>(msg.message), msg.wParam);
 	}
 
 	return 0;
@@ -66,13 +63,13 @@ DWORD DebugManager::NotifyThread() {
 HRESULT DebugManager::Init() {
 	if (this != DbgMgr)
 		return E_UNEXPECTED;
-	if (_hNotifyThread)
+	if (m_hNotifyThread)
 		return E_UNEXPECTED;
 
 	DWORD id;
-	_hNotifyThread.reset(::CreateThread(nullptr, 0, [](auto p) {
+	m_hNotifyThread.reset(::CreateThread(nullptr, 0, [](auto p) {
 		return ((DebugManager*)p)->NotifyThread();
-		}, this, 0, &id));
+	}, this, 0, &id));
 
 	Dbg = std::make_unique<DebugEngine::DebuggerX>();
 	return Dbg->Create(id);

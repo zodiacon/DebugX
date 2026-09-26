@@ -12,7 +12,7 @@ namespace DebugX::Analysis {
 		void Reset();
 
 	private:
-		std::unique_ptr<KernelProcessAnalyzer> _analyzer;
-		ULONG64 _head;
+		std::unique_ptr<KernelProcessAnalyzer> m_Analyzer;
+		ULONG64 m_Head;
 	};
 }
