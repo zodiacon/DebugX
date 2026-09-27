@@ -1,5 +1,7 @@
 #pragma once
 
+#include <deque>
+#include <string>
 #include <vector>
 #include "..\DebugEngine\Debugger.h"
 
@@ -20,11 +22,20 @@ struct ISessionObserver {
 	virtual void OnBroke() {}
 	virtual void OnResumed() {}
 
+	// the current thread is another one, or its registers were written to
+	virtual void OnContextChanged() {}
+	virtual void OnBreakpointsChanged() {}
+	virtual void OnModuleLoaded(const DebugEngine::ModuleEventData& data) {}
+	virtual void OnModuleUnloaded(const DebugEngine::ModuleEventData& data) {}
+
 	virtual void OnProcessCreated(const DebugEngine::CreateProcessData& data) {}
 	virtual void OnProcessExited(const DebugEngine::ExitThreadData& data) {}
 	virtual void OnThreadCreated(const DebugEngine::ThreadCreateData& data) {}
 	virtual void OnThreadExited(const DebugEngine::ExitThreadData& data) {}
 	virtual void OnOutput(const DebugEngine::OutputData& data) {}
+
+	// a line was added to the log of what happens in the target (SessionModel::Log)
+	virtual void OnLogLine(const std::wstring& line) {}
 };
 
 //
@@ -57,15 +68,35 @@ public:
 	// the target is stopped and nothing else is going on: it can be run, stepped, asked things
 	bool CanRun() const;
 
+	// the engine's id of the current thread (DebugEngine::ThreadInfo::Id), as far as it has said
+	ULONG CurrentThreadId() const {
+		return m_CurrentThread;
+	}
+
+	// What happened in the target, a line each (processes and threads coming and going, modules loading, what the
+	// target writes with OutputDebugString), the last ones. It is kept here, not by the window that shows it, so that
+	// the window is complete whenever it is made.
+	const std::deque<std::wstring>& Log() const {
+		return m_Log;
+	}
+
 	// from DebugManager, for every notification of the debugger
 	void OnNotification(DebugEngine::DebuggerNotificationType type, void* data);
 
 private:
 	template<typename F>
 	void Notify(F&& call);
+	void AddLogLine(std::wstring line);
+	void AddDebuggeeText(const std::wstring& text);
+	void FlushPartialLine();
+
+	static constexpr size_t MaxLogLines = 5000;
 
 	DebugEngine::DebuggerX& m_Debugger;
 	std::vector<ISessionObserver*> m_Observers;
 	DebugEngine::ExecutionStatus m_Status{ DebugEngine::ExecutionStatus::NoDebuggee };
 	bool m_HadTarget{ false };
+	ULONG m_CurrentThread{ 0 };
+	std::deque<std::wstring> m_Log;
+	std::wstring m_PartialLine;		// text of the target that has not reached the end of its line
 };

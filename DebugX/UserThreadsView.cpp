@@ -3,6 +3,20 @@
 #include "DebugManager.h"
 #include "SortHelper.h"
 
+void CUserThreadsView::InitList() {
+	m_List.InsertColumn(0, L"Index", LVCFMT_LEFT, 80);
+	m_List.InsertColumn(1, L"TID", LVCFMT_RIGHT, 100);
+	m_List.InsertColumn(2, L"PID", LVCFMT_RIGHT, 110);
+	m_List.InsertColumn(3, L"TEB", LVCFMT_RIGHT, 100);
+
+	// the thread, and the thread that is current
+	CImageList images;
+	images.Create(16, 16, ILC_COLOR32, 2, 0);
+	images.AddIcon(AtlLoadIconImage(IDI_THREADS, 0, 16, 16));
+	images.AddIcon(AtlLoadIconImage(IDI_ICON9, 0, 16, 16));
+	m_List.SetImageList(images, LVSIL_SMALL);
+}
+
 CString CUserThreadsView::GetColumnText(HWND hWnd, int row, int column) const {
 	auto& t = m_Items[row];
 	CString text;
@@ -18,7 +32,7 @@ CString CUserThreadsView::GetColumnText(HWND hWnd, int row, int column) const {
 }
 
 int CUserThreadsView::GetRowImage(HWND, int row, int col) const {
-	return 0;
+	return m_Items[row].Current ? 1 : 0;
 }
 
 void CUserThreadsView::DoSort(const SortInfo* si) {
@@ -36,52 +50,12 @@ void CUserThreadsView::DoSort(const SortInfo* si) {
 		});
 }
 
-HWND CUserThreadsView::Create(HWND hParent) {
-	return __super::Create(hParent, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
-}
+bool CUserThreadsView::OnDoubleClickList(HWND, int row, int col, POINT const& pt) {
+	if (row < 0 || row >= static_cast<int>(m_Items.size()))
+		return false;
 
-std::wstring CUserThreadsView::SaveState() const {
-	return PaneState::SaveColumnWidths(m_List);
-}
-
-void CUserThreadsView::LoadState(PCWSTR state) {
-	PaneState::LoadColumnWidths(m_List, state);
-}
-
-void CUserThreadsView::OnFinalMessage(HWND) {
-	delete this;
-}
-
-void CUserThreadsView::UpdateList() {
-	DoSort(GetSortInfo(m_List));
-	m_List.SetItemCountEx(static_cast<int>(m_Items.size()), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
-	m_List.RedrawItems(m_List.GetTopIndex(), m_List.GetTopIndex() + m_List.GetCountPerPage());
-}
-
-LRESULT CUserThreadsView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
-	m_hWndClient = m_List.Create(*this, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS
-		| LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS);
-	m_List.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_INFOTIP | LVS_EX_LABELTIP);
-
-	m_List.InsertColumn(0, L"Index", LVCFMT_LEFT, 80);
-	m_List.InsertColumn(1, L"TID", LVCFMT_RIGHT, 100);
-	m_List.InsertColumn(2, L"PID", LVCFMT_RIGHT, 110);
-	m_List.InsertColumn(3, L"TEB", LVCFMT_RIGHT, 100);
-
-	CImageList images;
-	images.Create(16, 16, ILC_COLOR32, 2, 0);
-	images.AddIcon(AtlLoadIconImage(IDI_THREADS, 0, 16, 16));
-	m_List.SetImageList(images, LVSIL_SMALL);
-
-	InitPane();
-
-	return 0;
-}
-
-LRESULT CUserThreadsView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
-	ExitPane();
-	handled = FALSE;
-	return 0;
+	SwitchTo(m_Items[row].Id);
+	return true;
 }
 
 void CUserThreadsView::OnThreadCreated(const DebugEngine::ThreadCreateData& data) {
@@ -99,7 +73,7 @@ void CUserThreadsView::OnThreadCreated(const DebugEngine::ThreadCreateData& data
 	ti.Id = data.Id;
 
 	m_Items.push_back(ti);
-	UpdateList();
+	UpdateList(m_Items.size());
 }
 
 void CUserThreadsView::OnThreadExited(const DebugEngine::ExitThreadData& data) {
@@ -111,13 +85,17 @@ void CUserThreadsView::OnThreadExited(const DebugEngine::ExitThreadData& data) {
 	auto it = std::find_if(m_Items.begin(), m_Items.end(), [&](auto& ti) { return ti.ThreadId == data.ThreadId; });
 	if (it != m_Items.end()) {
 		m_Items.erase(it);
-		UpdateList();
+		UpdateList(m_Items.size());
 	}
+}
+
+void CUserThreadsView::OnContextChanged() {
+	RequestRefresh();
 }
 
 void CUserThreadsView::OnTargetEnded() {
 	m_Items.clear();
-	UpdateList();
+	UpdateList(0);
 	MarkDirty();
 }
 
@@ -136,6 +114,11 @@ DebugEngine::Task<void> CUserThreadsView::Refresh() {
 		co_return;
 
 	m_Items.swap(threads);
-	UpdateList();
+	UpdateList(m_Items.size());
 	RefreshDone();
+}
+
+DebugEngine::Task<void> CUserThreadsView::SwitchTo(ULONG threadId) {
+	// (the panes that are about the current thread hear of it from the engine)
+	co_await DebugManager::DebuggerX().SetCurrentThread(threadId);
 }

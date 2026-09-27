@@ -73,8 +73,11 @@ BEGIN
         MENUITEM "&Refresh",                    ID_VIEW_REFRESH
         MENUITEM SEPARATOR
         MENUITEM "&Command",                    ID_VIEW_COMMAND
+        MENUITEM "&Output",                     ID_VIEW_OUTPUT
         MENUITEM "&Threads",                    ID_VIEW_THREADS
         MENUITEM "&Processes",                  ID_VIEW_PROCESSES
+        MENUITEM "&Modules",                    ID_VIEW_MODULES
+        MENUITEM "&Registers",                  ID_VIEW_REGISTERS
         MENUITEM "Call &Stack",                 ID_VIEW_CALLSTACK
         MENUITEM "&Breakpoints",                ID_VIEW_BREAKPOINTS
     END
@@ -93,6 +96,8 @@ BEGIN
         MENUITEM "&Step Over",                  ID_DEBUG_STEPOVER
         MENUITEM "Ste&p Into",                  ID_DEBUG_STEPINTO
         MENUITEM "Step &Out",                   ID_DEBUG_STEPOUT
+        MENUITEM SEPARATOR
+        MENUITEM "Add &Breakpoint...\tF9",       ID_DEBUG_ADDBREAKPOINT
     END
     POPUP "&Options"
     BEGIN
@@ -228,6 +233,17 @@ BEGIN
     PUSHBUTTON      "Browse...",IDC_BROWSEDIR,360,48,60,18
 END
 
+IDD_ADDBREAKPOINT DIALOGEX 0, 0, 250, 62
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Add Breakpoint"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Address or symbol (module!function, 0x7ff6`1234, ...):",IDC_STATIC,7,7,236,8
+    EDITTEXT        IDC_BPEXPR,7,19,236,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "  OK",IDOK,86,41,56,14,BS_CENTER | BS_FLAT | WS_DISABLED
+    PUSHBUTTON      "  Cancel",IDCANCEL,148,41,54,14,BS_FLAT
+END
+
 IDD_PROCSELECT DIALOGEX 0, 0, 309, 254
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Select Process to Attach"
@@ -290,6 +306,7 @@ BEGIN
     "X",            ID_EDIT_CUT,            VIRTKEY, CONTROL
     "C",            ID_EDIT_COPY,           VIRTKEY, CONTROL
     "V",            ID_EDIT_PASTE,          VIRTKEY, CONTROL
+    VK_F9,          ID_DEBUG_ADDBREAKPOINT, VIRTKEY
     VK_BACK,        ID_EDIT_UNDO,           VIRTKEY, ALT
     VK_DELETE,      ID_EDIT_CUT,            VIRTKEY, SHIFT
     VK_INSERT,      ID_EDIT_COPY,           VIRTKEY, CONTROL

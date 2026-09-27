@@ -16,10 +16,13 @@ struct PaneInfo {
 	PCWSTR Title;
 	UINT Icon;
 	UINT Command;			// the View menu's
-	WTLDock::DockSide Side;	// where it goes the first time it is shown
+	WTLDock::PaneKind Kind;	// Tool: docks around the documents; Document: tabs in the document area
+	WTLDock::DockSide Side;	// where a tool goes the first time it is shown
 	SIZE Size;
 	// the flags a target must have (User, Kernel, ...) for the pane to be of use; none: always
 	DebugEngine::TargetType Requires;
+	bool NeedsTarget;		// there has to be a target, whatever it is like
+	PCWSTR TabWith;			// the first time it is shown it goes into the group of this pane, if that is showing
 	IPane* (*Make)();
 };
 
@@ -32,7 +35,7 @@ public:
 	const PaneInfo* FindByCommand(UINT command) const;
 
 	static bool IsAvailable(const PaneInfo& info, DebugEngine::TargetType target) {
-		return (target & info.Requires) == info.Requires;
+		return (!info.NeedsTarget || target != DebugEngine::TargetType::Unknown) && (target & info.Requires) == info.Requires;
 	}
 
 	// makes the pane and its window (as a child of hParent) and gives it the state that was kept; null if that fails

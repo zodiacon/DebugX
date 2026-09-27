@@ -37,9 +37,15 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPINTO, OnDebugStepInto)
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOVER, OnDebugStepOver)
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOUT, OnDebugStepOut)
+		COMMAND_ID_HANDLER(ID_DEBUG_ADDBREAKPOINT, OnDebugAddBreakpoint)
 		COMMAND_ID_HANDLER(ID_VIEW_COMMAND, OnViewPane)
 		COMMAND_ID_HANDLER(ID_VIEW_THREADS, OnViewPane)
 		COMMAND_ID_HANDLER(ID_VIEW_PROCESSES, OnViewPane)
+		COMMAND_ID_HANDLER(ID_VIEW_MODULES, OnViewPane)
+		COMMAND_ID_HANDLER(ID_VIEW_OUTPUT, OnViewPane)
+		COMMAND_ID_HANDLER(ID_VIEW_REGISTERS, OnViewPane)
+		COMMAND_ID_HANDLER(ID_VIEW_CALLSTACK, OnViewPane)
+		COMMAND_ID_HANDLER(ID_VIEW_BREAKPOINTS, OnViewPane)
 		COMMAND_ID_HANDLER(ID_VIEW_TOOLBAR, OnViewToolBar)
 		COMMAND_ID_HANDLER(ID_VIEW_STATUS_BAR, OnViewStatusBar)
 		COMMAND_ID_HANDLER(ID_WINDOW_WINDOWS, OnWindowWindows)
@@ -70,6 +76,7 @@ private:
 	DebugEngine::Task<void> RunExecutable(CString exePath, CString arguments, CString workingDir);
 	DebugEngine::Task<void> AttachToProcess(DWORD pid);
 	DebugEngine::Task<void> AttachLocalKernel();
+	DebugEngine::Task<void> AddBreakpoint(CString expression);
 
 private:
 	LRESULT OnForward(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -96,6 +103,7 @@ private:
 	LRESULT OnDebugStepOver(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStepInto(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStepOut(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugAddBreakpoint(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
 private:
 	WTLDock::CDockHost m_Dock;

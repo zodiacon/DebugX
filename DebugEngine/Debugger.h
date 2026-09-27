@@ -32,7 +32,9 @@ namespace DebugEngine {
 		StatusChanged,
 		// no data for the two below: something the caller can ask the debugger about (IsBusy, GetTargetType) has changed
 		BusyChanged,		// the first call is in flight, or the last one has completed
-		TargetChanged		// a target was attached or opened, or the session has ended
+		TargetChanged,		// a target was attached or opened, or the session has ended
+		BreakpointsChanged,	// a breakpoint was added, removed, enabled, disabled or changed (by whoever)
+		ContextChanged		// the current thread has changed, or its registers were written to (data: ContextData)
 	};
 
 	enum class ExecutionStatus {
@@ -84,6 +86,7 @@ namespace DebugEngine {
 		ULONG64 Teb;
 		HANDLE Handle;
 		ULONG Pid;
+		bool Current{ false };		// the thread the engine's commands and the panes that show a thread are about
 	};
 
 	struct ProcessInfo {
@@ -105,6 +108,42 @@ namespace DebugEngine {
 		ULONG Checksum;
 		ULONG ModuleSize;
 		void* ThreadDataOffset;
+	};
+
+	// ModuleLoaded and ModuleUnloaded
+	struct ModuleEventData {
+		ULONG64 BaseAddress;
+		std::wstring Name;
+	};
+
+	// ContextChanged: the engine's id of the current thread
+	struct ContextData {
+		ULONG ThreadId;
+	};
+
+	struct RegisterInfo {
+		std::wstring Name;
+		std::wstring Value;		// as the value is usually written: hexadecimal for integers, decimal for floating point
+	};
+
+	struct StackFrameInfo {
+		ULONG Index;
+		ULONG64 InstructionOffset;
+		ULONG64 ReturnOffset;
+		ULONG64 FrameOffset;
+		ULONG64 StackOffset;
+		std::wstring Symbol;		// module!function+0xoffset; empty if there is no symbol
+	};
+
+	struct BreakpointInfo {
+		ULONG Id;
+		bool Enabled;
+		bool Deferred;		// its address cannot be worked out yet: the module it is in is not loaded
+		bool IsData;		// on access to memory rather than on running code
+		ULONG64 Offset;
+		ULONG PassCount;
+		std::wstring Expression;
+		std::wstring Command;
 	};
 
 	struct ExitThreadData {
@@ -183,6 +222,18 @@ namespace DebugEngine {
 
 		Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
 		Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
+
+		// about the current thread of the target
+		Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers);
+		Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames = 128);
+		// the thread by the engine's id (ThreadInfo::Id)
+		Task<HRESULT> SetCurrentThread(ULONG threadId);
+
+		Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
+		// a breakpoint at an address or symbol, as the debugger takes them (module!function, 0x7ff6`1234, ...)
+		Task<HRESULT> AddBreakpoint(PCWSTR expression);
+		Task<HRESULT> RemoveBreakpoint(ULONG id);
+		Task<HRESULT> SetBreakpointEnabled(ULONG id, bool enabled);
 
 		// Runs code on the engine thread. The function must not use the client after it returns.
 		Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);

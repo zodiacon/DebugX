@@ -213,6 +213,12 @@
     <ClCompile Include="DebugX.cpp" />
     <ClCompile Include="KernelProcessesView.cpp" />
     <ClCompile Include="MainFrm.cpp" />
+    <ClCompile Include="AddBreakpointDlg.cpp" />
+    <ClCompile Include="BreakpointsView.cpp" />
+    <ClCompile Include="CallStackView.cpp" />
+    <ClCompile Include="ModulesView.cpp" />
+    <ClCompile Include="OutputView.cpp" />
+    <ClCompile Include="RegistersView.cpp" />
     <ClCompile Include="PaneRegistry.cpp" />
     <ClCompile Include="SessionModel.cpp" />
     <ClCompile Include="ProcessSelectDlg.cpp" />
@@ -234,6 +240,13 @@
     <ClInclude Include="Lifetime.h" />
     <ClInclude Include="KernelProcessesView.h" />
     <ClInclude Include="MainFrm.h" />
+    <ClInclude Include="AddBreakpointDlg.h" />
+    <ClInclude Include="BreakpointsView.h" />
+    <ClInclude Include="CallStackView.h" />
+    <ClInclude Include="ListPane.h" />
+    <ClInclude Include="ModulesView.h" />
+    <ClInclude Include="OutputView.h" />
+    <ClInclude Include="RegistersView.h" />
     <ClInclude Include="PaneBase.h" />
     <ClInclude Include="PaneRegistry.h" />
     <ClInclude Include="SessionModel.h" />

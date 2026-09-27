@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "Debugger.h"
 #include <atomic>
+#include <format>
 #include <functional>
 #include <mutex>
 #include <atlcom.h>
@@ -46,8 +47,34 @@ namespace {
 			case DebuggerNotificationType::ExitProcess:
 			case DebuggerNotificationType::ExitThread: delete static_cast<ExitThreadData*>(data); break;
 			case DebuggerNotificationType::StatusChanged: delete static_cast<ULONG*>(data); break;
+			case DebuggerNotificationType::ModuleLoaded:
+			case DebuggerNotificationType::ModuleUnloaded: delete static_cast<ModuleEventData*>(data); break;
+			case DebuggerNotificationType::ContextChanged: delete static_cast<ContextData*>(data); break;
 			default: break;
 		}
+	}
+
+	// a register's value the way it is usually written
+	std::wstring FormatValue(IDebugControl7* control, const DEBUG_VALUE& value) {
+		switch (value.Type) {
+			case DEBUG_VALUE_INT8: return std::format(L"{:02X}", value.I8);
+			case DEBUG_VALUE_INT16: return std::format(L"{:04X}", value.I16);
+			case DEBUG_VALUE_INT32: return std::format(L"{:08X}", value.I32);
+			case DEBUG_VALUE_INT64: return std::format(L"{:016X}", value.I64);
+			case DEBUG_VALUE_FLOAT32: return std::format(L"{:g}", value.F32);
+			case DEBUG_VALUE_FLOAT64: return std::format(L"{:g}", value.F64);
+			case DEBUG_VALUE_FLOAT80:
+			case DEBUG_VALUE_FLOAT82:
+			case DEBUG_VALUE_FLOAT128: {
+				DEBUG_VALUE in(value), out{};
+				if (SUCCEEDED(control->CoerceValue(&in, DEBUG_VALUE_FLOAT64, &out)))
+					return std::format(L"{:g}", out.F64);
+				break;
+			}
+			case DEBUG_VALUE_VECTOR64: return std::format(L"{:08X} {:08X}", value.VI32[1], value.VI32[0]);
+			case DEBUG_VALUE_VECTOR128: return std::format(L"{:08X} {:08X} {:08X} {:08X}", value.VI32[3], value.VI32[2], value.VI32[1], value.VI32[0]);
+		}
+		return L"?";
 	}
 
 	bool IsExecuting(ULONG status) {
@@ -93,6 +120,13 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
 	Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
 	Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);
+	Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers);
+	Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames);
+	Task<HRESULT> SetCurrentThread(ULONG threadId);
+	Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
+	Task<HRESULT> AddBreakpoint(PCWSTR expression);
+	Task<HRESULT> RemoveBreakpoint(ULONG id);
+	Task<HRESULT> SetBreakpointEnabled(ULONG id, bool enabled);
 	HRESULT Break();
 
 	TargetType GetTargetType() const {
@@ -155,7 +189,8 @@ private:
 	HRESULT CreateInternal();
 	void UpdateStatus();
 	bool DoPostCommand();
-	HRESULT EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads);
+	HRESULT EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads, ULONG currentThread);
+	void PostContextChanged();
 
 	void PostNotification(DebuggerNotificationType type, void* data);
 
@@ -180,6 +215,8 @@ private:
 	// the debug thread only
 	bool m_StateChanged{ false };
 	bool m_BreakpointHit{ false };
+	// while the engine's current thread is switched by the debugger itself (looking at the threads), nobody is told
+	int m_InternalSwitch{ 0 };
 
 	CComPtr<IDebugClient7> m_spClient;
 	CComPtr<IDebugAdvanced4> m_spAdvanced;
@@ -247,9 +284,11 @@ private:
 		return DEBUG_STATUS_BREAK;
 	}
 	virtual HRESULT __stdcall LoadModule(ULONG64 ImageFileHandle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName, ULONG CheckSum, ULONG TimeDateStamp) override {
+		PostNotification(DebuggerNotificationType::ModuleLoaded, new ModuleEventData{ BaseOffset, std::wstring(CA2W(ImageName ? ImageName : (ModuleName ? ModuleName : ""))) });
 		return DEBUG_STATUS_NO_CHANGE;
 	}
 	virtual HRESULT __stdcall UnloadModule(PCSTR ImageBaseName, ULONG64 BaseOffset) override {
+		PostNotification(DebuggerNotificationType::ModuleUnloaded, new ModuleEventData{ BaseOffset, std::wstring(CA2W(ImageBaseName ? ImageBaseName : "")) });
 		return DEBUG_STATUS_NO_CHANGE;
 	}
 	virtual HRESULT __stdcall SystemError(ULONG Error, ULONG Level) override {
@@ -263,11 +302,18 @@ private:
 	virtual HRESULT __stdcall ChangeDebuggeeState(ULONG Flags, ULONG64 Argument) override {
 		m_StateChanged = true;
 		UpdateStatus();
+		// registers written to (the engine says everything has changed when the target stops: that is not this)
+		if ((Flags & DEBUG_CDS_REGISTERS) && !(Flags & DEBUG_CDS_DATA))
+			PostContextChanged();
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeEngineState(ULONG Flags, ULONG64 Argument) override {
 		m_StateChanged = true;
 		UpdateStatus();
+		if (Flags & DEBUG_CES_BREAKPOINTS)
+			PostNotification(DebuggerNotificationType::BreakpointsChanged, nullptr);
+		if ((Flags & DEBUG_CES_CURRENT_THREAD) && m_InternalSwitch == 0)
+			PostContextChanged();
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeSymbolState(ULONG Flags, ULONG64 Argument) override {
@@ -514,8 +560,18 @@ void DebuggerX::Impl::UpdateStatus() {
 	if (FAILED(m_spControl->GetExecutionStatus(&status)))
 		return;
 
-	if (m_Status.exchange(status) != status)
+	if (m_Status.exchange(status) != status) {
+		// (a stop is often in another thread: who is current is known before anyone is told that the target has stopped)
+		if (status == DEBUG_STATUS_BREAK)
+			PostContextChanged();
 		PostNotification(DebuggerNotificationType::StatusChanged, new ULONG(status));
+	}
+}
+
+void DebuggerX::Impl::PostContextChanged() {
+	ULONG id = 0;
+	if (m_spSystem && SUCCEEDED(m_spSystem->GetCurrentThreadId(&id)))
+		PostNotification(DebuggerNotificationType::ContextChanged, new ContextData{ id });
 }
 
 bool DebuggerX::Impl::DoPostCommand() {
@@ -679,8 +735,14 @@ Task<HRESULT> DebuggerX::Impl::EnumProcesses(std::vector<ProcessInfo>& processes
 		ULONG count;
 		HR(m_spSystem->GetNumberProcesses(&count));
 		processes.reserve(count);
-		ULONG currentProcess;
+		ULONG currentProcess, currentThread = DEBUG_ANY_ID;
 		m_spSystem->GetCurrentProcessId(&currentProcess);
+		m_spSystem->GetCurrentThreadId(&currentThread);
+		struct Switching {
+			Switching(int& count) : Count(count) { ++Count; }
+			~Switching() { --Count; }
+			int& Count;
+		} switching(m_InternalSwitch);
 		WCHAR exe[MAX_PATH * 2];
 		ULONG64 d;
 		for (ULONG i = 0; i < count; i++) {
@@ -692,23 +754,130 @@ Task<HRESULT> DebuggerX::Impl::EnumProcesses(std::vector<ProcessInfo>& processes
 			m_spSystem->GetCurrentProcessHandle(&d);
 			pi.Handle = (HANDLE)d;
 			m_spSystem->GetCurrentProcessUpTime(&pi.UpTimeSec);
-			EnumThreads(pi, threads);
+			EnumThreads(pi, threads, pi.Id == currentProcess ? currentThread : DEBUG_ANY_ID);
 			if (SUCCEEDED(m_spSystem->GetCurrentProcessExecutableNameWide(exe, _countof(exe), nullptr)))
 				pi.ImagePath = exe;
 
 			processes.push_back(pi);
 		}
 		m_spSystem->SetCurrentProcessId(currentProcess);
+		m_spSystem->SetCurrentThreadId(currentThread);
 		return S_OK;
 		});
 }
 
-HRESULT DebuggerX::Impl::EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads) {
+Task<HRESULT> DebuggerX::Impl::GetRegisters(std::vector<RegisterInfo>& registers) {
+	co_return co_await Run([this, &registers] {
+		ULONG count;
+		HR(m_spRegisters->GetNumberRegisters(&count));
+		std::vector<DEBUG_VALUE> values(count);
+		// (all at once; one that cannot be read fails them all, then they are asked for one at a time)
+		const bool all = SUCCEEDED(m_spRegisters->GetValues(count, nullptr, 0, values.data()));
+		registers.reserve(count);
+		WCHAR name[64];
+		for (ULONG i = 0; i < count; i++) {
+			if (!all && FAILED(m_spRegisters->GetValue(i, &values[i])))
+				continue;
+			if (FAILED(m_spRegisters->GetDescriptionWide(i, name, _countof(name), nullptr, nullptr)))
+				continue;
+			registers.push_back({ name, FormatValue(m_spControl, values[i]) });
+		}
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames) {
+	co_return co_await Run([this, &frames, maxFrames] {
+		std::vector<DEBUG_STACK_FRAME> raw(maxFrames);
+		ULONG filled = 0;
+		HR(m_spControl->GetStackTrace(0, 0, 0, raw.data(), maxFrames, &filled));
+		frames.reserve(filled);
+		WCHAR name[512];
+		for (ULONG i = 0; i < filled; i++) {
+			auto& f = raw[i];
+			StackFrameInfo fi{ f.FrameNumber, f.InstructionOffset, f.ReturnOffset, f.FrameOffset, f.StackOffset, {} };
+			ULONG64 displacement = 0;
+			if (SUCCEEDED(m_spSymbols->GetNameByOffsetWide(f.InstructionOffset, name, _countof(name), nullptr, &displacement)))
+				fi.Symbol = displacement ? std::format(L"{}+0x{:X}", name, displacement) : std::wstring(name);
+			frames.push_back(std::move(fi));
+		}
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetCurrentThread(ULONG threadId) {
+	co_return co_await Run([this, threadId] {
+		HR(m_spSystem->SetCurrentThreadId(threadId));
+		// (the engine may or may not say so itself, when it is asked to switch by its own client)
+		PostContextChanged();
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints) {
+	co_return co_await Run([this, &breakpoints] {
+		ULONG count;
+		HR(m_spControl->GetNumberBreakpoints(&count));
+		breakpoints.reserve(count);
+		WCHAR text[1024];
+		for (ULONG i = 0; i < count; i++) {
+			CComPtr<IDebugBreakpoint2> bp;
+			DEBUG_BREAKPOINT_PARAMETERS p;
+			if (FAILED(m_spControl->GetBreakpointByIndex2(i, &bp)) || FAILED(bp->GetParameters(&p)))
+				continue;
+
+			BreakpointInfo bi{};
+			bi.Id = p.Id;
+			bi.Enabled = (p.Flags & DEBUG_BREAKPOINT_ENABLED) != 0;
+			bi.Deferred = (p.Flags & DEBUG_BREAKPOINT_DEFERRED) != 0;
+			bi.IsData = p.BreakType == DEBUG_BREAKPOINT_DATA;
+			bi.Offset = p.Offset;
+			bi.PassCount = p.PassCount;
+			if (SUCCEEDED(bp->GetOffsetExpressionWide(text, _countof(text), nullptr)))
+				bi.Expression = text;
+			if (SUCCEEDED(bp->GetCommandWide(text, _countof(text), nullptr)))
+				bi.Command = text;
+			breakpoints.push_back(std::move(bi));
+		}
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::AddBreakpoint(PCWSTR expression) {
+	co_return co_await Run([this, expression = std::wstring(expression)] {
+		CComPtr<IDebugBreakpoint2> bp;
+		HR(m_spControl->AddBreakpoint2(DEBUG_BREAKPOINT_CODE, DEBUG_ANY_ID, &bp));
+		auto hr = bp->SetOffsetExpressionWide(expression.c_str());
+		if (SUCCEEDED(hr))
+			hr = bp->AddFlags(DEBUG_BREAKPOINT_ENABLED);
+		if (FAILED(hr))
+			m_spControl->RemoveBreakpoint2(bp.Detach());	// (the engine frees the breakpoint: nothing is left to Release)
+		return hr;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::RemoveBreakpoint(ULONG id) {
+	co_return co_await Run([this, id] {
+		CComPtr<IDebugBreakpoint2> bp;
+		HR(m_spControl->GetBreakpointById2(id, &bp));
+		return m_spControl->RemoveBreakpoint2(bp.Detach());	// (the engine frees the breakpoint: nothing is left to Release)
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetBreakpointEnabled(ULONG id, bool enabled) {
+	co_return co_await Run([this, id, enabled] {
+		CComPtr<IDebugBreakpoint2> bp;
+		HR(m_spControl->GetBreakpointById2(id, &bp));
+		return enabled ? bp->AddFlags(DEBUG_BREAKPOINT_ENABLED) : bp->RemoveFlags(DEBUG_BREAKPOINT_ENABLED);
+		});
+}
+
+HRESULT DebuggerX::Impl::EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads, ULONG currentThread) {
 	ULONG count;
 	HR(m_spSystem->GetNumberThreads(&count));
 	threads.reserve(count);
-	ULONG currentThread;
-	m_spSystem->GetCurrentThreadId(&currentThread);
+	ULONG restore;
+	m_spSystem->GetCurrentThreadId(&restore);
 	ULONG64 d;
 	for (ULONG i = 0; i < count; i++) {
 		ThreadInfo ti;
@@ -719,9 +888,10 @@ HRESULT DebuggerX::Impl::EnumThreads(const ProcessInfo& pi, std::vector<ThreadIn
 		m_spSystem->GetCurrentThreadHandle(&d);
 		ti.Handle = (HANDLE)d;
 		ti.Pid = pi.ProcessId;
+		ti.Current = ti.Id == currentThread;
 		threads.push_back(ti);
 	}
-	m_spSystem->SetCurrentThreadId(currentThread);
+	m_spSystem->SetCurrentThreadId(restore);
 	return S_OK;
 }
 
@@ -781,6 +951,34 @@ Task<HRESULT> DebuggerX::EnumProcesses(std::vector<ProcessInfo>& processes, std:
 
 Task<HRESULT> DebuggerX::RunAsync(std::function<HRESULT(IDebugClient*)> func) {
 	return m_Impl->RunAsync(std::move(func));
+}
+
+Task<HRESULT> DebuggerX::GetRegisters(std::vector<RegisterInfo>& registers) {
+	return m_Impl->GetRegisters(registers);
+}
+
+Task<HRESULT> DebuggerX::GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames) {
+	return m_Impl->GetStackTrace(frames, maxFrames);
+}
+
+Task<HRESULT> DebuggerX::SetCurrentThread(ULONG threadId) {
+	return m_Impl->SetCurrentThread(threadId);
+}
+
+Task<HRESULT> DebuggerX::EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints) {
+	return m_Impl->EnumBreakpoints(breakpoints);
+}
+
+Task<HRESULT> DebuggerX::AddBreakpoint(PCWSTR expression) {
+	return m_Impl->AddBreakpoint(expression);
+}
+
+Task<HRESULT> DebuggerX::RemoveBreakpoint(ULONG id) {
+	return m_Impl->RemoveBreakpoint(id);
+}
+
+Task<HRESULT> DebuggerX::SetBreakpointEnabled(ULONG id, bool enabled) {
+	return m_Impl->SetBreakpointEnabled(id, enabled);
 }
 
 HRESULT DebuggerX::Break() {

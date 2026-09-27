@@ -3,6 +3,11 @@
 #include "CommandView.h"
 #include "UserThreadsView.h"
 #include "KernelProcessesView.h"
+#include "ModulesView.h"
+#include "RegistersView.h"
+#include "CallStackView.h"
+#include "BreakpointsView.h"
+#include "OutputView.h"
 #include "resource.h"
 
 using namespace DebugEngine;
@@ -15,9 +20,14 @@ namespace {
 	}
 
 	const PaneInfo s_Panes[] = {
-		{ L"command", L"Command", IDI_COMMAND, ID_VIEW_COMMAND, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, Make<CCommandView> },
-		{ L"threads", L"Threads", IDI_THREADS, ID_VIEW_THREADS, DockSide::Right, { 420, 300 }, TargetType::User, Make<CUserThreadsView> },
-		{ L"processes", L"Processes", IDI_PROCESSES, ID_VIEW_PROCESSES, DockSide::Right, { 700, 300 }, TargetType::Kernel, Make<CKernelProcessesView> },
+		{ L"command", L"Command", IDI_COMMAND, ID_VIEW_COMMAND, PaneKind::Document, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, nullptr, Make<CCommandView> },
+		{ L"output", L"Output", IDI_EVENT, ID_VIEW_OUTPUT, PaneKind::Tool, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, nullptr, Make<COutputView> },
+		{ L"callstack", L"Call Stack", IDI_CALLSTACK, ID_VIEW_CALLSTACK, PaneKind::Tool, DockSide::Left, { 560, 300 }, TargetType::Unknown, true, nullptr, Make<CCallStackView> },
+		{ L"registers", L"Registers", IDI_REGISTRY, ID_VIEW_REGISTERS, PaneKind::Tool, DockSide::Right, { 440, 300 }, TargetType::Unknown, true, nullptr, Make<CRegistersView> },
+		{ L"threads", L"Threads", IDI_THREADS, ID_VIEW_THREADS, PaneKind::Tool, DockSide::Right, { 420, 300 }, TargetType::User, true, L"registers", Make<CUserThreadsView> },
+		{ L"modules", L"Modules", IDI_DLL, ID_VIEW_MODULES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Unknown, true, L"registers", Make<CModulesView> },
+		{ L"breakpoints", L"Breakpoints", IDI_BREAKPOINTS, ID_VIEW_BREAKPOINTS, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"output", Make<CBreakpointsView> },
+		{ L"processes", L"Processes", IDI_PROCESSES, ID_VIEW_PROCESSES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Kernel, true, L"registers", Make<CKernelProcessesView> },
 	};
 }
 

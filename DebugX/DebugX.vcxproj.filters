@@ -33,6 +33,24 @@
     <ClCompile Include="MainFrm.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="RegistersView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="OutputView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="ModulesView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="CallStackView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="BreakpointsView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="AddBreakpointDlg.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
     <ClCompile Include="SessionModel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -67,6 +85,27 @@
     </ClInclude>
     <ClInclude Include="MainFrm.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RegistersView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="OutputView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="ModulesView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="ListPane.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="CallStackView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="BreakpointsView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="AddBreakpointDlg.h">
+      <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="SessionModel.h">
       <Filter>Header Files</Filter>

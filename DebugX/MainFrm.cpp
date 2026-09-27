@@ -15,6 +15,7 @@
 #include "RunExeDlg.h"
 #include "ProcessSelectDlg.h"
 #include "PaneRegistry.h"
+#include "AddBreakpointDlg.h"
 
 using namespace DebugEngine;
 using namespace WTLDock;
@@ -186,8 +187,16 @@ LRESULT CMainFrame::OnAppAbout(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCt
 
 LRESULT CMainFrame::OnViewPane(WORD, WORD id, HWND, BOOL&) {
 	if (auto info = PaneRegistry::Get().FindByCommand(id)) {
-		if (auto pane = m_Dock.Layout().FindPane(info->Id))
+		auto& layout = m_Dock.Layout();
+		if (auto pane = layout.FindPane(info->Id)) {
+			// a pane that has never been shown goes in with the ones it belongs with, if they are there
+			if (info->TabWith && pane->State() == PaneState::Hidden && !pane->Anchor().Valid) {
+				auto with = layout.FindPane(info->TabWith);
+				if (with && with->State() != PaneState::Hidden && with->Group())
+					layout.DockTo(pane, with->Group(), DockPosition::Tab);
+			}
 			m_Dock.ShowPane(pane);
+		}
 	}
 	return 0;
 }
@@ -286,6 +295,17 @@ LRESULT CMainFrame::OnDebugStepOut(WORD, WORD, HWND, BOOL&) {
 	return 0;
 }
 
+LRESULT CMainFrame::OnDebugAddBreakpoint(WORD, WORD, HWND, BOOL&) {
+	if (!DebugManager::Session().HasTarget())
+		return 0;
+
+	CAddBreakpointDlg dlg;
+	if (dlg.DoModal(m_hWnd) == IDOK)
+		AddBreakpoint(dlg.GetExpression());
+
+	return 0;
+}
+
 Task<void> CMainFrame::RunExecutable(CString exePath, CString arguments, CString workingDir) {
 	auto alive = m_Lifetime.Watch();
 	auto& dbg = DebugManager::DebuggerX();
@@ -338,6 +358,21 @@ Task<void> CMainFrame::AttachLocalKernel() {
 	co_await dbg.OutputPrompt();
 }
 
+Task<void> CMainFrame::AddBreakpoint(CString expression) {
+	auto alive = m_Lifetime.Watch();
+
+	auto hr = co_await DebugManager::DebuggerX().AddBreakpoint(expression);
+	if (!*alive)
+		co_return;
+
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"Failed to set a breakpoint at %s (0x%08X)", (PCWSTR)expression, static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+	}
+	// (the list of breakpoints hears of it from the engine)
+}
+
 void CMainFrame::InitMenu(HMENU menu) {
 	MenuItemData commands[] = {
 		{ ID_EDIT_CUT, IDI_CUT },
@@ -347,6 +382,10 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_VIEW_COMMAND, IDI_COMMAND },
 		{ ID_VIEW_THREADS, IDI_THREADS },
 		{ ID_VIEW_PROCESSES, IDI_PROCESSES },
+		{ ID_VIEW_OUTPUT, IDI_EVENT },
+		{ ID_VIEW_MODULES, IDI_DLL },
+		{ ID_VIEW_REGISTERS, IDI_REGISTRY },
+		{ ID_DEBUG_ADDBREAKPOINT, IDI_BREAKPOINT },
 		{ ID_VIEW_CALLSTACK, IDI_CALLSTACK },
 		{ ID_VIEW_BREAKPOINTS, IDI_BREAKPOINTS },
 		{ ID_DEBUG_ATTACHTOPROCESS, IDI_PROCESS_ADD },
@@ -388,7 +427,7 @@ void CMainFrame::InitDock() {
 		desc.Id = info.Id;
 		desc.Title = info.Title;
 		desc.Icon = AtlLoadIconImage(info.Icon, LR_DEFAULTCOLOR | LR_SHARED, 16, 16);
-		desc.Kind = PaneKind::Tool;
+		desc.Kind = info.Kind;
 		desc.DefaultSide = info.Side;
 		desc.PreferredSize = info.Size;
 		layout.AddPane(desc);
@@ -430,6 +469,5 @@ void CMainFrame::UpdateUI(bool force) {
 	// a pane of a target that is not there is not for showing
 	for (auto& info : PaneRegistry::Get().Panes())
 		UIEnable(info.Command, PaneRegistry::IsAvailable(info, target), force);
-	UIEnable(ID_VIEW_CALLSTACK, attached, force);
-	UIEnable(ID_VIEW_BREAKPOINTS, attached, force);
+	UIEnable(ID_DEBUG_ADDBREAKPOINT, attached, force);
 }

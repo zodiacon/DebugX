@@ -115,7 +115,7 @@ private:
 // What panes with a list keep of it: the width of the columns (at 96 DPI, so that a different monitor does not
 // upset them), as "w:170,130,70".
 //
-namespace PaneState {
+namespace ColumnState {
 	inline std::wstring SaveColumnWidths(CListViewCtrl list) {
 		const int dpi = ::GetDpiForWindow(list);
 		std::wstring state(L"w:");

@@ -4,22 +4,6 @@
 #include "DebugX.Kernel.h"
 #include "SortHelper.h"
 
-HWND CKernelProcessesView::Create(HWND hParent) {
-	return __super::Create(hParent, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
-}
-
-void CKernelProcessesView::OnFinalMessage(HWND) {
-	delete this;
-}
-
-std::wstring CKernelProcessesView::SaveState() const {
-	return PaneState::SaveColumnWidths(m_List);
-}
-
-void CKernelProcessesView::LoadState(PCWSTR state) {
-	PaneState::LoadColumnWidths(m_List, state);
-}
-
 void CKernelProcessesView::OnTargetEnded() {
 	m_Items.clear();
 	m_List.SetItemCount(0);
@@ -98,11 +82,7 @@ void CKernelProcessesView::DoSort(const SortInfo* si) {
 		});
 }
 
-LRESULT CKernelProcessesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
-	m_hWndClient = m_List.Create(*this, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS
-		| LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS);
-	m_List.SetExtendedListViewStyle(LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_INFOTIP | LVS_EX_LABELTIP);
-
+void CKernelProcessesView::InitList() {
 	m_List.InsertColumn(0, L"Image Name", LVCFMT_LEFT, 200);
 	m_List.InsertColumn(1, L"EPROCESS", LVCFMT_RIGHT, 140);
 	m_List.InsertColumn(2, L"PID", LVCFMT_RIGHT, 110);
@@ -114,16 +94,6 @@ LRESULT CKernelProcessesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_List.InsertColumn(8, L"Exit Time", LVCFMT_RIGHT, 120);
 	//m_List.InsertColumn(6, L"Kernel Time", LVCFMT_RIGHT, 120);
 	//m_List.InsertColumn(7, L"User Time", LVCFMT_RIGHT, 120);
-
-	InitPane();
-
-	return 0;
-}
-
-LRESULT CKernelProcessesView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
-	ExitPane();
-	handled = FALSE;
-	return 0;
 }
 
 LRESULT CKernelProcessesView::OnTimer(UINT, WPARAM id, LPARAM, BOOL&) {
