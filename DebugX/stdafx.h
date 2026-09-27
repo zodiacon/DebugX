@@ -6,10 +6,14 @@
 #pragma once
 
 // Change these values to use different versions
-#define WINVER		0x0601
-#define _WIN32_WINNT	0x0601
-#define _WIN32_IE	0x0700
+// Windows 10 1703 (Creators Update) is the minimum: the docking framework needs per-monitor DPI
+#define WINVER		0x0A00
+#define _WIN32_WINNT	0x0A00
+#define _WIN32_IE	0x0A00
 #define _RICHEDIT_VER	0x0700
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 
 #include <atlbase.h>
 #include <atlapp.h>
@@ -23,6 +27,11 @@ extern CAppModule _Module;
 #include <atldlgs.h>
 #include <atlctrlw.h>
 #include <atlctrlx.h>
+#include <atlgdi.h>
+#include <atluser.h>
+#include <uxtheme.h>
+#include <ShlObj.h>
+#include <string>
 #include <DbgEng.h>
 #include <vector>
 #include <memory>
@@ -36,6 +45,10 @@ extern CAppModule _Module;
 #include <algorithm>
 #include <DbgModel.h>
 #include "DbgModelClientEx.h"
+#include <WTLDockUI.h>
+#include <WTLHelper.h>
+
+#pragma comment(lib, "uxtheme.lib")
 
 #if defined _M_IX86
   #pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"")

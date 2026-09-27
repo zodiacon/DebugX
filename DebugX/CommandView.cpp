@@ -2,11 +2,10 @@
 #include "CommandView.h"
 #include "DebugManager.h"
 #include "resource.h"
-#include "Interfaces.h"
 
 using namespace DebugEngine;
 
-CCommandView::CCommandView(IMainFrame* frame) : m_pFrame(frame), m_CommandEdit(this, 1), m_Text(this, 2) {
+CCommandView::CCommandView() : m_CommandEdit(this, 1), m_Text(this, 2) {
 }
 
 void CCommandView::OnFinalMessage(HWND) {
@@ -21,11 +20,11 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Text.SetEventMask(ENM_LINK | ENM_MOUSEEVENTS);
 
 	CHARFORMAT cf = { sizeof(cf) };
-	cf.crTextColor = RGB(0, 0, 0);
+	cf.crTextColor = ::GetSysColor(COLOR_WINDOWTEXT);
 	cf.dwMask = CFM_COLOR | CFM_FACE;
 	::wcscpy_s(cf.szFaceName, L"Consolas");
 	m_Text.SetDefaultCharFormat(cf);
-	DebugManager::Get().RegisterWindow(*this);
+	m_Text.SetBackgroundColor(::GetSysColor(COLOR_WINDOW));
 
 	CFontHandle font;
 	font.CreatePointFont(90, L"Consolas");
@@ -39,7 +38,8 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
 	m_CommandHistory.reserve(64);
 
-	_Module.GetMessageLoop()->AddIdleHandler(this);
+	DebugManager::Session().AddObserver(this);
+	UpdateControls();
 
 	return 0;
 }
@@ -56,20 +56,25 @@ HWND CCommandView::Create(HWND hParent) {
 	return __super::Create(hParent, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
 }
 
-BOOL CCommandView::OnIdle() {
-	const auto& dbg = DebugManager::DebuggerX();
-	auto status = dbg.GetExecutionStatusAsync();
+void CCommandView::OnSessionChanged() {
+	UpdateControls();
+}
 
-	m_CommandEdit.EnableWindow(status == ExecutionStatus::Break);
-	m_Execute.EnableWindow(status == ExecutionStatus::Break);
-	m_pFrame->GerUIUpdate()->UIEnable(ID_DEBUG_BREAK, m_IsBusy);
+void CCommandView::UpdateControls() {
+	auto& session = DebugManager::Session();
+	auto busy = session.IsBusy();
+	if (busy != m_IsBusy)
+		SetBusy(busy);
 
-	return FALSE;
+	auto ready = !busy && session.IsBroken();
+	if (ready != (m_CommandEdit.IsWindowEnabled() != FALSE)) {
+		m_CommandEdit.EnableWindow(ready);
+		m_Execute.EnableWindow(ready);
+	}
 }
 
 LRESULT CCommandView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
-	DebugManager::Get().UnregisterWindow(*this);
-	_Module.GetMessageLoop()->RemoveIdleHandler(this);
+	DebugManager::Session().RemoveObserver(this);
 
 	handled = FALSE;
 
@@ -91,23 +96,23 @@ LRESULT CCommandView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	return 0;
 }
 
-LRESULT CCommandView::OnDebugOutput(UINT, WPARAM, LPARAM lParam, BOOL&) {
-	auto data = reinterpret_cast<OutputData*>(lParam);
-	if (data->Text.empty()) {
+void CCommandView::OnOutput(const OutputData& data) {
+	if (data.Text.empty()) {
 		// flush
 		m_Text.SetSel(-1, 0);
 		m_Text.ScrollCaret();
-		return 0;
+		return;
 	}
 
-	COLORREF color = 0;
-	CString text(data->Text.c_str());
+	CString text(data.Text.c_str());
 
-	if ((data->Mask & OutputDataMask::Prompt) == OutputDataMask::Prompt) {
-		m_Prompt.SetWindowTextW(text);
+	if ((data.Mask & OutputDataMask::Prompt) == OutputDataMask::Prompt) {
+		m_PromptText = text;
+		if (!m_IsBusy)
+			m_Prompt.SetWindowText(text);
 	}
 	else {
-		if (data->IsDml) {
+		if (data.IsDml) {
 			AddDmlText(text);
 		}
 		else
@@ -115,15 +120,18 @@ LRESULT CCommandView::OnDebugOutput(UINT, WPARAM, LPARAM lParam, BOOL&) {
 		m_Text.SetSel(-1, 0);
 		m_Text.ScrollCaret();
 	}
-
-	return 0;
 }
 
-LRESULT CCommandView::OnStatusChanged(UINT, WPARAM, LPARAM, BOOL&) {
-	auto busy = DebugManager::DebuggerX().IsBusy();
-	if(busy != m_IsBusy)
-		SetBusy(busy);
-
+// the system colors are the dark ones while in dark mode
+LRESULT CCommandView::OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&) {
+	CHARFORMAT cf = { sizeof(cf) };
+	cf.dwMask = CFM_COLOR;
+	cf.crTextColor = ::GetSysColor(COLOR_WINDOWTEXT);
+	m_Text.SetDefaultCharFormat(cf);
+	m_Text.SetBackgroundColor(::GetSysColor(COLOR_WINDOW));
+	// the scroll bars follow the visual style
+	::SetWindowTheme(m_Text, WTLHelper::IsDarkMode() ? L"DarkMode_Explorer" : L"Explorer", nullptr);
+	m_Text.Invalidate();
 	return 0;
 }
 
@@ -148,15 +156,24 @@ void CCommandView::DoExecuteCommand(PCWSTR command) {
 		cmd = command;
 	}
 
-	CString prompt;
-	m_Prompt.GetWindowText(prompt);
-	m_Text.AppendText(prompt + L" " + cmd + L"\n");
+	m_Text.AppendText(m_PromptText + L" " + cmd + L"\n");
 	m_CommandHistory.push_back(cmd);
 	m_CommandHistoryIndex = (int)m_CommandHistory.size();
 	m_CommandEdit.SetWindowText(L"");
 	m_CommandEdit.EnableWindow(FALSE);
 	m_Execute.EnableWindow(FALSE);
-	m_PendingCommand = DebugManager::DebuggerX().ExecuteCommandAsync(cmd);
+	RunCommand(cmd);
+}
+
+Task<void> CCommandView::RunCommand(CString command) {
+	auto alive = m_Lifetime.Watch();
+	co_await DebugManager::DebuggerX().ExecuteCommand(command);
+	if (!*alive)
+		co_return;
+
+	UpdateControls();
+	if (m_CommandEdit.IsWindowEnabled())
+		m_CommandEdit.SetFocus();
 }
 
 void CCommandView::AddDmlText(CString& dml) {
@@ -177,7 +194,7 @@ void CCommandView::AddDmlText(CString& dml) {
 
 	CHARFORMAT2 cf = { sizeof(cf) };
 	cf.dwMask = CFM_EFFECTS | CFM_COLOR | CFM_COOKIE;
-	cf.crTextColor = RGB(0, 0, 255);
+	cf.crTextColor = WTLHelper::IsDarkMode() ? RGB(102, 178, 255) : RGB(0, 0, 255);
 	cf.dwEffects = CFE_LINK | CFE_UNDERLINE;
 	cf.dwCookie = 0x1234;
 
@@ -230,19 +247,8 @@ void CCommandView::AddDmlText(CString& dml) {
 
 void CCommandView::SetBusy(bool busy) {
 	m_IsBusy = busy;
-	if (busy) {
-		m_Prompt.SetWindowText(L"*BUSY*");
-		m_Execute.EnableWindow(FALSE);
-		m_pFrame->GerUIUpdate()->UIEnable(ID_DEBUG_BREAK, true, true);
-	}
-	else {
-		m_pFrame->GerUIUpdate()->UIEnable(ID_DEBUG_BREAK, false, true);
-		if (DebugManager::Get().IsAlive()) {
-			DebugManager::DebuggerX().OutputPrompt();
-		}
-		m_Execute.EnableWindow();
-		m_CommandEdit.SetFocus();
-	}
+	// the engine's own prompt comes back with the next output; until then show the last one
+	m_Prompt.SetWindowText(busy ? CString(L"*BUSY*") : m_PromptText);
 }
 
 LRESULT CCommandView::OnEditChar(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
@@ -276,7 +282,7 @@ LRESULT CCommandView::OnEditKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handled) 
 			return 0;
 
 		case VK_DOWN:
-			if (m_CommandHistoryIndex + 1 < m_CommandHistory.size()) {
+			if (m_CommandHistoryIndex + 1 < (int)m_CommandHistory.size()) {
 				m_CommandEdit.SetWindowText(m_CommandHistory[++m_CommandHistoryIndex]);
 				m_CommandEdit.SetSel(0, -1);
 				m_CommandEdit.SetSel(-1);
@@ -288,12 +294,6 @@ LRESULT CCommandView::OnEditKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handled) 
 			return 0;
 	}
 	handled = FALSE;
-	return 0;
-}
-
-LRESULT CCommandView::OnCopy(WORD, WORD, HWND, BOOL&) {
-	::SendMessage(GetFocus(), WM_COPY, 0, 0);
-
 	return 0;
 }
 
@@ -324,10 +324,6 @@ LRESULT CCommandView::OnMessageFilter(int, LPNMHDR hdr, BOOL&) {
 	return 0;
 }
 
-LRESULT CCommandView::OnClickLink(int, LPNMHDR, BOOL&) {
-	return LRESULT();
-}
-
 LRESULT CCommandView::OnRichEditSetCursor(UINT, WPARAM, LPARAM lParam, BOOL& handled) {
 	if (LOWORD(lParam) == HTCLIENT) {
 		m_hCursor = AtlLoadSysCursor(IDC_ARROW);
@@ -348,12 +344,3 @@ LRESULT CCommandView::OnRichEditSetCursor(UINT, WPARAM, LPARAM lParam, BOOL& han
 	handled = FALSE;
 	return FALSE;
 }
-
-HICON CCommandView::GetIcon() const {
-	return AtlLoadIconImage(IDI_COMMAND, 64, 16, 16);
-}
-
-CString CCommandView::GetHeader() const {
-	return L"Command";
-}
-

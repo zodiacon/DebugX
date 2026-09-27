@@ -5,11 +5,10 @@
 #include "stdafx.h"
 #include "resource.h"
 #include "aboutdlg.h"
-#include "DialogHelper.h"
 
 LRESULT CAboutDlg::OnInitDialog(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
 	CenterWindow(GetParent());
-	DialogHelper::AdjustOKCancelButtons(this);
+	AdjustOKCancelButtons(IDI_OK, IDI_DELETE);
 
 	return TRUE;
 }

@@ -97,12 +97,17 @@ BEGIN
     POPUP "&Options"
     BEGIN
         MENUITEM "&Always on Top",              ID_OPTIONS_ALWAYSONTOP
+        MENUITEM "Dar&k Mode",                  ID_OPTIONS_DARKMODE
         MENUITEM "&Debugger Markup Language",   ID_OPTIONS_DEBUGGERMARKUPLANGUAGE
     END
     POPUP "&Window"
     BEGIN
+        MENUITEM "&Windows...",                 ID_WINDOW_WINDOWS
+        MENUITEM SEPARATOR
         MENUITEM "&Close\tCtrl+F4",             ID_WINDOW_CLOSE
-        MENUITEM "Close &All",                  ID_WINDOW_CLOSE_ALL
+        MENUITEM "Close &All Documents",        ID_WINDOW_CLOSE_ALL
+        MENUITEM SEPARATOR
+        MENUITEM "&Reset Window Layout",        ID_WINDOW_RESETLAYOUT
     END
     POPUP "&Help"
     BEGIN

@@ -1,11 +1,10 @@
 #include "stdafx.h"
 #include "RunExeDlg.h"
-#include "DialogHelper.h"
 
 LRESULT CRunExeDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&) {
-	DialogHelper::AdjustOKCancelButtons(this);
-	DialogHelper::AddIconToButton(this, IDC_BROWSE, IDI_OPEN);
-	DialogHelper::AddIconToButton(this, IDC_BROWSEDIR, IDI_OPEN);
+	AdjustOKCancelButtons(IDI_OK, IDI_DELETE);
+	AddIconToButton(IDC_BROWSE, IDI_OPEN);
+	AddIconToButton(IDC_BROWSEDIR, IDI_OPEN);
 
 	::SHAutoComplete(GetDlgItem(IDC_EXEPATH), SHACF_FILESYSTEM);
 	::SHAutoComplete(GetDlgItem(IDC_INITIALDIR), SHACF_FILESYS_DIRS);
@@ -34,10 +33,23 @@ LRESULT CRunExeDlg::OnExePathChanged(WORD, WORD wID, HWND, BOOL&) {
 	return 0;
 }
 
+namespace {
+	// the system's file and folder pickers do not take the dark mode hook
+	struct HookSuspender {
+		HookSuspender() {
+			WTLHelper::SuspendHook();
+		}
+		~HookSuspender() {
+			WTLHelper::ResumeHook();
+		}
+	};
+}
+
 LRESULT CRunExeDlg::OnBrowse(WORD, WORD wID, HWND, BOOL&) {
 	CFileDialog dlg(TRUE, L"exe", nullptr,
 		OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_ENABLESIZING,
 		L"Executable Files (*.exe)\0*.exe\0All Files\0*.*\0", *this);
+	HookSuspender suspend;
 	if (dlg.DoModal() == IDOK) {
 		SetDlgItemText(IDC_EXEPATH, dlg.m_szFileName);
 	}
@@ -46,6 +58,7 @@ LRESULT CRunExeDlg::OnBrowse(WORD, WORD wID, HWND, BOOL&) {
 
 LRESULT CRunExeDlg::OnBrowseDir(WORD, WORD wID, HWND, BOOL&) {
 	CFolderDialog dlg(*this, L"Select working directory");
+	HookSuspender suspend;
 	if (dlg.DoModal() == IDOK) {
 		SetDlgItemText(IDC_INITIALDIR, dlg.m_szFolderPath);
 	}

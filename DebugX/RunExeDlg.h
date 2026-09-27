@@ -1,8 +1,11 @@
 #pragma once
 
 #include "resource.h"
+#include "DialogHelper.h"
 
-class CRunExeDlg : public CDialogImpl<CRunExeDlg> {
+class CRunExeDlg :
+	public CDialogImpl<CRunExeDlg>,
+	public CDialogHelper<CRunExeDlg> {
 public:
 	enum { IDD = IDD_RUNEXE };
 

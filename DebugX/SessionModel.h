@@ -1,0 +1,71 @@
+#pragma once
+
+#include <vector>
+#include "..\DebugEngine\Debugger.h"
+
+//
+// What the windows of the application want to know about the debugging session, as events: they implement the
+// members they care about and register with the SessionModel. All of it happens on the UI thread.
+//
+struct ISessionObserver {
+	virtual ~ISessionObserver() = default;
+
+	// Anything the state of the UI is derived from has changed: the execution status, whether a call to the
+	// engine is in flight, the target. The model has the new state (a window's controls follow it from here).
+	virtual void OnSessionChanged() {}
+
+	virtual void OnTargetAttached() {}
+	virtual void OnTargetEnded() {}
+	// the target has stopped: a breakpoint, an exception, a step, Break
+	virtual void OnBroke() {}
+	virtual void OnResumed() {}
+
+	virtual void OnProcessCreated(const DebugEngine::CreateProcessData& data) {}
+	virtual void OnProcessExited(const DebugEngine::ExitThreadData& data) {}
+	virtual void OnThreadCreated(const DebugEngine::ThreadCreateData& data) {}
+	virtual void OnThreadExited(const DebugEngine::ExitThreadData& data) {}
+	virtual void OnOutput(const DebugEngine::OutputData& data) {}
+};
+
+//
+// Turns the debugger's notifications into the events above, and answers what state the session is in. The events
+// come in the order the engine reported them, so a status seen here is never ahead of the events that precede it.
+//
+class SessionModel final {
+public:
+	explicit SessionModel(DebugEngine::DebuggerX& debugger);
+	SessionModel(const SessionModel&) = delete;
+	SessionModel& operator=(const SessionModel&) = delete;
+
+	void AddObserver(ISessionObserver* observer);
+	void RemoveObserver(ISessionObserver* observer);
+
+	DebugEngine::ExecutionStatus Status() const {
+		return m_Status;
+	}
+	DebugEngine::TargetType Target() const;
+	// a call to the engine is in flight
+	bool IsBusy() const;
+
+	bool HasTarget() const {
+		return Target() != DebugEngine::TargetType::Unknown;
+	}
+	bool IsBroken() const {
+		return m_Status == DebugEngine::ExecutionStatus::Break;
+	}
+	bool IsRunning() const;
+	// the target is stopped and nothing else is going on: it can be run, stepped, asked things
+	bool CanRun() const;
+
+	// from DebugManager, for every notification of the debugger
+	void OnNotification(DebugEngine::DebuggerNotificationType type, void* data);
+
+private:
+	template<typename F>
+	void Notify(F&& call);
+
+	DebugEngine::DebuggerX& m_Debugger;
+	std::vector<ISessionObserver*> m_Observers;
+	DebugEngine::ExecutionStatus m_Status{ DebugEngine::ExecutionStatus::NoDebuggee };
+	bool m_HadTarget{ false };
+};

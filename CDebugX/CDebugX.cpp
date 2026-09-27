@@ -22,11 +22,9 @@ using namespace DebugX::Analysis;
 
 #include "..\DebugEngine\Debugger.h"
 
+#pragma comment(lib, "dbgeng")
+
 #define HR(x) ATLVERIFY(SUCCEEDED(x))
-
-using XDebugger = DebugEngine::DebuggerX;
-
-std::unique_ptr<XDebugger> debugger;
 
 CComModule _Module;
 
@@ -57,35 +55,6 @@ void SetConsoleForegroundColor(ConsoleColor color) {
 	CONSOLE_SCREEN_BUFFER_INFO info;
 	GetConsoleScreenBufferInfo(hOutput, &info);
 	SetConsoleTextAttribute(hOutput, (info.wAttributes & ~0x0f) | (WORD)color);
-}
-
-DWORD CALLBACK NotifyThread(PVOID) {
-	using namespace DebugEngine;
-	MSG msg;
-	while (::GetMessage(&msg, nullptr, 0, 0)) {
-		ATLASSERT(msg.hwnd == nullptr);
-
-		switch (static_cast<DebuggerNotificationType>(msg.message)) {
-			case DebuggerNotificationType::ProcessCreated:
-				debugger->FreeNotification(DebuggerNotificationType::ProcessCreated, msg.wParam);
-				break;
-
-			case DebuggerNotificationType::Output:
-				auto data = reinterpret_cast<OutputData*>(msg.lParam);
-				switch (data->Mask) {
-					case OutputDataMask::Prompt:
-						printf("%ws> ", data->Text.c_str());
-						break;
-
-					default:
-						printf("%ws", data->Text.c_str());
-						break;
-				}
-				debugger->FreeNotification(DebuggerNotificationType::Output, msg.wParam);
-				break;
-		}
-	}
-	return 0;
 }
 
 struct CDebugCallbacks :
@@ -172,7 +141,7 @@ struct CDebugCallbacks :
 		return S_OK;
 	}
 
-	virtual HRESULT CreateProcessW(ULONG64 ImageFileHandle, ULONG64 Handle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName,
+	virtual HRESULT __stdcall CreateProcessW(ULONG64 ImageFileHandle, ULONG64 Handle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName,
 		ULONG CheckSum, ULONG TimeDateStamp, ULONG64 InitialThreadHandle, ULONG64 ThreadDataOffset, ULONG64 StartOffset) {
 		using namespace DebugEngine;
 		auto data = new CreateProcessData;

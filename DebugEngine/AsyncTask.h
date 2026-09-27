@@ -3,52 +3,89 @@
 #include <coroutine>
 #include <exception>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 namespace DebugEngine {
 	//
-	// Minimal coroutine task type used by DebuggerX's async APIs (e.g. RunAsyncCo).
+	// Minimal coroutine task type used by DebuggerX's async APIs.
+	//
 	// A Task is "hot": the coroutine body runs eagerly until its first real
-	// suspension point (an EngineAwaiter queuing work to the debug thread).
-	// It can be co_await'ed from another coroutine to get the result.
+	// suspension point (an engine call queued to the debug thread). It can be
+	// co_await'ed from another coroutine to get the result, or simply dropped
+	// when the caller is not interested in it: a Task that is destroyed before
+	// it completes lets the coroutine run to the end and then frees its frame,
+	// so the outcome of a "fire and forget" call is discarded, not leaked.
 	//
-	// Resumption of a suspended Task is always driven by a single thread's
-	// message loop pumping WM_ASYNC_ENGINE_RESUME (see PumpAsyncResume), never
-	// from multiple threads concurrently, so the continuation handoff below
-	// does not need to be synchronized beyond that.
+	// Coroutines are only ever resumed on the thread that created the debugger
+	// (from its message loop), never concurrently, so the handoff below does
+	// not need synchronization.
 	//
-	// A Task that is destroyed before it completes leaks its coroutine frame
-	// rather than risking a resume into freed memory: the underlying engine
-	// call has already been queued to the debug thread and cannot be safely
-	// cancelled once in flight.
+	// Anything a coroutine touches after a co_await (a window, say) may be gone
+	// by the time it resumes; see Lifetime.h in the GUI project.
 	//
-	template <typename T>
+	template<typename T>
+	class Task;
+
+	namespace detail {
+		struct FinalAwaiter {
+			bool await_ready() noexcept {
+				return false;
+			}
+
+			template<typename P>
+			std::coroutine_handle<> await_suspend(std::coroutine_handle<P> handle) noexcept {
+				auto& promise = handle.promise();
+				if (promise.Detached) {
+					// nobody is waiting for the result
+					handle.destroy();
+					return std::noop_coroutine();
+				}
+				return promise.Continuation ? promise.Continuation : std::noop_coroutine();
+			}
+
+			void await_resume() noexcept {}
+		};
+
+		struct PromiseBase {
+			std::exception_ptr Exception;
+			std::coroutine_handle<> Continuation;
+			bool Detached{ false };
+
+			std::suspend_never initial_suspend() noexcept {
+				return {};
+			}
+
+			FinalAwaiter final_suspend() noexcept {
+				return {};
+			}
+
+			void unhandled_exception() {
+				Exception = std::current_exception();
+			}
+		};
+
+		template<typename T>
+		struct Promise : PromiseBase {
+			std::optional<T> Value;
+
+			Task<T> get_return_object() noexcept;
+			void return_value(T value) {
+				Value = std::move(value);
+			}
+		};
+
+		template<>
+		struct Promise<void> : PromiseBase {
+			Task<void> get_return_object() noexcept;
+			void return_void() noexcept {}
+		};
+	}
+
+	template<typename T>
 	class Task {
 	public:
-		struct promise_type {
-			std::optional<T> _value;
-			std::exception_ptr _exception;
-			std::coroutine_handle<> _continuation;
-
-			Task get_return_object() noexcept {
-				return Task(std::coroutine_handle<promise_type>::from_promise(*this));
-			}
-			std::suspend_never initial_suspend() noexcept { return {}; }
-			auto final_suspend() noexcept {
-				struct Awaiter {
-					bool await_ready() noexcept { return false; }
-					std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept {
-						auto continuation = h.promise()._continuation;
-						return continuation ? continuation : std::noop_coroutine();
-					}
-					void await_resume() noexcept {}
-				};
-				return Awaiter{};
-			}
-			void return_value(T value) { _value = std::move(value); }
-			void unhandled_exception() { _exception = std::current_exception(); }
-		};
-
+		using promise_type = detail::Promise<T>;
 		using Handle = std::coroutine_handle<promise_type>;
 
 		Task() noexcept = default;
@@ -56,8 +93,7 @@ namespace DebugEngine {
 		Task(Task&& other) noexcept : m_Handle(std::exchange(other.m_Handle, {})) {}
 		Task& operator=(Task&& other) noexcept {
 			if (this != &other) {
-				if (m_Handle && m_Handle.done())
-					m_Handle.destroy();
+				Release();
 				m_Handle = std::exchange(other.m_Handle, {});
 			}
 			return *this;
@@ -66,87 +102,47 @@ namespace DebugEngine {
 		Task& operator=(const Task&) = delete;
 
 		~Task() {
-			if (m_Handle && m_Handle.done())
-				m_Handle.destroy();
+			Release();
 		}
 
-		bool await_ready() const noexcept { return m_Handle.done(); }
-		void await_suspend(std::coroutine_handle<> awaiting) noexcept {
-			m_Handle.promise()._continuation = awaiting;
+		bool await_ready() const noexcept {
+			return m_Handle.done();
 		}
+
+		void await_suspend(std::coroutine_handle<> awaiting) noexcept {
+			m_Handle.promise().Continuation = awaiting;
+		}
+
 		T await_resume() {
-			if (m_Handle.promise()._exception)
-				std::rethrow_exception(m_Handle.promise()._exception);
-			return std::move(*m_Handle.promise()._value);
+			auto& promise = m_Handle.promise();
+			if (promise.Exception)
+				std::rethrow_exception(promise.Exception);
+			if constexpr (!std::is_void_v<T>)
+				return std::move(*promise.Value);
 		}
 
 	private:
-		Handle m_Handle;
-	};
-
-	template <>
-	class Task<void> {
-	public:
-		struct promise_type {
-			std::exception_ptr _exception;
-			std::coroutine_handle<> _continuation;
-
-			Task get_return_object() noexcept {
-				return Task(std::coroutine_handle<promise_type>::from_promise(*this));
-			}
-			std::suspend_never initial_suspend() noexcept { return {}; }
-			auto final_suspend() noexcept {
-				struct Awaiter {
-					bool await_ready() noexcept { return false; }
-					std::coroutine_handle<> await_suspend(std::coroutine_handle<promise_type> h) noexcept {
-						auto continuation = h.promise()._continuation;
-						return continuation ? continuation : std::noop_coroutine();
-					}
-					void await_resume() noexcept {}
-				};
-				return Awaiter{};
-			}
-			void return_void() noexcept {}
-			void unhandled_exception() { _exception = std::current_exception(); }
-		};
-
-		using Handle = std::coroutine_handle<promise_type>;
-
-		Task() noexcept = default;
-		explicit Task(Handle handle) noexcept : m_Handle(handle) {}
-		Task(Task&& other) noexcept : m_Handle(std::exchange(other.m_Handle, {})) {}
-		Task& operator=(Task&& other) noexcept {
-			if (this != &other) {
-				if (m_Handle && m_Handle.done())
+		void Release() noexcept {
+			if (m_Handle) {
+				if (m_Handle.done())
 					m_Handle.destroy();
-				m_Handle = std::exchange(other.m_Handle, {});
+				else
+					m_Handle.promise().Detached = true;
+				m_Handle = {};
 			}
-			return *this;
-		}
-		Task(const Task&) = delete;
-		Task& operator=(const Task&) = delete;
-
-		~Task() {
-			if (m_Handle && m_Handle.done())
-				m_Handle.destroy();
 		}
 
-		bool await_ready() const noexcept { return m_Handle.done(); }
-		void await_suspend(std::coroutine_handle<> awaiting) noexcept {
-			m_Handle.promise()._continuation = awaiting;
-		}
-		void await_resume() {
-			if (m_Handle.promise()._exception)
-				std::rethrow_exception(m_Handle.promise()._exception);
-		}
-
-	private:
 		Handle m_Handle;
 	};
 
-	// Pumps one message that resumes a Task suspended on an engine operation.
-	// Call this from a Win32 message loop (before normal dispatch) on any
-	// thread that awaits DebuggerX's coroutine APIs (e.g. RunAsyncCo).
-	// Returns true if the message was consumed and should not be dispatched further.
-	bool PumpAsyncResume(const MSG& msg);
+	namespace detail {
+		template<typename T>
+		Task<T> Promise<T>::get_return_object() noexcept {
+			return Task<T>(std::coroutine_handle<Promise<T>>::from_promise(*this));
+		}
+
+		inline Task<void> Promise<void>::get_return_object() noexcept {
+			return Task<void>(std::coroutine_handle<Promise<void>>::from_promise(*this));
+		}
+	}
 }

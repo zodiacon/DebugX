@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 #include <functional>
 #include "AsyncTask.h"
 
@@ -28,7 +29,10 @@ namespace DebugEngine {
 		Breakpoint,
 		ExitProcess,
 		ExitThread,
-		StatusChanged
+		StatusChanged,
+		// no data for the two below: something the caller can ask the debugger about (IsBusy, GetTargetType) has changed
+		BusyChanged,		// the first call is in flight, or the last one has completed
+		TargetChanged		// a target was attached or opened, or the session has ended
 	};
 
 	enum class ExecutionStatus {
@@ -50,10 +54,6 @@ namespace DebugEngine {
 		OutOfSync,
 		WaitInput,
 		Timeout
-	};
-
-	struct IMessageLoop {
-		virtual void ProcessIdle() = 0;
 	};
 
 	enum class TargetType {
@@ -149,55 +149,54 @@ namespace DebugEngine {
 		ULONG Pid;
 	};
 
+	//
+	// Wraps a DbgEng client. The engine is bound to a thread of its own; everything that talks to it runs there and
+	// the calling thread is never blocked: the calls below return a Task that is co_await'ed (or dropped, see
+	// AsyncTask.h) and resume on the calling thread, from its message loop. Engine callbacks are queued and delivered
+	// to the notification handler on that thread as well, so the caller never has to synchronize with the engine.
+	//
+	// Create, the destructor and every member that is not a Task must be used on the thread that created the debugger,
+	// except Break, which is safe anywhere. Arguments that are pointers or references (the
+	// out parameters of Enum*) must stay valid until the Task completes.
+	//
 	class DebuggerX final {
 	public:
+		// 'data' is only valid for the duration of the call. Its type depends on 'type' (see the *Data structs above).
+		using NotificationHandler = std::function<void(DebuggerNotificationType type, void* data)>;
+
 		DebuggerX();
 		~DebuggerX();
 		DebuggerX(const DebuggerX&) = delete;
 		DebuggerX& operator=(const DebuggerX&) = delete;
 
-		HRESULT Create(DWORD notifyThreadId);
-		HRESULT Create(HWND hWndNotify);
+		// Starts the engine thread and creates the client; the calling thread must have a message loop.
+		HRESULT Create(NotificationHandler handler);
 
-		HRESULT OpenDumpFile(PCWSTR filename);
-		HRESULT AttachToProcess(DWORD pid, AttachType attach = AttachType::Default);
-		HRESULT LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, PCWSTR workingDir = nullptr, AttachType attach = AttachType::Default);
-		HRESULT ExecuteCommand(PCWSTR command);
-		HRESULT ExecuteCommand(PCSTR command);
-		// coroutine-friendly equivalent of ExecuteCommand(PCWSTR); see RunAsyncCo.
-		Task<HRESULT> ExecuteCommandAsync(PCWSTR command);
-		HRESULT AttachLocalKernel();
+		Task<HRESULT> OpenDumpFile(PCWSTR filename);
+		Task<HRESULT> AttachToProcess(DWORD pid, AttachType attach = AttachType::Default);
+		Task<HRESULT> LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, PCWSTR workingDir = nullptr, AttachType attach = AttachType::Default);
+		Task<HRESULT> AttachLocalKernel();
+		Task<HRESULT> ExecuteCommand(PCWSTR command);
+		Task<HRESULT> OutputPrompt();
+		// Ends the session and terminates the target. A running target is interrupted first.
+		Task<HRESULT> Stop();
+
+		Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
+		Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
+
+		// Runs code on the engine thread. The function must not use the client after it returns.
+		Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);
+
+		// Interrupts a running target.
 		HRESULT Break();
-		HRESULT Stop();
-		[[nodiscard]] ExecutionStatus GetExecutionStatus();
-		[[nodiscard]] ExecutionStatus GetExecutionStatusAsync() const;
-		TargetType GetTargetType() const;
-		[[nodiscard]] bool IsLocalKernelDebuggerAvailable();
+
+		// (The execution status comes with the StatusChanged notifications, in order with the other events.)
+		[[nodiscard]] TargetType GetTargetType() const;
+		// True while any of the calls above is still in flight.
 		[[nodiscard]] bool IsBusy() const;
-		HRESULT DetachAll();
-
-		HRESULT OutputPrompt();
-
-		HRESULT EnumModules(std::vector<ModuleInfo>& modules);
-		HRESULT EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
-
-		void DispatchCallbacks(ULONG msec);
-		HRESULT ExitDispatch();
-
-		void FreeNotification(DebuggerNotificationType type, WPARAM id);
-
-		// run code on the debugger's thread
-		void RunAsync(std::function<void(IDebugClient*)> func);
-
-		// coroutine-friendly equivalent: suspends the calling coroutine instead of
-		// blocking the calling thread. Requires the calling thread to pump
-		// PumpAsyncResume() in its message loop to be resumed.
-		Task<HRESULT> RunAsyncCo(std::function<HRESULT(IDebugClient*)> func);
 
 		struct Impl;
 	private:
 		Impl* m_Impl;
-
 	};
 }
-

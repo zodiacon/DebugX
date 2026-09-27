@@ -4,7 +4,6 @@
 #include <TlHelp32.h>
 #include <algorithm>
 #include "SortHelper.h"
-#include "DialogHelper.h"
 
 int CProcessSelectDlg::GetSelectedProcess(CString& name) const {
 	name = m_Name;
@@ -22,7 +21,7 @@ void CProcessSelectDlg::DoSort(const SortInfo* si) {
 
 LRESULT CProcessSelectDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&) {
 	CenterWindow(GetParent());
-	DialogHelper::AdjustOKCancelButtons(this);
+	AdjustOKCancelButtons(IDI_OK, IDI_DELETE);
 
 	m_List.Attach(GetDlgItem(IDC_PROCLIST));
 
@@ -141,9 +140,9 @@ void CProcessSelectDlg::EnumProcesses() {
 
 bool CProcessSelectDlg::CompareItems(const ProcessInfo& p1, const ProcessInfo& p2, int col, bool asc) {
 	switch (col) {
-	case 0:	return SortHelper::SortStrings(p1.Name, p2.Name, asc);
-	case 1: return SortHelper::SortNumbers(p1.Id, p2.Id, asc);
-	case 2: return SortHelper::SortNumbers(p1.Session, p2.Session, asc);
+	case 0:	return SortHelper::Sort(p1.Name, p2.Name, asc);
+	case 1: return SortHelper::Sort(p1.Id, p2.Id, asc);
+	case 2: return SortHelper::Sort(p1.Session, p2.Session, asc);
 	}
 	ATLASSERT(false);
 	return false;

@@ -5,8 +5,10 @@
 #include "resource.h"
 #include "aboutdlg.h"
 #include "MainFrm.h"
+#include "AppSettings.h"
 
 CAppModule _Module;
+AppSettings g_Settings;
 
 int Run(LPTSTR /*lpstrCmdLine*/ = nullptr, int nCmdShow = SW_SHOWDEFAULT) {
 	CMessageLoop theLoop;
@@ -36,6 +38,13 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 
 	hRes = _Module.Init(nullptr, hInstance);
 	ATLASSERT(SUCCEEDED(hRes));
+
+	AppSettings::Get().Load(AppSettings::RegistryKey);
+	// dark or not as the user last chose, and as the system is until then; before any window exists
+	if (AppSettings::Get().DarkMode() < 0)
+		WTLHelper::InitDarkMode();
+	else
+		WTLHelper::InitDarkMode(AppSettings::Get().DarkMode() ? DarkModeKind::Dark : DarkModeKind::Classic);
 
 	int nRet = Run(lpstrCmdLine, nCmdShow);
 

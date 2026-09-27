@@ -2,23 +2,23 @@
 
 #include "Debugger.h"
 #include "GenericEditCommands.h"
-#include "Interfaces.h"
+#include "Lifetime.h"
+#include "PaneBase.h"
 
 class CCommandView : 
 	public CFrameWindowImpl<CCommandView, CWindow, CControlWinTraits>,
 	public CGenericEditCommands<CCommandView>,
-	public CIdleHandler,
-	public IDebugXView {
+	public IPane,
+	public ISessionObserver {
 public:
 	using BaseFrame = CFrameWindowImpl<CCommandView, CWindow, CControlWinTraits>;
 
-	CCommandView(IMainFrame* frame);
+	CCommandView();
 
-	// Inherited via IDebugXView
-	virtual HICON GetIcon() const override;
-	virtual CString GetHeader() const override;
-	virtual HWND Create(HWND hParent) override;
-	BOOL OnIdle() override;
+	HWND Create(HWND hParent) override;
+
+	void OnSessionChanged() override;
+	void OnOutput(const DebugEngine::OutputData& data) override;
 
 	enum { TextId = 123, ExecuteId };
 
@@ -26,10 +26,9 @@ public:
 		MESSAGE_HANDLER(WM_SETCURSOR, OnSetCursor)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
-		MESSAGE_HANDLER((UINT)DebugEngine::DebuggerNotificationType::Output, OnDebugOutput)
-		MESSAGE_HANDLER((UINT)DebugEngine::DebuggerNotificationType::StatusChanged, OnStatusChanged)
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
+		MESSAGE_HANDLER(WTLHelper::ThemeChangedMessage, OnThemeChanged)
 		COMMAND_HANDLER(ExecuteId, BN_CLICKED, OnExecuteCommand)
 		NOTIFY_HANDLER(TextId, EN_MSGFILTER, OnMessageFilter)
 		CHAIN_MSG_MAP_ALT(CGenericEditCommands<CCommandView>, 1)
@@ -46,23 +45,22 @@ public:
 
 private:
 	void DoExecuteCommand(PCWSTR = nullptr);
+	DebugEngine::Task<void> RunCommand(CString command);
 	void AddDmlText(CString& dml);
-	void SetBusy(bool busy = true);
+	void SetBusy(bool busy);
+	void UpdateControls();
 
 	LRESULT OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnSetCursor(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnSize(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
-	LRESULT OnDebugOutput(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
-	LRESULT OnStatusChanged(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnSetFocus(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
+	LRESULT OnThemeChanged(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnExecuteCommand(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditChar(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnRichEditKeyDown(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnEditKeyDown(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
-	LRESULT OnCopy(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnMessageFilter(int /*idCtrl*/, LPNMHDR /*pnmh*/, BOOL& /*bHandled*/);
-	LRESULT OnClickLink(int /*idCtrl*/, LPNMHDR /*pnmh*/, BOOL& /*bHandled*/);
 	LRESULT OnRichEditSetCursor(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 
 private:
@@ -73,13 +71,9 @@ private:
 	std::unordered_map<int, CString> m_Links;
 	std::vector<CString> m_CommandHistory;
 	int m_CommandHistoryIndex = 0;
-	IMainFrame* m_pFrame;
+	CString m_PromptText;
 	HCURSOR m_hCursor{ nullptr };
 	bool m_IsBusy{ false };
-	// Keeps the in-flight ExecuteCommandAsync coroutine frame alive until it
-	// completes; the UI disables command entry while busy, so at most one is
-	// ever in flight and it's always done by the time the next one is assigned.
-	DebugEngine::Task<HRESULT> m_PendingCommand;
-
+	Lifetime m_Lifetime;
 };
 

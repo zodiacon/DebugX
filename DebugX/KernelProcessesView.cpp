@@ -4,28 +4,47 @@
 #include "DebugX.Kernel.h"
 #include "SortHelper.h"
 
-HICON CKernelProcessesView::GetIcon() const {
-	return AtlLoadIconImage(IDI_PROCESSES, 64, 16, 16);
-}
-
-CString CKernelProcessesView::GetHeader() const {
-	return L"Processes";
-}
-
 HWND CKernelProcessesView::Create(HWND hParent) {
 	return __super::Create(hParent, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
 }
 
-void CKernelProcessesView::Refresh() {
-	m_List.SetItemCount(1);
-	m_Loading = true;
-	m_List.EnableWindow(FALSE);
-	m_Items.Clear();
-	m_Items.Reserve(256);
-	SetTimer(1, 1000, nullptr);
+void CKernelProcessesView::OnFinalMessage(HWND) {
+	delete this;
+}
 
-	DebugManager::DebuggerX().RunAsync([&](IDebugClient* client) {
-		using namespace DebugX::Analysis;
+std::wstring CKernelProcessesView::SaveState() const {
+	return PaneState::SaveColumnWidths(m_List);
+}
+
+void CKernelProcessesView::LoadState(PCWSTR state) {
+	PaneState::LoadColumnWidths(m_List, state);
+}
+
+void CKernelProcessesView::OnTargetEnded() {
+	m_Items.clear();
+	m_List.SetItemCount(0);
+	MarkDirty();
+}
+
+bool CKernelProcessesView::CanRefresh() const {
+	auto& session = DebugManager::Session();
+	return (session.Target() & DebugEngine::TargetType::Kernel) == DebugEngine::TargetType::Kernel;
+}
+
+DebugEngine::Task<void> CKernelProcessesView::Refresh() {
+	using namespace DebugX::Analysis;
+
+	auto alive = m_Lifetime.Watch();
+
+	auto enumeration = std::make_shared<Enumeration>();
+	enumeration->Processes.reserve(256);
+	m_Enumeration = enumeration;
+	m_Items.clear();
+	m_List.SetItemCount(1);
+	m_List.EnableWindow(FALSE);
+	SetTimer(1, 1000);
+
+	co_await DebugManager::DebuggerX().RunAsync([enumeration](IDebugClient* client) {
 		KernelProcessEnumerator enumerator(client);
 		KernelProcessAnalyzer* p;
 		while (p = enumerator.GetNextProcess()) {
@@ -41,16 +60,21 @@ void CKernelProcessesView::Refresh() {
 			kp.Peb = p->GetPeb();
 			//kp.KernelTime = p->GetKernelTime();
 			//kp.UserTime = p->GetUserTime();
-			m_Items.Add(std::move(kp));
+			enumeration->Processes.push_back(std::move(kp));
+			enumeration->Count = enumeration->Processes.size();
 		}
-
+		return S_OK;
 		});
+	if (!*alive)
+		co_return;
 
 	KillTimer(1);
-	m_List.SetItemCount(static_cast<int>(m_Items.FilteredSize()));
-	m_Loading = false;
+	m_Items.Set(std::move(enumeration->Processes));
+	m_Enumeration = nullptr;
+	m_List.SetItemCount(static_cast<int>(m_Items.size()));
 	DoSort(GetSortInfo());
 	m_List.EnableWindow(TRUE);
+	RefreshDone();
 }
 
 void CKernelProcessesView::DoSort(const SortInfo* si) {
@@ -60,15 +84,15 @@ void CKernelProcessesView::DoSort(const SortInfo* si) {
 	auto asc = si->SortAscending;
 	m_Items.Sort([&](const auto& p1, const auto& p2) {
 		switch (si->SortColumn) {
-			case 0: return SortHelper::SortStrings(p1.ImageName, p2.ImageName, asc);
-			case 1: return SortHelper::SortNumbers(p1.Address, p2.Address, asc);
-			case 2: return SortHelper::SortNumbers(p1.Pid, p2.Pid, asc);
-			case 3: return SortHelper::SortNumbers(p1.ThreadCount, p2.ThreadCount, asc);
-			case 4: return SortHelper::SortNumbers(p1.SessionId, p2.SessionId, asc);
-			case 5: return SortHelper::SortNumbers(p1.CreateTime.QuadPart, p2.CreateTime.QuadPart, asc);
-			case 6: return SortHelper::SortNumbers(p1.DirBase, p2.DirBase, asc);
-			case 7: return SortHelper::SortNumbers(p1.Peb, p2.Peb, asc);
-			case 8: return SortHelper::SortNumbers(p1.ExitTime.QuadPart, p2.ExitTime.QuadPart, asc);
+			case 0: return SortHelper::Sort(p1.ImageName, p2.ImageName, asc);
+			case 1: return SortHelper::Sort(p1.Address, p2.Address, asc);
+			case 2: return SortHelper::Sort(p1.Pid, p2.Pid, asc);
+			case 3: return SortHelper::Sort(p1.ThreadCount, p2.ThreadCount, asc);
+			case 4: return SortHelper::Sort(p1.SessionId, p2.SessionId, asc);
+			case 5: return SortHelper::Sort(p1.CreateTime.QuadPart, p2.CreateTime.QuadPart, asc);
+			case 6: return SortHelper::Sort(p1.DirBase, p2.DirBase, asc);
+			case 7: return SortHelper::Sort(p1.Peb, p2.Peb, asc);
+			case 8: return SortHelper::Sort(p1.ExitTime.QuadPart, p2.ExitTime.QuadPart, asc);
 			default: return false;
 		}
 		});
@@ -91,21 +115,26 @@ LRESULT CKernelProcessesView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	//m_List.InsertColumn(6, L"Kernel Time", LVCFMT_RIGHT, 120);
 	//m_List.InsertColumn(7, L"User Time", LVCFMT_RIGHT, 120);
 
-	PostMessage(WM_COMMAND, ID_VIEW_REFRESH);
+	InitPane();
 
 	return 0;
 }
 
+LRESULT CKernelProcessesView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
+	ExitPane();
+	handled = FALSE;
+	return 0;
+}
+
 LRESULT CKernelProcessesView::OnTimer(UINT, WPARAM id, LPARAM, BOOL&) {
-	if (id == 1 && m_Loading)
+	if (id == 1 && m_Enumeration)
 		m_List.RedrawItems(0, 0);
 
 	return 0;
 }
 
 LRESULT CKernelProcessesView::OnViewRefresh(WORD, WORD, HWND, BOOL&) {
-	CWaitCursor wait;
-	Refresh();
+	RequestRefresh();
 
 	return 0;
 }
@@ -113,9 +142,9 @@ LRESULT CKernelProcessesView::OnViewRefresh(WORD, WORD, HWND, BOOL&) {
 LRESULT CKernelProcessesView::OnListGetDispInfo(int, LPNMHDR hdr, BOOL&) {
 	auto lv = (NMLVDISPINFO*)hdr;
 	auto& item = lv->item;
-	if (m_Loading) {
+	if (m_Enumeration) {
 		if (item.iSubItem == 0)
-			::StringCchPrintf(item.pszText, item.cchTextMax,L"Refreshing processes... %u", m_Items.Size());
+			::StringCchPrintf(item.pszText, item.cchTextMax, L"Refreshing processes... %u", static_cast<ULONG>(m_Enumeration->Count));
 		return 0;
 	}
 	auto& data = m_Items[item.iItem];

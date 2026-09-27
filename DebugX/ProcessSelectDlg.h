@@ -2,10 +2,12 @@
 
 #include "resource.h"
 #include "VirtualListView.h"
+#include "DialogHelper.h"
 
 class CProcessSelectDlg :
 	public CDialogImpl<CProcessSelectDlg>,
 	public CVirtualListView<CProcessSelectDlg>,
+	public CDialogHelper<CProcessSelectDlg>,
 	public CCustomDraw<CProcessSelectDlg> {
 public:
 	friend struct CVirtualListView<CProcessSelectDlg>;

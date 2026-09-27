@@ -1,30 +1,28 @@
 #pragma once
 
-#include <mutex>
+#include <memory>
 #include "..\DebugEngine\Debugger.h"
+#include "SessionModel.h"
 
+//
+// Owns the one DebuggerX of the application and the SessionModel that turns its notifications into events.
+// Everything here happens on the UI thread: the debugger delivers its notifications there.
+//
 class DebugManager final {
 public:
 	static DebugManager& Get();
+
+	HRESULT Init();
 	void Destroy();
 
-	bool RegisterWindow(HWND hNotify);
-	bool UnregisterWindow(HWND hNotify);
-	bool IsAlive() const;
-
 	static DebugEngine::DebuggerX& DebuggerX();
-	HRESULT Init();
+	static SessionModel& Session();
 
 private:
-	DebugManager();
+	DebugManager() = default;
 	DebugManager(const DebugManager&) = delete;
 	DebugManager& operator=(const DebugManager&) = delete;
 
-	DWORD NotifyThread();
-
-	static DebugManager* DbgMgr;
-	wil::unique_handle m_hNotifyThread;
-	std::vector<HWND> m_RegisteredHwnds;
-	std::recursive_mutex m_RegisteredHwndsLock;
+	std::unique_ptr<DebugEngine::DebuggerX> m_Debugger;
+	std::unique_ptr<SessionModel> m_Session;
 };
-

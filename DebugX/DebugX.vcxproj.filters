@@ -33,7 +33,10 @@
     <ClCompile Include="MainFrm.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="View.cpp">
+    <ClCompile Include="SessionModel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PaneRegistry.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="DebugManager.cpp">
@@ -44,18 +47,6 @@
     </ClCompile>
     <ClCompile Include="KernelProcessesView.cpp">
       <Filter>Views</Filter>
-    </ClCompile>
-    <ClCompile Include="SortedFilteredVector.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SortHelper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="SecurityHelper.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="DialogHelper.cpp">
-      <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="RunExeDlg.cpp">
       <Filter>Dialogs</Filter>
@@ -77,41 +68,35 @@
     <ClInclude Include="MainFrm.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="View.h">
+    <ClInclude Include="SessionModel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PaneRegistry.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PaneBase.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="AppSettings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="DebugManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Lifetime.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="CommandView.h">
       <Filter>Views</Filter>
-    </ClInclude>
-    <ClInclude Include="Interfaces.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="GenericEditCommands.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="KernelProcessesView.h">
       <Filter>Views</Filter>
-    </ClInclude>
-    <ClInclude Include="SortedFilteredVector.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="VirtualListView.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="SortHelper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="SecurityHelper.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="DialogHelper.h">
-      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="AboutDlg.h">
       <Filter>Dialogs</Filter>
