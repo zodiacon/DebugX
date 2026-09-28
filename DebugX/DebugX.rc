@@ -80,6 +80,8 @@ BEGIN
         MENUITEM "&Registers",                  ID_VIEW_REGISTERS
         MENUITEM "Call &Stack",                 ID_VIEW_CALLSTACK
         MENUITEM "&Breakpoints",                ID_VIEW_BREAKPOINTS
+        MENUITEM "&Memory",                     ID_VIEW_MEMORY
+        MENUITEM "&Disassembly",                ID_VIEW_DISASSEMBLY
     END
     POPUP "&Debug"
     BEGIN
@@ -197,6 +199,8 @@ IDI_BREAKPOINTS         ICON                    "res\\debug_breakpoints.ico"
 IDI_WINDOW_CLOSE        ICON                    "res\\window-delete.ico"
 
 IDI_WINDOW_CLOSEALL     ICON                    "res\\windows-delete.ico"
+
+IDI_MEMORY              ICON                    "res\\memory.ico"
 
 
 /////////////////////////////////////////////////////////////////////////////

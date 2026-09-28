@@ -4,6 +4,7 @@
 #include "resource.h"
 
 using namespace DebugEngine;
+using namespace Scintilla;
 
 CCommandView::CCommandView() : m_CommandEdit(this, 1), m_Text(this, 2) {
 }
@@ -14,20 +15,25 @@ void CCommandView::OnFinalMessage(HWND) {
 
 LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Text.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL |
-		WS_CLIPSIBLINGS | WS_CLIPCHILDREN | ES_MULTILINE | ES_READONLY | ES_NOHIDESEL, 0, TextId);
+		WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0, TextId);
+	m_Text.InitCall();
 
-	m_Text.SetAutoURLDetect(TRUE);
-	m_Text.SetEventMask(ENM_LINK | ENM_MOUSEEVENTS);
-
-	CHARFORMAT cf = { sizeof(cf) };
-	cf.crTextColor = ::GetSysColor(COLOR_WINDOWTEXT);
-	cf.dwMask = CFM_COLOR | CFM_FACE;
-	::wcscpy_s(cf.szFaceName, L"Consolas");
-	m_Text.SetDefaultCharFormat(cf);
-	m_Text.SetBackgroundColor(::GetSysColor(COLOR_WINDOW));
+	// a read-only, unmargined log: SCI_APPENDTEXT (the only way this view's text ever changes) works
+	// regardless of the read-only flag, so this only blocks the user from typing into it
+	m_Text->SetReadOnly(true);
+	m_Text->SetUndoCollection(false);
+	m_Text->SetMarginWidthN(0, 0);
+	m_Text->SetMarginWidthN(1, 0);
+	m_Text->SetMarginWidthN(2, 0);
+	m_Text->SetWrapMode(Wrap::None);
+	m_Text->StyleSetFont(static_cast<int>(StylesCommon::Default), "Consolas");
+	m_Text->StyleSetSizeFractional(static_cast<int>(StylesCommon::Default), 900);
+	ApplyOutputColors();
 
 	CFontHandle font;
 	font.CreatePointFont(90, L"Consolas");
+	CFontHandle uiFont;
+	uiFont.CreatePointFont(90, L"Segoe UI");
 
 	m_CommandEdit.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_BORDER);
 	m_CommandEdit.SetFont(font);
@@ -35,6 +41,7 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Prompt.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | SS_SUNKEN | SS_RIGHT);
 	m_Prompt.SetFont(font);
 	m_Execute.Create(*this, nullptr, L"Exec", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, ExecuteId);
+	m_Execute.SetFont(uiFont);		// a UI font, like the Memory pane's "Go" button, not the command/output Consolas
 
 	m_CommandHistory.reserve(64);
 
@@ -42,14 +49,6 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	UpdateControls();
 
 	return 0;
-}
-
-LRESULT CCommandView::OnSetCursor(UINT, WPARAM, LPARAM, BOOL&) {
-	if (m_hCursor) {
-		::SetCursor(m_hCursor);
-		return TRUE;
-	}
-	return FALSE;
 }
 
 HWND CCommandView::Create(HWND hParent) {
@@ -99,8 +98,7 @@ LRESULT CCommandView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 void CCommandView::OnOutput(const OutputData& data) {
 	if (data.Text.empty()) {
 		// flush
-		m_Text.SetSel(-1, 0);
-		m_Text.ScrollCaret();
+		ScrollToEnd();
 		return;
 	}
 
@@ -112,27 +110,39 @@ void CCommandView::OnOutput(const OutputData& data) {
 			m_Prompt.SetWindowText(text);
 	}
 	else {
-		if (data.IsDml) {
-			AddDmlText(text);
-		}
+		if (data.IsDml)
+			AppendDmlText(text);
 		else
-			m_Text.AppendText(text);
-		m_Text.SetSel(-1, 0);
-		m_Text.ScrollCaret();
+			AppendText((PCWSTR)text);
+		ScrollToEnd();
 	}
 }
 
 // the system colors are the dark ones while in dark mode
 LRESULT CCommandView::OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&) {
-	CHARFORMAT cf = { sizeof(cf) };
-	cf.dwMask = CFM_COLOR;
-	cf.crTextColor = ::GetSysColor(COLOR_WINDOWTEXT);
-	m_Text.SetDefaultCharFormat(cf);
-	m_Text.SetBackgroundColor(::GetSysColor(COLOR_WINDOW));
+	ApplyOutputColors();
 	// the scroll bars follow the visual style
 	::SetWindowTheme(m_Text, WTLHelper::IsDarkMode() ? L"DarkMode_Explorer" : L"Explorer", nullptr);
 	m_Text.Invalidate();
 	return 0;
+}
+
+void CCommandView::ApplyOutputColors() {
+	auto fore = static_cast<Colour>(::GetSysColor(COLOR_WINDOWTEXT));
+	auto back = static_cast<Colour>(::GetSysColor(COLOR_WINDOW));
+
+	// StylesCommon::Default is the template SCI_STYLECLEARALL copies into every style, including
+	// style 0 (plain text, since this view has no lexer); reapply the link style afterwards, which
+	// StyleClearAll just overwrote back to plain
+	m_Text->StyleSetFore(static_cast<int>(StylesCommon::Default), fore);
+	m_Text->StyleSetBack(static_cast<int>(StylesCommon::Default), back);
+	m_Text->StyleClearAll();
+	m_Text->SetCaretFore(fore);
+	m_Text->SetSelBack(true, static_cast<Colour>(::GetSysColor(COLOR_HIGHLIGHT)));
+
+	m_Text->StyleSetFore(StyleLink, static_cast<Colour>(WTLHelper::IsDarkMode() ? RGB(102, 178, 255) : RGB(0, 0, 255)));
+	m_Text->StyleSetUnderline(StyleLink, true);
+	m_Text->StyleSetHotSpot(StyleLink, true);
 }
 
 LRESULT CCommandView::OnSetFocus(UINT, WPARAM, LPARAM, BOOL&) {
@@ -156,7 +166,8 @@ void CCommandView::DoExecuteCommand(PCWSTR command) {
 		cmd = command;
 	}
 
-	m_Text.AppendText(m_PromptText + L" " + cmd + L"\n");
+	AppendText((PCWSTR)(m_PromptText + L" " + cmd + L"\n"));
+	ScrollToEnd();
 	m_CommandHistory.push_back(cmd);
 	m_CommandHistoryIndex = (int)m_CommandHistory.size();
 	m_CommandEdit.SetWindowText(L"");
@@ -176,8 +187,26 @@ Task<void> CCommandView::RunCommand(CString command) {
 		m_CommandEdit.SetFocus();
 }
 
-void CCommandView::AddDmlText(CString& dml) {
-	// remove <altlink markup for now
+void CCommandView::AppendText(std::wstring_view text) {
+	auto utf8 = ToUtf8(text);
+	// unlike RichEdit's AppendText, Scintilla's honors SCI_SETREADONLY (Document::InsertString checks
+	// it), so read-only has to come off for this call -- toggled back right after, since the read-only
+	// state is what actually stops the user from typing into the view (they never get keyboard focus
+	// here in normal use, but the control itself doesn't know that)
+	m_Text->SetReadOnly(false);
+	m_Text->AppendText(static_cast<Position>(utf8.size()), utf8.c_str());
+	m_Text->SetReadOnly(true);
+}
+
+void CCommandView::ScrollToEnd() {
+	m_Text->DocumentEnd();
+	m_Text->ScrollCaret();
+}
+
+// dbgeng's DML: plain text with <link cmd="...">text</link> runs (and <altlink ...>, dropped for now,
+// same as before). The plain text is appended once; the link runs are recorded in bytes as they are
+// appended (the view is UTF-8 internally) and styled with StyleLink afterwards.
+void CCommandView::AppendDmlText(CString& dml) {
 	for (;;) {
 		int altStart = dml.Find(L"<altlink");
 		if (altStart >= 0) {
@@ -189,34 +218,25 @@ void CCommandView::AddDmlText(CString& dml) {
 			break;
 	}
 
-	CHARFORMAT old;
-	m_Text.GetSelectionCharFormat(old);
-
-	CHARFORMAT2 cf = { sizeof(cf) };
-	cf.dwMask = CFM_EFFECTS | CFM_COLOR | CFM_COOKIE;
-	cf.crTextColor = WTLHelper::IsDarkMode() ? RGB(102, 178, 255) : RGB(0, 0, 255);
-	cf.dwEffects = CFE_LINK | CFE_UNDERLINE;
-	cf.dwCookie = 0x1234;
+	std::vector<LinkRun> newLinks;
 
 	int index = dml.Find(L'<');
-	if (index > 0)
-		m_Text.AppendText(dml.Left(index));
-	else if (index < 0) {
-		m_Text.AppendText(dml);
+	if (index < 0) {
+		AppendText((PCWSTR)dml);
 		return;
 	}
+	if (index > 0)
+		AppendText((PCWSTR)dml.Left(index));
 
 	for (;;) {
 		auto current = index;
-		index = dml.Find('<', index);
+		index = dml.Find(L'<', index);
 		if (index < 0) {
-			m_Text.SetSelectionCharFormat(old);
-			m_Text.AppendText(dml.Mid(current + 1));
+			AppendText((PCWSTR)dml.Mid(current + 1));
 			break;
 		}
-		else if(index > current) {
-			m_Text.SetSelectionCharFormat(old);
-			m_Text.AppendText(dml.Mid(current + 1, index - current - 1));
+		else if (index > current) {
+			AppendText((PCWSTR)dml.Mid(current + 1, index - current - 1));
 		}
 		CString command;
 		int cmdStart = dml.Find(L"cmd=\"", index + 1);
@@ -226,23 +246,26 @@ void CCommandView::AddDmlText(CString& dml) {
 				command = dml.Mid(cmdStart + 5, cmdEnd - cmdStart - 5);
 		}
 
-		int end = dml.Find('>', index + 1);
+		int end = dml.Find(L'>', index + 1);
 		ATLASSERT(end > index);
 		int index2 = dml.Find(L'<', end + 1);
 		ATLASSERT(index2 > end);
 		CString text = dml.Mid(end + 1, index2 - end - 1);
 		text.Replace(L' ', L'_');
-		m_Text.SetSelNone();
-		LONG from, to;
-		m_Text.GetSel(from, to);
+
+		auto start = m_Text->Length();
+		AppendText((PCWSTR)text);
 		if (!command.IsEmpty())
-			m_Links.insert({ from, command });
-		m_Text.SetSelectionCharFormat(cf);
-		m_Text.AppendText(text);
+			newLinks.push_back({ start, m_Text->Length(), command });
 
 		index = dml.Find(L'>', index2 + 1);
 	}
-	m_Text.SetSelectionCharFormat(old);
+
+	for (auto& link : newLinks) {
+		m_Text->StartStyling(link.Start, 0);
+		m_Text->SetStyling(link.End - link.Start, StyleLink);
+	}
+	m_Links.insert(m_Links.end(), newLinks.begin(), newLinks.end());
 }
 
 void CCommandView::SetBusy(bool busy) {
@@ -261,7 +284,7 @@ LRESULT CCommandView::OnEditChar(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
 	return 0;
 }
 
-LRESULT CCommandView::OnRichEditKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
+LRESULT CCommandView::OnOutputKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
 	if (wParam == VK_ESCAPE) {
 		m_CommandEdit.SetFocus();
 	}
@@ -297,50 +320,13 @@ LRESULT CCommandView::OnEditKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handled) 
 	return 0;
 }
 
-LRESULT CCommandView::OnMessageFilter(int, LPNMHDR hdr, BOOL&) {
-	auto filter = (MSGFILTER*)hdr;
-
-	if (filter->msg != WM_LBUTTONUP)
-		return 0;
-
-	POINT pt = { GET_X_LPARAM(filter->lParam), GET_Y_LPARAM(filter->lParam) };
-	auto ch = m_Text.CharFromPos(pt);
-
-	auto left = m_Text.FindWordBreak(WB_LEFT, ch);
-	auto delim = m_Text.FindWordBreak(WB_ISDELIMITER, left);
-	if (delim)
-		left++;
-
-	//WCHAR chr[3];
-	//m_Text.GetTextRange(ch, ch + 1, chr);
-	//auto right = m_Text.FindWordBreak(WB_RIGHT, left);
-	//CString text;
-	//m_Text.GetTextRange(left, right + 1, text.GetBufferSetLength(right - left + 1));
-	//text.Trim();
-
-	if (auto it = m_Links.find(left); it != m_Links.end()) {
-		DoExecuteCommand(it->second);
-	}
-	return 0;
-}
-
-LRESULT CCommandView::OnRichEditSetCursor(UINT, WPARAM, LPARAM lParam, BOOL& handled) {
-	if (LOWORD(lParam) == HTCLIENT) {
-		m_hCursor = AtlLoadSysCursor(IDC_ARROW);
-		POINT pt;
-		::GetCursorPos(&pt);
-		m_Text.ScreenToClient(&pt);
-		auto ch = m_Text.CharFromPos(pt);
-		auto left = m_Text.FindWordBreak(WB_LEFT, ch);
-		auto delim = m_Text.FindWordBreak(WB_ISDELIMITER, left);
-		if (delim)
-			left++;
-
-		if (auto it = m_Links.find(left); it != m_Links.end()) {
-			::SetCursor(m_hCursor = AtlLoadSysCursor(IDC_HAND));
-			return TRUE;
+LRESULT CCommandView::OnHotspotClick(int, LPNMHDR hdr, BOOL&) {
+	auto data = reinterpret_cast<const NotificationData*>(hdr);
+	for (auto& link : m_Links) {
+		if (data->position >= link.Start && data->position < link.End) {
+			DoExecuteCommand(link.Command);
+			break;
 		}
 	}
-	handled = FALSE;
-	return FALSE;
+	return 0;
 }

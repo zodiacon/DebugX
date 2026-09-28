@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ScintillaCtrl.h"
+
 template<typename T>
 class CGenericEditCommands {
 public:
@@ -40,8 +42,10 @@ public:
 	}
 
 	LRESULT OnEditClearAll(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
-		CEdit edit(::GetFocus());
-		if (edit) {
+		auto focus = ::GetFocus();
+		if (IsScintilla(focus))
+			::SendMessage(focus, SCI_CLEARALL, 0, 0);
+		else if (CEdit edit(focus); edit) {
 			edit.SetSel(0, -1);
 			edit.Clear();
 		}
@@ -49,9 +53,21 @@ public:
 	}
 
 	LRESULT OnEditSelectAll(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
-		CEdit edit(::GetFocus());
-		if (edit)
+		auto focus = ::GetFocus();
+		if (IsScintilla(focus))
+			::SendMessage(focus, SCI_SETSEL, 0, -1);
+		else if (CEdit edit(focus); edit)
 			edit.SetSel(0, -1);
 		return 0;
+	}
+
+private:
+	// a Scintilla window answers SCI_SETSEL/SCI_CLEARALL by message number, but not the CEdit/RichEdit
+	// EM_SETSEL semantics the two handlers above otherwise assume; the window's class name is
+	// "ATL:Scintilla" (any CScintillaCtrl -- the Command view's output today, source/disassembly views
+	// later -- is ATL-superclassed the same way CRichEditCtrl is), never just "Scintilla"
+	static bool IsScintilla(HWND hWnd) {
+		WCHAR cls[32];
+		return ::GetClassName(hWnd, cls, _countof(cls)) != 0 && ::wcsstr(cls, L"Scintilla") != nullptr;
 	}
 };

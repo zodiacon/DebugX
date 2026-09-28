@@ -126,6 +126,13 @@ namespace DebugEngine {
 		std::wstring Value;		// as the value is usually written: hexadecimal for integers, decimal for floating point
 	};
 
+	// one line of Disassemble output (as the engine formats it: address, opcode bytes, mnemonic) and the address
+	// it is for -- from the engine's own EndOffset of the previous line, not parsed back out of the text
+	struct DisassemblyLine {
+		ULONG64 Address;
+		std::wstring Text;
+	};
+
 	struct StackFrameInfo {
 		ULONG Index;
 		ULONG64 InstructionOffset;
@@ -234,6 +241,18 @@ namespace DebugEngine {
 		Task<HRESULT> AddBreakpoint(PCWSTR expression);
 		Task<HRESULT> RemoveBreakpoint(ULONG id);
 		Task<HRESULT> SetBreakpointEnabled(ULONG id, bool enabled);
+
+		// the current thread's instruction pointer
+		Task<HRESULT> GetInstructionOffset(ULONG64& offset);
+		// 'count' lines starting at 'address' (not necessarily aligned to an instruction boundary; the engine
+		// resyncs). 'buffer' is resized to however many were actually decoded, which can be less than 'count'
+		// (e.g. unreadable memory).
+		Task<HRESULT> Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines);
+		// a debugger expression (register, symbol, C-like arithmetic, ...), as typed at the command prompt
+		Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);
+		// reads target memory; 'buffer' is resized to however many bytes were actually read (can be less than
+		// requested at the end of a readable region, or empty if none of it is)
+		Task<HRESULT> ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size);
 
 		// Runs code on the engine thread. The function must not use the client after it returns.
 		Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);

@@ -89,7 +89,7 @@
       <DebugInformationFormat />
       <PreprocessorDefinitions>_WINDOWS;STRICT;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\wtlhelper\WTL;..\wtlhelper\WTLDock\include;..\wtlhelper\WTLHelper;..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\wtlhelper\WTL;..\wtlhelper\WTLDock\include;..\wtlhelper\WTLHelper;..\wtlhelper\HexControl;..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -120,7 +120,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_WINDOWS;STRICT;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\wtlhelper\WTL;..\wtlhelper\WTLDock\include;..\wtlhelper\WTLHelper;..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\wtlhelper\WTL;..\wtlhelper\WTLDock\include;..\wtlhelper\WTLHelper;..\wtlhelper\HexControl;..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -153,7 +153,7 @@
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>_WINDOWS;STRICT;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\wtlhelper\WTL;..\wtlhelper\WTLDock\include;..\wtlhelper\WTLHelper;..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\wtlhelper\WTL;..\wtlhelper\WTLDock\include;..\wtlhelper\WTLHelper;..\wtlhelper\HexControl;..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -184,7 +184,7 @@
       <DebugInformationFormat />
       <PreprocessorDefinitions>WIN32;_WINDOWS;STRICT;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>..\wtlhelper\WTL;..\wtlhelper\WTLDock\include;..\wtlhelper\WTLHelper;..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>..\wtlhelper\WTL;..\wtlhelper\WTLDock\include;..\wtlhelper\WTLHelper;..\wtlhelper\HexControl;..\DebugEngine;..\DebugX.Kernel</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -209,6 +209,18 @@
   <ItemGroup>
     <ClCompile Include="AboutDlg.cpp" />
     <ClCompile Include="CommandView.cpp" />
+    <ClCompile Include="ScintillaCtrl.cpp" />
+    <ClCompile Include="MemoryView.cpp" />
+    <ClCompile Include="DisassemblyView.cpp" />
+    <ClCompile Include="scintilla\ScintillaCall.cxx">
+      <!-- vendored as-is (see scintilla\README.md): its #include "ScintillaTypes.h" etc. are quoted,
+           relative to its own folder, so they need the scintilla headers' own directory on the path,
+           not just the vcpkg triplet's include root (where our own <scintilla/...> includes resolve).
+           $(VcpkgTriplet) isn't set yet this early in the project (vcpkg.targets, which defines it, is
+           imported after this ItemGroup), so both static triplets this repo uses are listed directly. -->
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(VcpkgRoot)\installed\x64-windows-static\include\scintilla;$(VcpkgRoot)\installed\x86-windows-static\include\scintilla</AdditionalIncludeDirectories>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="DebugManager.cpp" />
     <ClCompile Include="DebugX.cpp" />
     <ClCompile Include="KernelProcessesView.cpp" />
@@ -235,6 +247,9 @@
     <ClInclude Include="AboutDlg.h" />
     <ClInclude Include="GenericEditCommands.h" />
     <ClInclude Include="CommandView.h" />
+    <ClInclude Include="ScintillaCtrl.h" />
+    <ClInclude Include="MemoryView.h" />
+    <ClInclude Include="DisassemblyView.h" />
     <ClInclude Include="AppSettings.h" />
     <ClInclude Include="DebugManager.h" />
     <ClInclude Include="Lifetime.h" />
@@ -314,6 +329,9 @@
     </ProjectReference>
     <ProjectReference Include="..\wtlhelper\WTLHelper\WTLHelper.vcxproj">
       <Project>{ae53419f-a769-4548-8e15-e311904df7df}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\wtlhelper\HexControl\HexControl.vcxproj">
+      <Project>{ef5c2f6b-5fcd-446c-be8d-1485407cd65a}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

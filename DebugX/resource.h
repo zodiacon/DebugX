@@ -41,6 +41,7 @@
 #define IDI_BREAKPOINTS                 235
 #define IDD_PROCSELECT                  236
 #define IDD_ADDBREAKPOINT               240
+#define IDI_MEMORY                      241
 #define IDI_WINDOW_CLOSE                238
 #define IDI_ICON3                       239
 #define IDI_WINDOW_CLOSEALL             239
@@ -85,13 +86,17 @@
 #define ID_DEBUG_ADDBREAKPOINT          32801
 #define ID_BREAKPOINT_DELETE            32802
 #define ID_BREAKPOINT_TOGGLE            32803
+#define ID_VIEW_MEMORY                  32804
+#define ID_VIEW_DISASSEMBLY             32805
+#define ID_DEBUG_RUNTOCURSOR            32806
+#define ID_DISASM_TOGGLEBREAKPOINT      32807
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        241
-#define _APS_NEXT_COMMAND_VALUE         32804
+#define _APS_NEXT_RESOURCE_VALUE        242
+#define _APS_NEXT_COMMAND_VALUE         32808
 #define _APS_NEXT_CONTROL_VALUE         1011
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

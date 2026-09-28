@@ -8,6 +8,8 @@
 #include "CallStackView.h"
 #include "BreakpointsView.h"
 #include "OutputView.h"
+#include "MemoryView.h"
+#include "DisassemblyView.h"
 #include "resource.h"
 
 using namespace DebugEngine;
@@ -28,6 +30,8 @@ namespace {
 		{ L"modules", L"Modules", IDI_DLL, ID_VIEW_MODULES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Unknown, true, L"registers", Make<CModulesView> },
 		{ L"breakpoints", L"Breakpoints", IDI_BREAKPOINTS, ID_VIEW_BREAKPOINTS, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"output", Make<CBreakpointsView> },
 		{ L"processes", L"Processes", IDI_PROCESSES, ID_VIEW_PROCESSES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Kernel, true, L"registers", Make<CKernelProcessesView> },
+		{ L"memory", L"Memory", IDI_MEMORY, ID_VIEW_MEMORY, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"breakpoints", Make<CMemoryView> },
+		{ L"disassembly", L"Disassembly", IDI_STRUCT, ID_VIEW_DISASSEMBLY, PaneKind::Tool, DockSide::Left, { 560, 300 }, TargetType::Unknown, true, L"callstack", Make<CDisassemblyView> },
 	};
 }
 

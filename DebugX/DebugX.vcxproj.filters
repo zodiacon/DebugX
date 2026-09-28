@@ -63,6 +63,18 @@
     <ClCompile Include="CommandView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="ScintillaCtrl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MemoryView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="DisassemblyView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="scintilla\ScintillaCall.cxx">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="KernelProcessesView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -129,6 +141,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="CommandView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="ScintillaCtrl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MemoryView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="DisassemblyView.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="GenericEditCommands.h">

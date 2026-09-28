@@ -127,6 +127,10 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> AddBreakpoint(PCWSTR expression);
 	Task<HRESULT> RemoveBreakpoint(ULONG id);
 	Task<HRESULT> SetBreakpointEnabled(ULONG id, bool enabled);
+	Task<HRESULT> GetInstructionOffset(ULONG64& offset);
+	Task<HRESULT> Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines);
+	Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);
+	Task<HRESULT> ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size);
 	HRESULT Break();
 
 	TargetType GetTargetType() const {
@@ -872,6 +876,52 @@ Task<HRESULT> DebuggerX::Impl::SetBreakpointEnabled(ULONG id, bool enabled) {
 		});
 }
 
+Task<HRESULT> DebuggerX::Impl::GetInstructionOffset(ULONG64& offset) {
+	co_return co_await Run([this, &offset] {
+		return m_spRegisters->GetInstructionOffset(&offset);
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines) {
+	co_return co_await Run([this, address, count, &lines] {
+		lines.reserve(count);
+		WCHAR buffer[256];
+		auto offset = address;
+		for (ULONG i = 0; i < count; i++) {
+			ULONG64 end;
+			if (FAILED(m_spControl->DisassembleWide(offset, 0, buffer, _countof(buffer), nullptr, &end)))
+				break;
+			std::wstring text(buffer);
+			while (!text.empty() && (text.back() == L'\n' || text.back() == L'\r'))
+				text.pop_back();
+			lines.push_back({ offset, std::move(text) });
+			if (end <= offset)		// no forward progress (e.g. unreadable memory): stop rather than loop
+				break;
+			offset = end;
+		}
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::Evaluate(PCWSTR expression, ULONG64& value) {
+	co_return co_await Run([this, expression = std::wstring(expression), &value] {
+		DEBUG_VALUE dv{};
+		HR(m_spControl->EvaluateWide(expression.c_str(), DEBUG_VALUE_INT64, &dv, nullptr));
+		value = dv.I64;
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size) {
+	co_return co_await Run([this, address, &buffer, size] {
+		buffer.resize(size);
+		ULONG read = 0;
+		HR(m_spData->ReadVirtual(address, buffer.data(), size, &read));
+		buffer.resize(read);
+		return S_OK;
+		});
+}
+
 HRESULT DebuggerX::Impl::EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads, ULONG currentThread) {
 	ULONG count;
 	HR(m_spSystem->GetNumberThreads(&count));
@@ -979,6 +1029,22 @@ Task<HRESULT> DebuggerX::RemoveBreakpoint(ULONG id) {
 
 Task<HRESULT> DebuggerX::SetBreakpointEnabled(ULONG id, bool enabled) {
 	return m_Impl->SetBreakpointEnabled(id, enabled);
+}
+
+Task<HRESULT> DebuggerX::GetInstructionOffset(ULONG64& offset) {
+	return m_Impl->GetInstructionOffset(offset);
+}
+
+Task<HRESULT> DebuggerX::Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines) {
+	return m_Impl->Disassemble(address, count, lines);
+}
+
+Task<HRESULT> DebuggerX::Evaluate(PCWSTR expression, ULONG64& value) {
+	return m_Impl->Evaluate(expression, value);
+}
+
+Task<HRESULT> DebuggerX::ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size) {
+	return m_Impl->ReadMemory(address, buffer, size);
 }
 
 HRESULT DebuggerX::Break() {

@@ -6,6 +6,7 @@
 #include "aboutdlg.h"
 #include "MainFrm.h"
 #include "AppSettings.h"
+#include "ScintillaCtrl.h"
 
 CAppModule _Module;
 AppSettings g_Settings;
@@ -39,6 +40,10 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 	hRes = _Module.Init(nullptr, hInstance);
 	ATLASSERT(SUCCEEDED(hRes));
 
+	// registers the "Scintilla" window class for the process, the same way loading the RichEdit DLL
+	// above registers its class; CScintillaCtrl (any of them, anywhere) superclasses it from here on
+	RegisterScintillaClasses();
+
 	AppSettings::Get().Load(AppSettings::RegistryKey);
 	// dark or not as the user last chose, and as the system is until then; before any window exists
 	if (AppSettings::Get().DarkMode() < 0)
@@ -48,6 +53,7 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 
 	int nRet = Run(lpstrCmdLine, nCmdShow);
 
+	UnregisterScintillaClasses();
 	::FreeLibrary(hInstRich);
 	_Module.Term();
 	::CoUninitialize();
