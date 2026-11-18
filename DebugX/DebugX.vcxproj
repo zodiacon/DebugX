@@ -261,6 +261,7 @@
     <ClInclude Include="AttachKernelDlg.h" />
     <ClInclude Include="LocalsView.h" />
     <ClInclude Include="SymbolPane.h" />
+    <ClInclude Include="TargetMemoryBuffer.h" />
     <ClInclude Include="WatchView.h" />
     <ClInclude Include="BreakpointsView.h" />
     <ClInclude Include="CallStackView.h" />

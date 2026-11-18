@@ -73,6 +73,9 @@ public:
 	void OnScopeChanged() override {
 		this->RequestRefresh();
 	}
+	void OnMemoryChanged() override {
+		this->RequestRefresh();
+	}
 
 	// CPaneBase
 	DebugEngine::Task<void> Refresh() {

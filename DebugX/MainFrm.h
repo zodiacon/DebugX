@@ -16,6 +16,11 @@ class CMainFrame :
 public:
 	DECLARE_FRAME_WND_CLASS(nullptr, IDR_MAINFRAME)
 
+	// The panes, and the arrangement the last run left (which can show the frame: WTLDock restores its placement too).
+	// Called once the frame is created, not from WM_CREATE: WTLHelper's dark-mode hook gives a top-level window its
+	// menu bar subclass when WM_CREATE returns, and a frame shown before that paints a light menu bar that stays.
+	void InitDock();
+
 	BOOL PreTranslateMessage(MSG* pMsg) override;
 	BOOL OnIdle() override;
 	void OnFinalMessage(HWND) override;
@@ -76,7 +81,6 @@ public:
 
 private:
 	void InitMenu(HMENU menu);
-	void InitDock();
 	void ApplyTheme();
 	void SaveLayout();
 	void UpdateUI(bool force = false);

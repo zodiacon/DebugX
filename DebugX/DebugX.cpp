@@ -21,6 +21,9 @@ int Run(LPTSTR /*lpstrCmdLine*/ = nullptr, int nCmdShow = SW_SHOWDEFAULT) {
 		ATLTRACE(_T("Main window creation failed!\n"));
 		return 0;
 	}
+	// (not in WM_CREATE: restoring the layout can show the frame, and it must not be shown before the dark-mode hook
+	// has given it its menu bar subclass, which happens when WM_CREATE returns)
+	frame->InitDock();
 
 	frame->ShowWindow(nCmdShow);
 

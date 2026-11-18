@@ -3,7 +3,7 @@
 #include <memory>
 #include <atltheme.h>		// CBufferedPaintWindowImpl, which CHexControl is built on
 #include <SimpleHexControl.h>
-#include <MemoryBuffer.h>
+#include "TargetMemoryBuffer.h"
 #include "Debugger.h"
 #include "Lifetime.h"
 #include "PaneBase.h"
@@ -13,6 +13,8 @@
 // there into a CHexControl (WTLHelper). The expression -- not just the address it last resolved to --
 // is what's kept, so a register-based one ("@$csp", say) tracks its target across each stop the way
 // CanRefresh's usual "the target just broke" trigger implies it should.
+// While a live target is stopped the bytes can be edited (overwrite only: the Insert key is kept from the control):
+// each change is written to the target as it is made (TargetMemoryBuffer), and shows in red until the next refresh.
 class CMemoryView :
 	public CFrameWindowImpl<CMemoryView, CWindow, CControlWinTraits>,
 	public CPaneBase<CMemoryView> {
@@ -45,6 +47,14 @@ public:
 
 	// ISessionObserver
 	void OnTargetEnded() override;
+	void OnSessionChanged() override {
+		UpdateWritable();
+	}
+	// (one of this pane's own writes is already showing)
+	void OnMemoryChanged() override {
+		if (m_PendingWrites == 0)
+			RequestRefresh();
+	}
 
 	// CPaneBase
 	bool CanRefresh() const {
@@ -61,13 +71,19 @@ private:
 	LRESULT OnAddressChar(UINT, WPARAM wParam, LPARAM, BOOL& handled);
 
 	void Go();
+	// the bytes can be edited when there are some, of a live target that is stopped
+	void UpdateWritable();
+	DebugEngine::Task<void> Write(ULONG64 address, std::vector<BYTE> data);
+	// keeps the Insert key (insert mode) from the hex control
+	static LRESULT CALLBACK HexSubclassProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 
 	static constexpr ULONG ChunkSize = 4096;
 
 	CContainedWindowT<CEdit> m_AddressEdit;
 	CButton m_Go;
 	CHexControl m_Hex;
-	std::unique_ptr<MemoryBuffer> m_Buffer;
+	std::unique_ptr<TargetMemoryBuffer> m_Buffer;
+	int m_PendingWrites{ 0 };
 	CString m_Expression;		// what is loaded: re-evaluated on every refresh, so a register expression follows it
 	Lifetime m_Lifetime;
 };

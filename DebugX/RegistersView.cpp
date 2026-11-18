@@ -3,9 +3,123 @@
 #include "DebugManager.h"
 #include "SortHelper.h"
 
+using namespace DebugEngine;
+
 void CRegistersView::InitList() {
 	m_List.InsertColumn(0, L"Register", LVCFMT_LEFT, 90);
 	m_List.InsertColumn(1, L"Value", LVCFMT_LEFT, 320);
+
+	// the value editor: made once, shown over the value being edited
+	m_Editor.Create(m_List, rcDefault, nullptr, WS_CHILD | WS_BORDER | ES_AUTOHSCROLL);
+	m_Editor.SetFont(m_List.GetFont());
+}
+
+bool CRegistersView::CanEdit() const {
+	auto& session = DebugManager::Session();
+	return session.IsBroken() && session.CurrentFrame() == 0 && (session.Target() & TargetType::Live) == TargetType::Live;
+}
+
+bool CRegistersView::OnDoubleClickList(HWND, int row, int, POINT const&) {
+	if (row < 0)
+		return false;
+	BeginEdit(row);
+	return true;
+}
+
+void CRegistersView::BeginEdit(int row) {
+	if (row < 0 || row >= static_cast<int>(m_Items.size()) || !CanEdit()) {
+		::MessageBeep(MB_ICONWARNING);
+		return;
+	}
+
+	CRect rc;
+	if (!m_List.GetSubItemRect(row, 1, LVIR_LABEL, &rc))
+		return;
+
+	m_List.EnsureVisible(row, FALSE);
+	m_List.GetSubItemRect(row, 1, LVIR_LABEL, &rc);
+	m_EditName = m_Items[row].Name;
+	m_EditValue = m_Items[row].Value;
+	m_Editing = true;
+	m_Editor.SetWindowText(m_EditValue.c_str());
+	m_Editor.MoveWindow(rc.left, rc.top - 1, rc.Width(), rc.Height() + 2);
+	m_Editor.ShowWindow(SW_SHOW);
+	m_Editor.SetFocus();
+	m_Editor.SetSelAll();
+}
+
+void CRegistersView::EndEdit(bool commit) {
+	if (!m_Editing)
+		return;
+
+	// (first: hiding the editor takes the focus from it, and that comes back here)
+	m_Editing = false;
+	CString text;
+	m_Editor.GetWindowText(text);
+	text.Trim();
+	const bool hadFocus = ::GetFocus() == m_Editor.m_hWnd;
+	m_Editor.ShowWindow(SW_HIDE);
+	if (hadFocus)
+		m_List.SetFocus();
+
+	if (commit && !text.IsEmpty() && m_EditValue != (PCWSTR)text)
+		SetRegister(m_EditName, (PCWSTR)text);
+}
+
+Task<void> CRegistersView::SetRegister(std::wstring name, std::wstring value) {
+	auto alive = m_Lifetime.Watch();
+
+	// (the panes that show the thread hear of the change from the engine)
+	auto hr = co_await DebugManager::DebuggerX().SetRegister(name.c_str(), value.c_str());
+	if (!*alive)
+		co_return;
+
+	if (FAILED(hr)) {
+		CString text;
+		if (hr == E_NOTIMPL)
+			text.Format(L"%s cannot be changed here (only integer and floating-point registers can)", name.c_str());
+		else
+			text.Format(L"Failed to set %s to \"%s\" (0x%08X)", name.c_str(), value.c_str(), static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+	}
+}
+
+LRESULT CRegistersView::OnListKeyDown(int, LPNMHDR hdr, BOOL& handled) {
+	auto vk = reinterpret_cast<LPNMLVKEYDOWN>(hdr)->wVKey;
+	if (hdr->hwndFrom != m_List.m_hWnd || (vk != VK_F2 && vk != VK_RETURN)) {
+		handled = FALSE;
+		return 0;
+	}
+	BeginEdit(m_List.GetNextItem(-1, LVNI_SELECTED));
+	return 0;
+}
+
+LRESULT CRegistersView::OnListScroll(int, LPNMHDR hdr, BOOL& handled) {
+	// (the editor would not move with its row)
+	if (hdr->hwndFrom == m_List.m_hWnd)
+		EndEdit(true);
+	handled = FALSE;
+	return 0;
+}
+
+LRESULT CRegistersView::OnEditorKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
+	switch (wParam) {
+		case VK_RETURN: EndEdit(true); return 0;
+		case VK_ESCAPE: EndEdit(false); return 0;
+	}
+	handled = FALSE;
+	return 0;
+}
+
+LRESULT CRegistersView::OnEditorKillFocus(UINT, WPARAM, LPARAM, BOOL& handled) {
+	EndEdit(true);
+	handled = FALSE;
+	return 0;
+}
+
+LRESULT CRegistersView::OnEditorGetDlgCode(UINT, WPARAM, LPARAM, BOOL&) {
+	// Enter and Escape are the editor's, not the dock's or a dialog's
+	return DLGC_WANTALLKEYS;
 }
 
 CString CRegistersView::GetColumnText(HWND hWnd, int row, int column) const {
@@ -23,6 +137,7 @@ void CRegistersView::DoSort(const SortInfo* si) {
 }
 
 void CRegistersView::OnTargetEnded() {
+	EndEdit(false);
 	m_Items.clear();
 	m_Previous.clear();
 	m_LastFrame0.clear();
@@ -34,6 +149,8 @@ void CRegistersView::OnTargetEnded() {
 
 DebugEngine::Task<void> CRegistersView::Refresh() {
 	auto alive = m_Lifetime.Watch();
+	// (the rows are about to change under it)
+	EndEdit(false);
 
 	std::vector<DebugEngine::RegisterInfo> registers;
 	co_await DebugManager::DebuggerX().GetRegisters(registers);

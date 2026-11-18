@@ -130,6 +130,10 @@ void SessionModel::OnNotification(DebuggerNotificationType type, void* data) {
 			break;
 		}
 
+		case DebuggerNotificationType::MemoryChanged:
+			Notify([](auto& o) { o.OnMemoryChanged(); });
+			break;
+
 		case DebuggerNotificationType::BreakpointsChanged:
 			Notify([](auto& o) { o.OnBreakpointsChanged(); });
 			break;

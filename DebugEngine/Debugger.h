@@ -35,7 +35,8 @@ namespace DebugEngine {
 		TargetChanged,		// a target was attached or opened, or the session has ended
 		BreakpointsChanged,	// a breakpoint was added, removed, enabled, disabled or changed (by whoever)
 		ContextChanged,		// the current thread has changed, or its registers were written to (data: ContextData)
-		ScopeChanged		// the frame of the current thread's stack that locals and registers are about (data: ScopeData)
+		ScopeChanged,		// the frame of the current thread's stack that locals and registers are about (data: ScopeData)
+		MemoryChanged		// target memory was written to (WriteMemory, or a command such as eb); no data
 	};
 
 	enum class ExecutionStatus {
@@ -291,6 +292,13 @@ namespace DebugEngine {
 		// reads target memory; 'buffer' is resized to however many bytes were actually read (can be less than
 		// requested at the end of a readable region, or empty if none of it is)
 		Task<HRESULT> ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size);
+		// writes target memory (all of it, or it fails: ERROR_PARTIAL_COPY if only some could be); MemoryChanged follows,
+		// delivered before the task completes
+		Task<HRESULT> WriteMemory(ULONG64 address, std::vector<BYTE> data);
+		// a register of the current thread (by name, as GetRegisters has it), from text: an expression for an integer one
+		// (in the engine's radix, hexadecimal by default, as GetRegisters shows them), a number for a floating-point one.
+		// Vector registers are not supported (E_NOTIMPL). ContextChanged follows.
+		Task<HRESULT> SetRegister(PCWSTR name, PCWSTR value);
 
 		// Runs code on the engine thread. The function must not use the client after it returns.
 		Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);

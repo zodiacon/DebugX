@@ -52,6 +52,10 @@ public:
 	void OnScopeChanged() override {
 		RequestRefresh();
 	}
+	// (code patched in place)
+	void OnMemoryChanged() override {
+		RequestRefresh();
+	}
 	void OnBreakpointsChanged() override {
 		RequestRefresh();
 	}

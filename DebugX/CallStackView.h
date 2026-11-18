@@ -24,6 +24,10 @@ public:
 	void OnScopeChanged() override {
 		m_List.Invalidate();
 	}
+	// (a return address on the stack may have been)
+	void OnMemoryChanged() override {
+		RequestRefresh();
+	}
 	void OnTargetEnded() override;
 
 	// CPaneBase

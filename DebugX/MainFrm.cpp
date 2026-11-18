@@ -116,7 +116,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	UISetCheck(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, AppSettings::Get().Dml() != 0);
 
 	ApplyTheme();
-	InitDock();
+	// (the panes and the saved layout come after WM_CREATE: see InitDock)
 	UpdateUI(true);
 
 	return 0;

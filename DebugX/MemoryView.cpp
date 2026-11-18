@@ -17,10 +17,21 @@ LRESULT CMemoryView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
 	m_Hex.Create(*this, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_TABSTOP);
 	m_Hex.SetReadOnly(true);
+	m_Hex.SetInsertMode(false);
 	m_Hex.SetFont(L"Consolas", 90);
+	::SetWindowSubclass(m_Hex, HexSubclassProc, 0, 0);
 
 	InitPane();
 	return 0;
+}
+
+LRESULT CALLBACK CMemoryView::HexSubclassProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR) {
+	// target memory is overwritten, never inserted into (the control's Insert/Delete would change the buffer's size)
+	if (msg == WM_KEYDOWN && wParam == VK_INSERT)
+		return 0;
+	if (msg == WM_NCDESTROY)
+		::RemoveWindowSubclass(hWnd, HexSubclassProc, 0);
+	return ::DefSubclassProc(hWnd, msg, wParam, lParam);
 }
 
 LRESULT CMemoryView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
@@ -70,10 +81,36 @@ void CMemoryView::Go() {
 }
 
 void CMemoryView::OnTargetEnded() {
-	m_Buffer.reset();
 	m_Hex.SetBufferManager(nullptr);
+	m_Buffer.reset();
 	m_Hex.SetSize(0);
+	UpdateWritable();
 	MarkDirty();
+}
+
+void CMemoryView::UpdateWritable() {
+	auto& session = DebugManager::Session();
+	const bool live = (session.Target() & TargetType::Live) == TargetType::Live;
+	m_Hex.SetReadOnly(!(m_Buffer && m_Buffer->GetSize() > 0 && live && session.IsBroken()));
+}
+
+Task<void> CMemoryView::Write(ULONG64 address, std::vector<BYTE> data) {
+	auto alive = m_Lifetime.Watch();
+
+	// (the MemoryChanged this causes arrives before the task completes: see OnMemoryChanged)
+	m_PendingWrites++;
+	auto hr = co_await DebugManager::DebuggerX().WriteMemory(address, std::move(data));
+	if (!*alive)
+		co_return;
+	m_PendingWrites--;
+
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"Failed to write to 0x%llX (0x%08X)", address, static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+		// what the target really has
+		RequestRefresh();
+	}
 }
 
 Task<void> CMemoryView::Refresh() {
@@ -93,11 +130,20 @@ Task<void> CMemoryView::Refresh() {
 	if (!*alive)
 		co_return;
 
-	m_Buffer = std::make_unique<MemoryBuffer>(data.data(), static_cast<uint32_t>(data.size()));
-	m_Hex.SetBufferManager(m_Buffer.get());
-	m_Hex.SetSize(static_cast<int64_t>(data.size()));
+	// the same place again (another stop, or memory written): the caret stays where it was
+	const bool samePlace = m_Buffer && m_Buffer->GetAddress() == address;
+	const auto caret = samePlace ? m_Hex.GetCaretOffset() : 0;
+
+	const auto size = static_cast<int64_t>(data.size());
+	auto buffer = std::make_unique<TargetMemoryBuffer>(address, std::move(data), [this](ULONG64 address, std::vector<BYTE> data) {
+		Write(address, std::move(data));
+		});
+	m_Hex.SetBufferManager(buffer.get());
+	m_Buffer = std::move(buffer);
+	m_Hex.SetSize(size);
 	m_Hex.SetBiasOffset(static_cast<int64_t>(address));
-	m_Hex.GotoOffset(0);
+	m_Hex.GotoOffset(caret < size ? caret : 0);
 	m_Hex.Refresh();
+	UpdateWritable();
 	RefreshDone();
 }

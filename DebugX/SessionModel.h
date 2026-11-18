@@ -27,6 +27,8 @@ struct ISessionObserver {
 	// another frame of the current thread's stack was chosen (SessionModel::CurrentFrame) -- not when the target stops
 	// or the thread changes, which put it back to 0 and have events of their own
 	virtual void OnScopeChanged() {}
+	// target memory was written to (from the Memory pane, or a command such as eb) while the target is stopped
+	virtual void OnMemoryChanged() {}
 	virtual void OnBreakpointsChanged() {}
 	virtual void OnModuleLoaded(const DebugEngine::ModuleEventData& data) {}
 	virtual void OnModuleUnloaded(const DebugEngine::ModuleEventData& data) {}

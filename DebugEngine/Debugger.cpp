@@ -140,6 +140,8 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines);
 	Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);
 	Task<HRESULT> ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size);
+	Task<HRESULT> WriteMemory(ULONG64 address, std::vector<BYTE> data);
+	Task<HRESULT> SetRegister(PCWSTR name, PCWSTR value);
 	HRESULT Break();
 
 	TargetType GetTargetType() const {
@@ -233,6 +235,8 @@ private:
 	bool m_BreakpointHit{ false };
 	// while the engine's current thread is switched by the debugger itself (looking at the threads), nobody is told
 	int m_InternalSwitch{ 0 };
+	// while WriteMemory writes: it tells of the change itself
+	bool m_Writing{ false };
 
 	CComPtr<IDebugClient7> m_spClient;
 	CComPtr<IDebugAdvanced4> m_spAdvanced;
@@ -321,6 +325,10 @@ private:
 		// registers written to (the engine says everything has changed when the target stops: that is not this)
 		if ((Flags & DEBUG_CDS_REGISTERS) && !(Flags & DEBUG_CDS_DATA))
 			PostContextChanged();
+		// memory written to (eb, ed, ... -- WriteMemory says so itself, once). Only while stopped: a step says "data"
+		// on its way, while it executes.
+		if ((Flags & DEBUG_CDS_DATA) && !(Flags & DEBUG_CDS_REGISTERS) && !m_Writing && m_Status == DEBUG_STATUS_BREAK)
+			PostNotification(DebuggerNotificationType::MemoryChanged, nullptr);
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeEngineState(ULONG Flags, ULONG64 Argument) override {
@@ -1081,6 +1089,63 @@ Task<HRESULT> DebuggerX::Impl::ReadMemory(ULONG64 address, std::vector<BYTE>& bu
 		});
 }
 
+Task<HRESULT> DebuggerX::Impl::WriteMemory(ULONG64 address, std::vector<BYTE> data) {
+	co_return co_await Run([this, address, data = std::move(data)] {
+		ULONG written = 0;
+		m_Writing = true;
+		auto hr = m_spData->WriteVirtual(address, const_cast<BYTE*>(data.data()), static_cast<ULONG>(data.size()), &written);
+		m_Writing = false;
+		if (written > 0)
+			PostNotification(DebuggerNotificationType::MemoryChanged, nullptr);
+		HR(hr);
+		return written < data.size() ? HRESULT_FROM_WIN32(ERROR_PARTIAL_COPY) : S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetRegister(PCWSTR name, PCWSTR value) {
+	co_return co_await Run([this, name = std::wstring(name), value = std::wstring(value)] {
+		ULONG index;
+		HR(m_spRegisters->GetIndexByNameWide(name.c_str(), &index));
+		DEBUG_REGISTER_DESCRIPTION desc;
+		HR(m_spRegisters->GetDescriptionWide(index, nullptr, 0, nullptr, &desc));
+
+		DEBUG_VALUE v{};
+		switch (desc.Type) {
+			case DEBUG_VALUE_INT8:
+			case DEBUG_VALUE_INT16:
+			case DEBUG_VALUE_INT32:
+			case DEBUG_VALUE_INT64:
+				HR(m_spControl->EvaluateWide(value.c_str(), desc.Type, &v, nullptr));
+				break;
+
+			case DEBUG_VALUE_FLOAT32:
+			case DEBUG_VALUE_FLOAT64:
+			case DEBUG_VALUE_FLOAT80:
+			case DEBUG_VALUE_FLOAT82:
+			case DEBUG_VALUE_FLOAT128: {
+				// (the engine's expressions are integers: a number is read here, as GetRegisters writes it; SetValue
+				// converts it to the register's type)
+				wchar_t* end;
+				v.Type = DEBUG_VALUE_FLOAT64;
+				v.F64 = ::wcstod(value.c_str(), &end);
+				if (end == value.c_str() || *end != L'\0')
+					return E_INVALIDARG;
+				break;
+			}
+
+			default:
+				return E_NOTIMPL;
+		}
+		HR(m_spRegisters->SetValue(index, &v));
+		// The scope keeps a copy of the context, and that is what DEBUG_REGSRC_FRAME (GetRegisters) and the symbol
+		// groups read: it is not updated by SetValue. Back to the thread's own (frame 0, the only one written to).
+		m_spSymbols->ResetScope();
+		// (whether the engine says so for a change made by its own client is not to be relied on)
+		PostContextChanged();
+		return S_OK;
+		});
+}
+
 HRESULT DebuggerX::Impl::EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads, ULONG currentThread) {
 	ULONG count;
 	HR(m_spSystem->GetNumberThreads(&count));
@@ -1232,6 +1297,14 @@ Task<HRESULT> DebuggerX::Evaluate(PCWSTR expression, ULONG64& value) {
 
 Task<HRESULT> DebuggerX::ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size) {
 	return m_Impl->ReadMemory(address, buffer, size);
+}
+
+Task<HRESULT> DebuggerX::WriteMemory(ULONG64 address, std::vector<BYTE> data) {
+	return m_Impl->WriteMemory(address, std::move(data));
+}
+
+Task<HRESULT> DebuggerX::SetRegister(PCWSTR name, PCWSTR value) {
+	return m_Impl->SetRegister(name, value);
 }
 
 HRESULT DebuggerX::Break() {

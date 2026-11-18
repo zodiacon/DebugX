@@ -125,6 +125,9 @@
     <ClInclude Include="LocalsView.h">
       <Filter>Views</Filter>
     </ClInclude>
+    <ClInclude Include="TargetMemoryBuffer.h">
+      <Filter>Views</Filter>
+    </ClInclude>
     <ClInclude Include="SymbolPane.h">
       <Filter>Views</Filter>
     </ClInclude>
