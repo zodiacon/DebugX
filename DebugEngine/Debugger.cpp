@@ -4,6 +4,7 @@
 #include <format>
 #include <functional>
 #include <mutex>
+#include <map>
 #include <set>
 #include <atlcom.h>
 #include <wil\resource.h>
@@ -133,7 +134,8 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
 	Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded);
 	Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
-	Task<HRESULT> AddBreakpoint(PCWSTR expression);
+	Task<HRESULT> AddBreakpoint(BreakpointSettings settings);
+	Task<HRESULT> UpdateBreakpoint(ULONG id, BreakpointSettings settings);
 	Task<HRESULT> RemoveBreakpoint(ULONG id);
 	Task<HRESULT> SetBreakpointEnabled(ULONG id, bool enabled);
 	Task<HRESULT> GetInstructionOffset(ULONG64& offset);
@@ -238,6 +240,33 @@ private:
 	// while WriteMemory writes: it tells of the change itself
 	bool m_Writing{ false };
 
+	// What DebugX keeps of a breakpoint that the engine does not (debug thread only). By the breakpoint's GUID: its id
+	// is reused by the engine once it is removed, also by bc in the Command window, which DebugX is not told about.
+	struct BreakpointExtra {
+		std::wstring Condition;
+		ULONG Hits{ 0 };
+	};
+	struct GuidLess {
+		bool operator()(const GUID& a, const GUID& b) const {
+			return ::memcmp(&a, &b, sizeof(GUID)) < 0;
+		}
+	};
+	std::map<GUID, BreakpointExtra, GuidLess> m_BreakpointExtras;
+
+	static bool GetBreakpointGuid(IUnknown* bp, GUID& guid) {
+		CComQIPtr<IDebugBreakpoint3> bp3(bp);
+		return bp3 && SUCCEEDED(bp3->GetGuid(&guid));
+	}
+	BreakpointExtra* FindBreakpointExtra(IUnknown* bp) {
+		GUID guid;
+		if (!GetBreakpointGuid(bp, guid))
+			return nullptr;
+		auto it = m_BreakpointExtras.find(guid);
+		return it == m_BreakpointExtras.end() ? nullptr : &it->second;
+	}
+	// sets everything but the type (debug thread)
+	HRESULT ApplyBreakpointSettings(IDebugBreakpoint2* bp, const BreakpointSettings& settings);
+
 	CComPtr<IDebugClient7> m_spClient;
 	CComPtr<IDebugAdvanced4> m_spAdvanced;
 	CComPtr<IDebugDataSpaces4> m_spData;
@@ -258,6 +287,20 @@ private:
 		return S_OK;
 	}
 	virtual HRESULT __stdcall Breakpoint(PDEBUG_BREAKPOINT Bp) override {
+		// DebugX's own condition: false, and the target goes on as if nothing happened (the engine does not run the
+		// breakpoint's command either -- that is for when it breaks)
+		if (auto extra = FindBreakpointExtra(Bp)) {
+			if (!extra->Condition.empty()) {
+				DEBUG_VALUE value{};
+				auto hr = m_spControl->EvaluateWide(std::format(L"@@c++({})", extra->Condition).c_str(), DEBUG_VALUE_INT64, &value, nullptr);
+				if (SUCCEEDED(hr) && value.I64 == 0)
+					return DEBUG_STATUS_GO;
+				if (FAILED(hr))		// (better to stop than to go past what may be the place)
+					m_spControl->OutputWide(DEBUG_OUTPUT_ERROR, L"%ws", std::format(L"Breakpoint condition '{}' could not be evaluated (0x{:08X}): breaking\n",
+						extra->Condition, static_cast<unsigned>(hr)).c_str());
+			}
+			extra->Hits++;
+		}
 		m_BreakpointHit = true;
 		m_StateChanged = true;
 
@@ -735,6 +778,8 @@ Task<HRESULT> DebuggerX::Impl::Stop() {
 		Break();
 
 	co_return co_await Run([this] {
+		// (the breakpoints go with the session)
+		m_BreakpointExtras.clear();
 		return m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
 		});
 }
@@ -748,6 +793,7 @@ Task<HRESULT> DebuggerX::Impl::Detach() {
 		// a user-mode process is let go of (and keeps running); anything else is just no longer looked at
 		if (liveUser)
 			HR(m_spClient->DetachProcesses());
+		m_BreakpointExtras.clear();
 		HR(m_spClient->EndSession(DEBUG_END_PASSIVE));
 		UpdateStatus();
 		return S_OK;
@@ -1000,30 +1046,86 @@ Task<HRESULT> DebuggerX::Impl::EnumBreakpoints(std::vector<BreakpointInfo>& brea
 			BreakpointInfo bi{};
 			bi.Id = p.Id;
 			bi.Enabled = (p.Flags & DEBUG_BREAKPOINT_ENABLED) != 0;
+			bi.OneShot = (p.Flags & DEBUG_BREAKPOINT_ONE_SHOT) != 0;
 			bi.Deferred = (p.Flags & DEBUG_BREAKPOINT_DEFERRED) != 0;
 			bi.IsData = p.BreakType == DEBUG_BREAKPOINT_DATA;
 			bi.Offset = p.Offset;
 			bi.PassCount = p.PassCount;
+			bi.ThreadId = p.MatchThread;
+			if (bi.IsData) {
+				bi.DataSize = p.DataSize;
+				bi.DataAccess = p.DataAccessType;
+			}
 			if (SUCCEEDED(bp->GetOffsetExpressionWide(text, _countof(text), nullptr)))
 				bi.Expression = text;
+			if (bi.Expression.empty() && !bi.Deferred)
+				bi.Expression = std::format(L"0x{:X}", p.Offset);
 			if (SUCCEEDED(bp->GetCommandWide(text, _countof(text), nullptr)))
 				bi.Command = text;
+			if (auto extra = FindBreakpointExtra(bp)) {
+				bi.Condition = extra->Condition;
+				bi.Hits = extra->Hits;
+			}
 			breakpoints.push_back(std::move(bi));
 		}
 		return S_OK;
 		});
 }
 
-Task<HRESULT> DebuggerX::Impl::AddBreakpoint(PCWSTR expression) {
-	co_return co_await Run([this, expression = std::wstring(expression)] {
+HRESULT DebuggerX::Impl::ApplyBreakpointSettings(IDebugBreakpoint2* bp, const BreakpointSettings& s) {
+	if (s.IsData) {
+		// (a data breakpoint is on an address, not on an expression that is worked out again as modules load)
+		DEBUG_VALUE address{};
+		HR(m_spControl->EvaluateWide(s.Expression.c_str(), DEBUG_VALUE_INT64, &address, nullptr));
+		if (s.DataSize != 1 && s.DataSize != 2 && s.DataSize != 4 && s.DataSize != 8)
+			return E_INVALIDARG;
+		if (address.I64 % s.DataSize)
+			return HRESULT_FROM_WIN32(ERROR_INVALID_ADDRESS);		// the processor watches aligned memory only
+		HR(bp->SetDataParameters(s.DataSize, s.DataAccess));
+		HR(bp->SetOffset(address.I64));
+	}
+	else {
+		HR(bp->SetOffsetExpressionWide(s.Expression.c_str()));
+	}
+	HR(bp->SetCommandWide(s.Command.c_str()));
+	HR(bp->SetPassCount(s.PassCount ? s.PassCount : 1));
+	HR(bp->SetMatchThreadId(s.ThreadId));
+	HR(s.OneShot ? bp->AddFlags(DEBUG_BREAKPOINT_ONE_SHOT) : bp->RemoveFlags(DEBUG_BREAKPOINT_ONE_SHOT));
+
+	GUID guid;
+	if (GetBreakpointGuid(bp, guid))
+		m_BreakpointExtras[guid].Condition = s.Condition;
+	else if (!s.Condition.empty())
+		return E_NOTIMPL;		// (an engine too old to tell breakpoints apart: there is nowhere to keep the condition)
+
+	// last: the breakpoint is not armed before it is all there
+	return s.Enabled ? bp->AddFlags(DEBUG_BREAKPOINT_ENABLED) : bp->RemoveFlags(DEBUG_BREAKPOINT_ENABLED);
+}
+
+Task<HRESULT> DebuggerX::Impl::AddBreakpoint(BreakpointSettings settings) {
+	co_return co_await Run([this, settings = std::move(settings)] {
 		CComPtr<IDebugBreakpoint2> bp;
-		HR(m_spControl->AddBreakpoint2(DEBUG_BREAKPOINT_CODE, DEBUG_ANY_ID, &bp));
-		auto hr = bp->SetOffsetExpressionWide(expression.c_str());
-		if (SUCCEEDED(hr))
-			hr = bp->AddFlags(DEBUG_BREAKPOINT_ENABLED);
-		if (FAILED(hr))
+		HR(m_spControl->AddBreakpoint2(settings.IsData ? DEBUG_BREAKPOINT_DATA : DEBUG_BREAKPOINT_CODE, DEBUG_ANY_ID, &bp));
+		auto hr = ApplyBreakpointSettings(bp, settings);
+		if (FAILED(hr)) {
+			GUID guid;
+			if (GetBreakpointGuid(bp, guid))
+				m_BreakpointExtras.erase(guid);
 			m_spControl->RemoveBreakpoint2(bp.Detach());	// (the engine frees the breakpoint: nothing is left to Release)
+		}
 		return hr;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::UpdateBreakpoint(ULONG id, BreakpointSettings settings) {
+	co_return co_await Run([this, id, settings = std::move(settings)] {
+		CComPtr<IDebugBreakpoint2> bp;
+		HR(m_spControl->GetBreakpointById2(id, &bp));
+		ULONG type, processor;
+		HR(bp->GetType(&type, &processor));
+		if ((type == DEBUG_BREAKPOINT_DATA) != settings.IsData)
+			return E_INVALIDARG;
+		return ApplyBreakpointSettings(bp, settings);
 		});
 }
 
@@ -1031,6 +1133,9 @@ Task<HRESULT> DebuggerX::Impl::RemoveBreakpoint(ULONG id) {
 	co_return co_await Run([this, id] {
 		CComPtr<IDebugBreakpoint2> bp;
 		HR(m_spControl->GetBreakpointById2(id, &bp));
+		GUID guid;
+		if (GetBreakpointGuid(bp, guid))
+			m_BreakpointExtras.erase(guid);
 		return m_spControl->RemoveBreakpoint2(bp.Detach());	// (the engine frees the breakpoint: nothing is left to Release)
 		});
 }
@@ -1272,7 +1377,17 @@ Task<HRESULT> DebuggerX::EnumBreakpoints(std::vector<BreakpointInfo>& breakpoint
 }
 
 Task<HRESULT> DebuggerX::AddBreakpoint(PCWSTR expression) {
-	return m_Impl->AddBreakpoint(expression);
+	BreakpointSettings settings;
+	settings.Expression = expression;
+	return m_Impl->AddBreakpoint(std::move(settings));
+}
+
+Task<HRESULT> DebuggerX::AddBreakpoint(BreakpointSettings settings) {
+	return m_Impl->AddBreakpoint(std::move(settings));
+}
+
+Task<HRESULT> DebuggerX::UpdateBreakpoint(ULONG id, BreakpointSettings settings) {
+	return m_Impl->UpdateBreakpoint(id, std::move(settings));
 }
 
 Task<HRESULT> DebuggerX::RemoveBreakpoint(ULONG id) {

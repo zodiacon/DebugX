@@ -3,8 +3,9 @@
 #include "ListPane.h"
 #include "resource.h"
 
-// The breakpoints of the session, whoever set them (here, or with bp in the Command window). The check box is
-// whether one is enabled; Delete removes the selected one, Insert (and the menu) adds one.
+// The breakpoints of the session, whoever set them (here, or with bp in the Command window). The check box (or Space)
+// is whether one is enabled; Delete removes the selected one, Insert (and the menu) adds one, a double click or Enter
+// edits it (condition, command, hit count, thread, ...).
 class CBreakpointsView : public CListPane<CBreakpointsView> {
 public:
 	BEGIN_MSG_MAP(CBreakpointsView)
@@ -24,7 +25,7 @@ public:
 	void DoSort(const SortInfo* si);
 
 	// CVirtualListView: a click on the check box (a virtual list does not say when one is toggled), the menu, a double
-	// click (which also enables or disables)
+	// click (which edits)
 	void OnListViewClick(HWND, int row, int col, POINT const& pt);
 	bool OnRightClickList(HWND, int row, int col, POINT const& pt);
 	bool OnDoubleClickList(HWND, int row, int col, POINT const& pt);
@@ -44,6 +45,8 @@ private:
 	void AddBreakpoint();
 	void RemoveSelected();
 	void ToggleSelected();
+	void EditSelected();
+	DebugEngine::Task<void> Update(ULONG id, DebugEngine::BreakpointSettings settings);
 	DebugEngine::Task<void> Remove(ULONG id);
 	DebugEngine::Task<void> SetEnabled(ULONG id, bool enabled);
 

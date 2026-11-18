@@ -2,14 +2,32 @@
 #include "BreakpointsView.h"
 #include "DebugManager.h"
 #include "SortHelper.h"
+#include "BreakpointDlg.h"
+
+using namespace DebugEngine;
+
+namespace {
+	// "Code", or "Data: write 4"
+	CString TypeText(const DebugEngine::BreakpointInfo& bp) {
+		if (!bp.IsData)
+			return L"Code";
+		PCWSTR access = bp.DataAccess == DEBUG_BREAK_WRITE ? L"write" : bp.DataAccess == DEBUG_BREAK_EXECUTE ? L"execute" : L"read/write";
+		CString text;
+		text.Format(L"Data: %s %u", access, bp.DataSize);
+		return text;
+	}
+}
 
 void CBreakpointsView::InitList() {
 	m_List.InsertColumn(0, L"ID", LVCFMT_RIGHT, 60);
 	m_List.InsertColumn(1, L"Location", LVCFMT_LEFT, 280);
 	m_List.InsertColumn(2, L"Address", LVCFMT_RIGHT, 140);
-	m_List.InsertColumn(3, L"Type", LVCFMT_LEFT, 60);
+	m_List.InsertColumn(3, L"Type", LVCFMT_LEFT, 110);
 	m_List.InsertColumn(4, L"Status", LVCFMT_LEFT, 80);
-	m_List.InsertColumn(5, L"Command", LVCFMT_LEFT, 240);
+	m_List.InsertColumn(5, L"Command", LVCFMT_LEFT, 200);
+	// (added after the others: the saved widths are by position)
+	m_List.InsertColumn(6, L"Condition", LVCFMT_LEFT, 200);
+	m_List.InsertColumn(7, L"Hits", LVCFMT_RIGHT, 50);
 }
 
 CString CBreakpointsView::GetColumnText(HWND hWnd, int row, int column) const {
@@ -27,9 +45,25 @@ CString CBreakpointsView::GetColumnText(HWND hWnd, int row, int column) const {
 			if (!bp.Deferred)
 				text.Format(L"0x%016llX", bp.Offset);
 			break;
-		case 3: return bp.IsData ? L"Data" : L"Code";
-		case 4: return bp.Deferred ? L"Pending" : (bp.Enabled ? L"Enabled" : L"Disabled");
+		case 3: return TypeText(bp);
+		case 4:
+			text = bp.Deferred ? L"Pending" : (bp.Enabled ? L"Enabled" : L"Disabled");
+			if (bp.OneShot)
+				text += L", one-shot";
+			if (bp.PassCount > 1) {
+				CString pass;
+				pass.Format(L", on hit %u", bp.PassCount);
+				text += pass;
+			}
+			if (bp.ThreadId != DEBUG_ANY_ID) {
+				CString thread;
+				thread.Format(L", thread %u", bp.ThreadId);
+				text += thread;
+			}
+			break;
 		case 5: return bp.Command.c_str();
+		case 6: return bp.Condition.c_str();
+		case 7: text.Format(L"%u", bp.Hits); break;
 	}
 	return text;
 }
@@ -51,6 +85,8 @@ void CBreakpointsView::DoSort(const SortInfo* si) {
 			case 3: return SortHelper::Sort(b1.IsData, b2.IsData, asc);
 			case 4: return SortHelper::Sort(b1.Enabled, b2.Enabled, asc);
 			case 5: return SortHelper::Sort(b1.Command, b2.Command, asc);
+			case 6: return SortHelper::Sort(b1.Condition, b2.Condition, asc);
+			case 7: return SortHelper::Sort(b1.Hits, b2.Hits, asc);
 		}
 		return false;
 		});
@@ -69,7 +105,7 @@ bool CBreakpointsView::OnDoubleClickList(HWND, int row, int col, POINT const& pt
 	if (row < 0)
 		return false;
 
-	ToggleSelected();
+	EditSelected();
 	return true;
 }
 
@@ -80,16 +116,45 @@ bool CBreakpointsView::OnRightClickList(HWND, int row, int col, POINT const& pt)
 	CMenu menu;
 	menu.CreatePopupMenu();
 	const UINT onRow = row >= 0 ? MF_STRING : (MF_STRING | MF_GRAYED);
-	menu.AppendMenu(MF_STRING, ID_DEBUG_ADDBREAKPOINT, L"&Add...");
+	menu.AppendMenu(MF_STRING, ID_DEBUG_ADDBREAKPOINT, L"&Add...\tIns");
+	menu.AppendMenu(onRow, ID_BREAKPOINT_EDIT, L"&Edit...\tEnter");
 	menu.AppendMenu(MF_SEPARATOR);
-	menu.AppendMenu(onRow, ID_BREAKPOINT_TOGGLE, L"&Enable / Disable");
-	menu.AppendMenu(onRow, ID_BREAKPOINT_DELETE, L"&Delete");
+	menu.AppendMenu(onRow, ID_BREAKPOINT_TOGGLE, L"E&nable / Disable\tSpace");
+	menu.AppendMenu(onRow, ID_BREAKPOINT_DELETE, L"&Delete\tDel");
+	if (row >= 0)
+		menu.SetMenuDefaultItem(ID_BREAKPOINT_EDIT);
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
 		case ID_DEBUG_ADDBREAKPOINT: AddBreakpoint(); break;
+		case ID_BREAKPOINT_EDIT: EditSelected(); break;
 		case ID_BREAKPOINT_TOGGLE: ToggleSelected(); break;
 		case ID_BREAKPOINT_DELETE: RemoveSelected(); break;
 	}
 	return true;
+}
+
+void CBreakpointsView::EditSelected() {
+	const int row = m_List.GetNextItem(-1, LVNI_SELECTED);
+	if (row < 0 || row >= static_cast<int>(m_Items.size()))
+		return;
+
+	// (a copy: the list may be made again while the dialog is up)
+	auto bp = m_Items[row];
+	CBreakpointDlg dlg(&bp);
+	if (dlg.DoModal(m_hWnd) == IDOK)
+		Update(bp.Id, dlg.GetSettings());
+}
+
+Task<void> CBreakpointsView::Update(ULONG id, BreakpointSettings settings) {
+	auto alive = m_Lifetime.Watch();
+
+	auto hr = co_await DebugManager::DebuggerX().UpdateBreakpoint(id, settings);
+	if (!*alive)
+		co_return;
+
+	if (FAILED(hr))
+		AtlMessageBox(*this, (PCWSTR)BreakpointErrorText(settings, hr), IDS_TITLE, MB_ICONERROR);
+	// The engine says when a breakpoint changes, but not when only DebugX's own part of it (the condition) does
+	RequestRefresh();
 }
 
 LRESULT CBreakpointsView::OnKeyDown(int, LPNMHDR hdr, BOOL& handled) {
@@ -102,6 +167,7 @@ LRESULT CBreakpointsView::OnKeyDown(int, LPNMHDR hdr, BOOL& handled) {
 		case VK_DELETE: RemoveSelected(); break;
 		case VK_INSERT: AddBreakpoint(); break;
 		case VK_SPACE: ToggleSelected(); break;
+		case VK_RETURN: EditSelected(); break;
 		default: handled = FALSE; break;
 	}
 	return 0;

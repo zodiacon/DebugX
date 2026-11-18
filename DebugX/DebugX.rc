@@ -237,15 +237,37 @@ BEGIN
     PUSHBUTTON      "Browse...",IDC_BROWSEDIR,360,48,60,18
 END
 
-IDD_ADDBREAKPOINT DIALOGEX 0, 0, 250, 62
+IDD_BREAKPOINT DIALOGEX 0, 0, 310, 200
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "Add Breakpoint"
+CAPTION "Breakpoint"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    LTEXT           "Address or symbol (module!function, 0x7ff6`1234, ...):",IDC_STATIC,7,7,236,8
-    EDITTEXT        IDC_BPEXPR,7,19,236,14,ES_AUTOHSCROLL
-    DEFPUSHBUTTON   "  OK",IDOK,86,41,56,14,BS_CENTER | BS_FLAT | WS_DISABLED
-    PUSHBUTTON      "  Cancel",IDCANCEL,148,41,54,14,BS_FLAT
+    LTEXT           "Type:",IDC_STATIC,7,9,46,8
+    CONTROL         "&Code",IDC_BPCODE,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,56,8,40,10
+    CONTROL         "&Data (on access to memory)",IDC_BPDATA,"Button",BS_AUTORADIOBUTTON,100,8,120,10
+    LTEXT           "&Location:",IDC_BPEXPRLABEL,7,27,46,8
+    EDITTEXT        IDC_BPEXPR,56,25,247,14,ES_AUTOHSCROLL | WS_GROUP
+    LTEXT           "module!function, 0x7ff6`1234, ...; data: an address expression, e.g. &&g_count",IDC_STATIC,56,41,247,8
+    LTEXT           "Si&ze:",IDC_BPSIZELABEL,7,57,46,8
+    COMBOBOX        IDC_BPSIZE,56,55,40,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "A&ccess:",IDC_BPACCESSLABEL,108,57,30,8
+    COMBOBOX        IDC_BPACCESS,140,55,90,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Co&ndition:",IDC_STATIC,7,77,46,8
+    EDITTEXT        IDC_BPCONDITION,56,75,247,14,ES_AUTOHSCROLL
+    LTEXT           "C++, in the scope of the hit (e.g. i == 5 &&&& p != nullptr): breaks when not zero",IDC_STATIC,56,91,247,8
+    LTEXT           "Co&mmand:",IDC_STATIC,7,107,46,8
+    EDITTEXT        IDC_BPCOMMAND,56,105,247,14,ES_AUTOHSCROLL
+    LTEXT           "Debugger commands run when it breaks (e.g. kb; g)",IDC_STATIC,56,121,247,8
+    LTEXT           "&Break on hit:",IDC_STATIC,7,137,46,8
+    EDITTEXT        IDC_BPPASSCOUNT,56,135,36,14,ES_NUMBER
+    LTEXT           "(1: every time)",IDC_STATIC,96,137,56,8
+    LTEXT           "&Thread:",IDC_STATIC,160,137,28,8
+    EDITTEXT        IDC_BPTHREAD,190,135,36,14,ES_NUMBER
+    LTEXT           "(index; empty: any)",IDC_STATIC,230,137,73,8
+    CONTROL         "&Enabled",IDC_BPENABLED,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,56,155,50,10
+    CONTROL         "&One-shot (removed when it is hit)",IDC_BPONESHOT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,112,155,150,10
+    DEFPUSHBUTTON   "  OK",IDOK,94,177,56,14,BS_CENTER | BS_FLAT | WS_DISABLED
+    PUSHBUTTON      "  Cancel",IDCANCEL,158,177,54,14,BS_FLAT
 END
 
 IDD_ATTACHKERNEL DIALOGEX 0, 0, 290, 76

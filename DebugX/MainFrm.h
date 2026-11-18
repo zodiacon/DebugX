@@ -90,7 +90,7 @@ private:
 	DebugEngine::Task<void> AttachLocalKernel();
 	DebugEngine::Task<void> AttachKernel(CString connection);
 	DebugEngine::Task<void> OpenDumpFile(CString path);
-	DebugEngine::Task<void> AddBreakpoint(CString expression);
+	DebugEngine::Task<void> AddBreakpoint(DebugEngine::BreakpointSettings settings);
 	// nothing is being debugged, and nothing is on its way to being
 	bool CanStartSession() const;
 

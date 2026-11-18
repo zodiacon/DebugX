@@ -163,15 +163,29 @@ namespace DebugEngine {
 		std::wstring Symbol;		// module!function+0xoffset; empty if there is no symbol
 	};
 
-	struct BreakpointInfo {
-		ULONG Id;
-		bool Enabled;
-		bool Deferred;		// its address cannot be worked out yet: the module it is in is not loaded
-		bool IsData;		// on access to memory rather than on running code
-		ULONG64 Offset;
-		ULONG PassCount;
+	// What a breakpoint is to be (AddBreakpoint, UpdateBreakpoint).
+	struct BreakpointSettings {
+		// code: where (module!function, 0x7ff6`1234, ...; it can be in a module that is not loaded yet);
+		// data: the address of the memory (an expression, worked out when the breakpoint is set)
 		std::wstring Expression;
-		std::wstring Command;
+		// a C++ expression (locals, members, ...), evaluated in the thread that hits the breakpoint: it breaks only if
+		// the value is not zero. Empty: always. (DebugX's own: the engine has no conditions -- see the Breakpoint callback)
+		std::wstring Condition;
+		std::wstring Command;			// debugger commands run when it breaks
+		ULONG PassCount{ 1 };			// it breaks on this hit, and every one after it (1: every time)
+		ULONG ThreadId{ DEBUG_ANY_ID };	// the engine's id of the only thread it breaks in (ThreadInfo::Id), or any
+		bool Enabled{ true };
+		bool OneShot{ false };			// removed when it is hit
+		bool IsData{ false };			// on access to memory rather than on running code
+		ULONG DataSize{ 1 };			// data: 1, 2, 4 or 8 bytes, aligned to their size
+		ULONG DataAccess{ DEBUG_BREAK_WRITE };	// data: DEBUG_BREAK_WRITE, DEBUG_BREAK_READ (read or write), DEBUG_BREAK_EXECUTE
+	};
+
+	struct BreakpointInfo : BreakpointSettings {
+		ULONG Id;
+		bool Deferred;		// its address cannot be worked out yet: the module it is in is not loaded
+		ULONG64 Offset;
+		ULONG Hits{ 0 };	// the times it broke into the debugger (with its condition true), as far as DebugX has seen
 	};
 
 	struct ExitThreadData {
@@ -278,6 +292,9 @@ namespace DebugEngine {
 		Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
 		// a breakpoint at an address or symbol, as the debugger takes them (module!function, 0x7ff6`1234, ...)
 		Task<HRESULT> AddBreakpoint(PCWSTR expression);
+		Task<HRESULT> AddBreakpoint(BreakpointSettings settings);
+		// a breakpoint made over (a code one cannot become a data one, or the other way around: E_INVALIDARG)
+		Task<HRESULT> UpdateBreakpoint(ULONG id, BreakpointSettings settings);
 		Task<HRESULT> RemoveBreakpoint(ULONG id);
 		Task<HRESULT> SetBreakpointEnabled(ULONG id, bool enabled);
 

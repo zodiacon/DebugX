@@ -15,7 +15,7 @@
 #include "RunExeDlg.h"
 #include "ProcessSelectDlg.h"
 #include "PaneRegistry.h"
-#include "AddBreakpointDlg.h"
+#include "BreakpointDlg.h"
 #include "AttachKernelDlg.h"
 
 using namespace DebugEngine;
@@ -372,9 +372,9 @@ LRESULT CMainFrame::OnDebugAddBreakpoint(WORD, WORD, HWND, BOOL&) {
 	if (!DebugManager::Session().HasTarget())
 		return 0;
 
-	CAddBreakpointDlg dlg;
+	CBreakpointDlg dlg;
 	if (dlg.DoModal(m_hWnd) == IDOK)
-		AddBreakpoint(dlg.GetExpression());
+		AddBreakpoint(dlg.GetSettings());
 
 	return 0;
 }
@@ -460,18 +460,15 @@ Task<void> CMainFrame::OpenDumpFile(CString path) {
 	co_await dbg.OutputPrompt();
 }
 
-Task<void> CMainFrame::AddBreakpoint(CString expression) {
+Task<void> CMainFrame::AddBreakpoint(BreakpointSettings settings) {
 	auto alive = m_Lifetime.Watch();
 
-	auto hr = co_await DebugManager::DebuggerX().AddBreakpoint(expression);
+	auto hr = co_await DebugManager::DebuggerX().AddBreakpoint(settings);
 	if (!*alive)
 		co_return;
 
-	if (FAILED(hr)) {
-		CString text;
-		text.Format(L"Failed to set a breakpoint at %s (0x%08X)", (PCWSTR)expression, static_cast<unsigned>(hr));
-		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
-	}
+	if (FAILED(hr))
+		AtlMessageBox(*this, (PCWSTR)BreakpointErrorText(settings, hr), IDS_TITLE, MB_ICONERROR);
 	// (the list of breakpoints hears of it from the engine)
 }
 

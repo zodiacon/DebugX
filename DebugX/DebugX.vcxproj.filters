@@ -54,7 +54,7 @@
     <ClCompile Include="AttachKernelDlg.cpp">
       <Filter>Views</Filter>
     </ClCompile>
-    <ClCompile Include="AddBreakpointDlg.cpp">
+    <ClCompile Include="BreakpointDlg.cpp">
       <Filter>Views</Filter>
     </ClCompile>
     <ClCompile Include="SessionModel.cpp">
@@ -137,7 +137,7 @@
     <ClInclude Include="AttachKernelDlg.h">
       <Filter>Views</Filter>
     </ClInclude>
-    <ClInclude Include="AddBreakpointDlg.h">
+    <ClInclude Include="BreakpointDlg.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="SessionModel.h">
