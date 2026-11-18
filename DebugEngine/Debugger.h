@@ -123,6 +123,27 @@ namespace DebugEngine {
 		ULONG ThreadId;
 	};
 
+	// Exception: an exception in the target, before the engine's event filters decide whether it breaks
+	struct ExceptionData {
+		ULONG Code;
+		ULONG64 Address;
+		bool FirstChance;
+		ULONG ThreadId;			// the system's
+		std::wstring Name;		// the engine's name for the code ("Access violation"), if it has one
+	};
+
+	// An event filter of the engine: what it does when an event happens (a specific one: a thread created, a module
+	// loaded, ...) or an exception is raised -- break, only say so, or ignore it -- and, for an exception, whether it
+	// is passed on to the target as handled or not. What Debug > Exception Settings edits.
+	struct EventFilter {
+		std::wstring Name;			// "Access violation", "Create thread", ...; an exception added by code has none
+		ULONG Code{ 0 };			// an exception's code
+		bool IsException{ false };
+		bool IsArbitrary{ false };	// an exception filter added by code (it can be removed), not one the engine has of its own
+		ULONG ExecutionOption{ DEBUG_FILTER_SECOND_CHANCE_BREAK };	// DEBUG_FILTER_BREAK / SECOND_CHANCE_BREAK (exceptions) / OUTPUT / IGNORE
+		ULONG ContinueOption{ DEBUG_FILTER_GO_NOT_HANDLED };		// exceptions: DEBUG_FILTER_GO_HANDLED / GO_NOT_HANDLED
+	};
+
 	// ScopeChanged: the index of the frame in the current thread's stack (0: the innermost, where the thread is)
 	struct ScopeData {
 		ULONG FrameIndex;
@@ -316,6 +337,13 @@ namespace DebugEngine {
 		// (in the engine's radix, hexadecimal by default, as GetRegisters shows them), a number for a floating-point one.
 		// Vector registers are not supported (E_NOTIMPL). ContextChanged follows.
 		Task<HRESULT> SetRegister(PCWSTR name, PCWSTR value);
+
+		// The engine's event filters: the specific events, then the exceptions (its own, then the ones added by code).
+		// 'defaults': as they were when the engine was created, before anybody changed them.
+		Task<HRESULT> GetEventFilters(std::vector<EventFilter>& filters, bool defaults = false);
+		// Sets the filters given (a specific event or exception the engine has by its name or code); the exceptions added
+		// by code become exactly the IsArbitrary ones given -- one that is not in the list is removed.
+		Task<HRESULT> SetEventFilters(std::vector<EventFilter> filters);
 
 		// Runs code on the engine thread. The function must not use the client after it returns.
 		Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);

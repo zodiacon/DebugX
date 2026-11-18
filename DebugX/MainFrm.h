@@ -46,6 +46,7 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOVER, OnDebugStepOver)
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOUT, OnDebugStepOut)
 		COMMAND_ID_HANDLER(ID_DEBUG_ADDBREAKPOINT, OnDebugAddBreakpoint)
+		COMMAND_ID_HANDLER(ID_DEBUG_EXCEPTIONS, OnDebugExceptions)
 		COMMAND_ID_HANDLER(ID_VIEW_COMMAND, OnViewPane)
 		COMMAND_ID_HANDLER(ID_VIEW_THREADS, OnViewPane)
 		COMMAND_ID_HANDLER(ID_VIEW_PROCESSES, OnViewPane)
@@ -91,6 +92,9 @@ private:
 	DebugEngine::Task<void> AttachKernel(CString connection);
 	DebugEngine::Task<void> OpenDumpFile(CString path);
 	DebugEngine::Task<void> AddBreakpoint(DebugEngine::BreakpointSettings settings);
+	DebugEngine::Task<void> EditExceptionSettings();
+	// the Exception Settings the user saved, applied to the engine (at startup)
+	DebugEngine::Task<void> ApplySavedEventFilters();
 	// nothing is being debugged, and nothing is on its way to being
 	bool CanStartSession() const;
 
@@ -124,6 +128,7 @@ private:
 	LRESULT OnDebugStepInto(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStepOut(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugAddBreakpoint(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugExceptions(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
 private:
 	WTLDock::CDockHost m_Dock;

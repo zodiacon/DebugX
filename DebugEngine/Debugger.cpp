@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Debugger.h"
+#include <algorithm>
 #include <atomic>
 #include <format>
 #include <functional>
@@ -53,6 +54,7 @@ namespace {
 			case DebuggerNotificationType::ModuleUnloaded: delete static_cast<ModuleEventData*>(data); break;
 			case DebuggerNotificationType::ContextChanged: delete static_cast<ContextData*>(data); break;
 			case DebuggerNotificationType::ScopeChanged: delete static_cast<ScopeData*>(data); break;
+			case DebuggerNotificationType::Exception: delete static_cast<ExceptionData*>(data); break;
 			default: break;
 		}
 	}
@@ -126,6 +128,8 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
 	Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
 	Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);
+	Task<HRESULT> GetEventFilters(std::vector<EventFilter>& filters, bool defaults);
+	Task<HRESULT> SetEventFilters(std::vector<EventFilter> filters);
 	Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers);
 	Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames);
 	Task<HRESULT> SetCurrentThread(ULONG threadId);
@@ -267,6 +271,11 @@ private:
 	// sets everything but the type (debug thread)
 	HRESULT ApplyBreakpointSettings(IDebugBreakpoint2* bp, const BreakpointSettings& settings);
 
+	// the event filters as the engine has them (debug thread)
+	HRESULT ReadEventFilters(std::vector<EventFilter>& filters);
+	// as they were when the engine was created (debug thread; read-only after CreateInternal)
+	std::vector<EventFilter> m_DefaultFilters;
+
 	CComPtr<IDebugClient7> m_spClient;
 	CComPtr<IDebugAdvanced4> m_spAdvanced;
 	CComPtr<IDebugDataSpaces4> m_spData;
@@ -311,10 +320,20 @@ private:
 		return DEBUG_STATUS_BREAK;
 	}
 	virtual HRESULT __stdcall Exception(PEXCEPTION_RECORD64 Exception, ULONG FirstChance) override {
-		m_BreakpointHit = Exception->ExceptionCode == 0x80000004 || Exception->ExceptionCode == 0x80000003 || FirstChance == 0;
 		m_StateChanged = true;
 
-		return m_BreakpointHit ? DEBUG_STATUS_BREAK : DEBUG_STATUS_NO_CHANGE;
+		auto data = new ExceptionData{ Exception->ExceptionCode, Exception->ExceptionAddress, FirstChance != 0 };
+		m_spSystem->GetCurrentThreadSystemId(&data->ThreadId);
+		for (auto& f : m_DefaultFilters) {
+			if (f.IsException && f.Code == Exception->ExceptionCode) {
+				data->Name = f.Name;
+				break;
+			}
+		}
+		PostNotification(DebuggerNotificationType::Exception, data);
+
+		// Whether it breaks is the engine's event filters' to say (Debug > Exception Settings), not this callback's
+		return DEBUG_STATUS_NO_CHANGE;
 	}
 
 	virtual HRESULT __stdcall CreateThread(ULONG64 Handle, ULONG64 DataOffset, ULONG64 StartOffset) override {
@@ -622,7 +641,101 @@ HRESULT DebuggerX::Impl::CreateInternal() {
 	HR(m_spClient->SetEventCallbacks(this));
 	HR(m_spClient->SetOutputCallbacksWide(this));
 	m_spControl->AddEngineOptions(DEBUG_ENGOPT_PREFER_DML);
+	// (what Exception Settings' Reset goes back to; and the names of the exceptions the engine knows)
+	ReadEventFilters(m_DefaultFilters);
 	return S_OK;
+}
+
+HRESULT DebuggerX::Impl::ReadEventFilters(std::vector<EventFilter>& filters) {
+	ULONG events, exceptions, arbitrary;
+	HR(m_spControl->GetNumberEventFilters(&events, &exceptions, &arbitrary));
+	filters.reserve(events + exceptions + arbitrary);
+	WCHAR text[256];
+
+	if (events) {
+		std::vector<DEBUG_SPECIFIC_FILTER_PARAMETERS> params(events);
+		HR(m_spControl->GetSpecificFilterParameters(0, events, params.data()));
+		for (ULONG i = 0; i < events; i++) {
+			EventFilter f;
+			if (SUCCEEDED(m_spControl->GetEventFilterTextWide(i, text, _countof(text), nullptr)))
+				f.Name = text;
+			f.ExecutionOption = params[i].ExecutionOption;
+			f.ContinueOption = params[i].ContinueOption;
+			filters.push_back(std::move(f));
+		}
+	}
+	if (exceptions + arbitrary) {
+		std::vector<DEBUG_EXCEPTION_FILTER_PARAMETERS> params(exceptions + arbitrary);
+		HR(m_spControl->GetExceptionFilterParameters(exceptions + arbitrary, nullptr, events, params.data()));
+		for (ULONG i = 0; i < exceptions + arbitrary; i++) {
+			EventFilter f;
+			f.IsException = true;
+			f.IsArbitrary = i >= exceptions;
+			f.Code = params[i].ExceptionCode;
+			if (!f.IsArbitrary && SUCCEEDED(m_spControl->GetEventFilterTextWide(events + i, text, _countof(text), nullptr)))
+				f.Name = text;
+			f.ExecutionOption = params[i].ExecutionOption;
+			f.ContinueOption = params[i].ContinueOption;
+			filters.push_back(std::move(f));
+		}
+	}
+	return S_OK;
+}
+
+Task<HRESULT> DebuggerX::Impl::GetEventFilters(std::vector<EventFilter>& filters, bool defaults) {
+	if (defaults) {
+		// (written once, on the debug thread, before any call could be made)
+		filters = m_DefaultFilters;
+		co_return S_OK;
+	}
+	co_return co_await Run([this, &filters] {
+		return ReadEventFilters(filters);
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetEventFilters(std::vector<EventFilter> filters) {
+	co_return co_await Run([this, filters = std::move(filters)] {
+		std::vector<EventFilter> current;
+		HR(ReadEventFilters(current));
+		ULONG events, exceptions, arbitrary;
+		HR(m_spControl->GetNumberEventFilters(&events, &exceptions, &arbitrary));
+
+		std::vector<DEBUG_EXCEPTION_FILTER_PARAMETERS> exceptionParams;
+		for (auto& f : filters) {
+			if (!f.IsException) {
+				// a specific event: by name (its index is the engine's)
+				for (ULONG i = 0; i < events; i++) {
+					if (current[i].Name == f.Name) {
+						DEBUG_SPECIFIC_FILTER_PARAMETERS p{};
+						HR(m_spControl->GetSpecificFilterParameters(i, 1, &p));
+						p.ExecutionOption = f.ExecutionOption == DEBUG_FILTER_SECOND_CHANCE_BREAK ? DEBUG_FILTER_BREAK : f.ExecutionOption;
+						p.ContinueOption = f.ContinueOption;
+						HR(m_spControl->SetSpecificFilterParameters(i, 1, &p));
+						break;
+					}
+				}
+				continue;
+			}
+			// an exception: by code (one the engine does not have is added)
+			DEBUG_EXCEPTION_FILTER_PARAMETERS p{};
+			p.ExceptionCode = f.Code;
+			p.ExecutionOption = f.ExecutionOption;
+			p.ContinueOption = f.ContinueOption;
+			exceptionParams.push_back(p);
+		}
+		// exceptions added by code that are not wanted any more
+		for (auto& c : current) {
+			if (c.IsArbitrary && std::none_of(filters.begin(), filters.end(), [&](auto& f) { return f.IsException && f.Code == c.Code; })) {
+				DEBUG_EXCEPTION_FILTER_PARAMETERS p{};
+				p.ExceptionCode = c.Code;
+				p.ExecutionOption = DEBUG_FILTER_REMOVE;
+				exceptionParams.push_back(p);
+			}
+		}
+		if (!exceptionParams.empty())
+			HR(m_spControl->SetExceptionFilterParameters(static_cast<ULONG>(exceptionParams.size()), exceptionParams.data()));
+		return S_OK;
+		});
 }
 
 void DebuggerX::Impl::UpdateStatus() {
@@ -1338,6 +1451,14 @@ Task<HRESULT> DebuggerX::EnumModules(std::vector<ModuleInfo>& modules) {
 
 Task<HRESULT> DebuggerX::EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads) {
 	return m_Impl->EnumProcesses(processes, threads);
+}
+
+Task<HRESULT> DebuggerX::GetEventFilters(std::vector<EventFilter>& filters, bool defaults) {
+	return m_Impl->GetEventFilters(filters, defaults);
+}
+
+Task<HRESULT> DebuggerX::SetEventFilters(std::vector<EventFilter> filters) {
+	return m_Impl->SetEventFilters(std::move(filters));
 }
 
 Task<HRESULT> DebuggerX::RunAsync(std::function<HRESULT(IDebugClient*)> func) {

@@ -130,6 +130,13 @@ void SessionModel::OnNotification(DebuggerNotificationType type, void* data) {
 			break;
 		}
 
+		case DebuggerNotificationType::Exception: {
+			auto& ex = *static_cast<ExceptionData*>(data);
+			AddLogLine(std::format(L"{} exception 0x{:08X}{} at 0x{:X}, thread {} (0x{:X})", ex.FirstChance ? L"First-chance" : L"Second-chance",
+				ex.Code, ex.Name.empty() ? std::wstring() : L" (" + ex.Name + L")", ex.Address, ex.ThreadId, ex.ThreadId));
+			break;
+		}
+
 		case DebuggerNotificationType::MemoryChanged:
 			Notify([](auto& o) { o.OnMemoryChanged(); });
 			break;

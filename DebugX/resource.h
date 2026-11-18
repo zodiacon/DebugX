@@ -43,6 +43,7 @@
 #define IDD_BREAKPOINT                  240
 #define IDI_MEMORY                      241
 #define IDD_ATTACHKERNEL                242
+#define IDD_EXCEPTIONS                  243
 #define IDI_WINDOW_CLOSE                238
 #define IDI_ICON3                       239
 #define IDI_WINDOW_CLOSEALL             239
@@ -70,6 +71,13 @@
 #define IDC_BPSIZELABEL                 1022
 #define IDC_BPACCESSLABEL               1023
 #define IDC_BPEXPRLABEL                 1024
+#define IDC_EXLIST                      1025
+#define IDC_EXBREAK                     1026
+#define IDC_EXCONTINUE                  1027
+#define IDC_EXCODE                      1028
+#define IDC_EXADD                       1029
+#define IDC_EXREMOVE                    1030
+#define IDC_EXRESET                     1031
 #define ID_WINDOW_CLOSE                 32772
 #define ID_WINDOW_CLOSE_ALL             32773
 #define ID_FILE_DUMMY                   32775
@@ -108,14 +116,15 @@
 #define ID_VIEW_LOCALS                  32808
 #define ID_VIEW_WATCH                   32809
 #define ID_BREAKPOINT_EDIT              32810
+#define ID_DEBUG_EXCEPTIONS             32811
 
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        243
-#define _APS_NEXT_COMMAND_VALUE         32811
-#define _APS_NEXT_CONTROL_VALUE         1025
+#define _APS_NEXT_RESOURCE_VALUE        244
+#define _APS_NEXT_COMMAND_VALUE         32812
+#define _APS_NEXT_CONTROL_VALUE         1032
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

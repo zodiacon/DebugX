@@ -17,6 +17,8 @@
 #include "PaneRegistry.h"
 #include "BreakpointDlg.h"
 #include "AttachKernelDlg.h"
+#include "ExceptionSettingsDlg.h"
+#include "EventFilterText.h"
 
 using namespace DebugEngine;
 using namespace WTLDock;
@@ -114,6 +116,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	if (!AppSettings::Get().Dml())
 		DebugManager::DebuggerX().SetDmlEnabled(false);
 	UISetCheck(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, AppSettings::Get().Dml() != 0);
+	ApplySavedEventFilters();
 
 	ApplyTheme();
 	// (the panes and the saved layout come after WM_CREATE: see InitDock)
@@ -368,6 +371,62 @@ bool CMainFrame::CanStartSession() const {
 	return !session.HasTarget() && !session.IsBusy();
 }
 
+LRESULT CMainFrame::OnDebugExceptions(WORD, WORD, HWND, BOOL&) {
+	// (the engine's thread is in WaitForEvent while the target runs: the filters could not be read until it stops)
+	if (DebugManager::Session().IsRunning()) {
+		::MessageBeep(MB_ICONWARNING);
+		return 0;
+	}
+	EditExceptionSettings();
+	return 0;
+}
+
+Task<void> CMainFrame::EditExceptionSettings() {
+	auto alive = m_Lifetime.Watch();
+	auto& dbg = DebugManager::DebuggerX();
+
+	std::vector<EventFilter> filters, defaults;
+	auto hr = co_await dbg.GetEventFilters(filters);
+	if (!*alive)
+		co_return;
+	if (SUCCEEDED(hr))
+		hr = co_await dbg.GetEventFilters(defaults, true);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		AtlMessageBox(*this, L"Failed to read the exception settings from the engine", IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+
+	CExceptionSettingsDlg dlg(std::move(filters), defaults);
+	if (dlg.DoModal(m_hWnd) != IDOK)
+		co_return;
+
+	auto chosen = dlg.GetFilters();
+	hr = co_await dbg.SetEventFilters(chosen);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"Failed to change the exception settings (0x%08X)", static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+	AppSettings::Get().EventFilters(EventFilterText::Save(chosen, defaults));
+}
+
+Task<void> CMainFrame::ApplySavedEventFilters() {
+	auto text = AppSettings::Get().EventFilters();
+	if (text.empty())
+		co_return;
+
+	auto& dbg = DebugManager::DebuggerX();
+	std::vector<EventFilter> defaults;
+	co_await dbg.GetEventFilters(defaults, true);
+	// (nothing of the window's is used after this: no need to watch its lifetime)
+	co_await dbg.SetEventFilters(EventFilterText::Load(text, defaults));
+}
+
 LRESULT CMainFrame::OnDebugAddBreakpoint(WORD, WORD, HWND, BOOL&) {
 	if (!DebugManager::Session().HasTarget())
 		return 0;
@@ -583,4 +642,5 @@ void CMainFrame::UpdateUI(bool force) {
 	for (auto& info : PaneRegistry::Get().Panes())
 		UIEnable(info.Command, PaneRegistry::IsAvailable(info, target), force);
 	UIEnable(ID_DEBUG_ADDBREAKPOINT, attached, force);
+	UIEnable(ID_DEBUG_EXCEPTIONS, !session.IsRunning(), force);
 }

@@ -48,6 +48,12 @@
     <ClCompile Include="BreakpointsView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="ExceptionSettingsDlg.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="EventFilterText.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
     <ClCompile Include="WatchView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -129,6 +135,12 @@
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="SymbolPane.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="ExceptionSettingsDlg.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="EventFilterText.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="WatchView.h">

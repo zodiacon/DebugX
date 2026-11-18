@@ -228,6 +228,8 @@
     <ClCompile Include="BreakpointDlg.cpp" />
     <ClCompile Include="AttachKernelDlg.cpp" />
     <ClCompile Include="WatchView.cpp" />
+    <ClCompile Include="ExceptionSettingsDlg.cpp" />
+    <ClCompile Include="EventFilterText.cpp" />
     <ClCompile Include="BreakpointsView.cpp" />
     <ClCompile Include="CallStackView.cpp" />
     <ClCompile Include="ModulesView.cpp" />
@@ -263,6 +265,8 @@
     <ClInclude Include="SymbolPane.h" />
     <ClInclude Include="TargetMemoryBuffer.h" />
     <ClInclude Include="WatchView.h" />
+    <ClInclude Include="ExceptionSettingsDlg.h" />
+    <ClInclude Include="EventFilterText.h" />
     <ClInclude Include="BreakpointsView.h" />
     <ClInclude Include="CallStackView.h" />
     <ClInclude Include="ListPane.h" />

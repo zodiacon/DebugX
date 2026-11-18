@@ -12,10 +12,12 @@ struct AppSettings : Settings {
 		SETTING_STRING(PaneStates, L"");		// what the tool windows keep of themselves (PaneRegistry), a line for each
 		SETTING(Dml, 1, SettingType::Int32);		// the engine's output in DML where it can be (Options > Debugger Markup Language)
 		SETTING_STRING(KernelConnection, L"net:port=50000,key=");	// the last Attach to Kernel connection string
+		SETTING_STRING(EventFilters, L"");		// Exception Settings: what is not as the engine has it (EventFilterText)
 	END_SETTINGS
 
 	DEF_SETTING(DarkMode, int)
 	DEF_SETTING_STRING(PaneStates)
 	DEF_SETTING(Dml, int)
 	DEF_SETTING_STRING(KernelConnection)
+	DEF_SETTING_STRING(EventFilters)
 };
