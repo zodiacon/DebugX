@@ -24,6 +24,9 @@ struct ISessionObserver {
 
 	// the current thread is another one, or its registers were written to
 	virtual void OnContextChanged() {}
+	// another frame of the current thread's stack was chosen (SessionModel::CurrentFrame) -- not when the target stops
+	// or the thread changes, which put it back to 0 and have events of their own
+	virtual void OnScopeChanged() {}
 	virtual void OnBreakpointsChanged() {}
 	virtual void OnModuleLoaded(const DebugEngine::ModuleEventData& data) {}
 	virtual void OnModuleUnloaded(const DebugEngine::ModuleEventData& data) {}
@@ -72,6 +75,10 @@ public:
 	ULONG CurrentThreadId() const {
 		return m_CurrentThread;
 	}
+	// the frame of the current thread's stack that locals and registers are about (StackFrameInfo::Index)
+	ULONG CurrentFrame() const {
+		return m_CurrentFrame;
+	}
 
 	// What happened in the target, a line each (processes and threads coming and going, modules loading, what the
 	// target writes with OutputDebugString), the last ones. It is kept here, not by the window that shows it, so that
@@ -97,6 +104,7 @@ private:
 	DebugEngine::ExecutionStatus m_Status{ DebugEngine::ExecutionStatus::NoDebuggee };
 	bool m_HadTarget{ false };
 	ULONG m_CurrentThread{ 0 };
+	ULONG m_CurrentFrame{ 0 };
 	std::deque<std::wstring> m_Log;
 	std::wstring m_PartialLine;		// text of the target that has not reached the end of its line
 };

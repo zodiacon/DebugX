@@ -37,6 +37,16 @@ CString CCallStackView::GetColumnText(HWND hWnd, int row, int column) const {
 	return text;
 }
 
+bool CCallStackView::OnDoubleClickList(HWND, int row, int col, POINT const& pt) {
+	// (a dump too: it is always stopped)
+	if (row < 0 || row >= static_cast<int>(m_Items.size()) || !DebugManager::Session().IsBroken())
+		return false;
+
+	// (the panes that follow the scope, this one included, hear of it from the session)
+	DebugManager::DebuggerX().SetScopeFrame(m_Items[row].Index);
+	return true;
+}
+
 void CCallStackView::OnTargetEnded() {
 	m_Items.clear();
 	UpdateList(0);

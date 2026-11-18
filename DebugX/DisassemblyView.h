@@ -22,7 +22,7 @@ public:
 	}
 
 	enum { TextId = 150 };
-	enum { MarkerBreakpoint, MarkerCurrent };
+	enum { MarkerBreakpoint, MarkerCurrent, MarkerFrame };
 	enum { MarginSymbols };
 
 	BEGIN_MSG_MAP(CDisassemblyView)
@@ -47,6 +47,9 @@ public:
 
 	// ISessionObserver
 	void OnContextChanged() override {
+		RequestRefresh();
+	}
+	void OnScopeChanged() override {
 		RequestRefresh();
 	}
 	void OnBreakpointsChanged() override {

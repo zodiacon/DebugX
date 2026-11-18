@@ -82,6 +82,9 @@ void SessionModel::OnNotification(DebuggerNotificationType type, void* data) {
 		case DebuggerNotificationType::StatusChanged: {
 			auto old = m_Status;
 			m_Status = static_cast<ExecutionStatus>(*static_cast<ULONG*>(data));
+			// (a stop is in frame 0, whatever was chosen before)
+			if (m_Status == ExecutionStatus::Break && old != ExecutionStatus::Break)
+				m_CurrentFrame = 0;
 			Notify([](auto& o) { o.OnSessionChanged(); });
 			if (m_Status == ExecutionStatus::Break && old != ExecutionStatus::Break)
 				Notify([](auto& o) { o.OnBroke(); });
@@ -104,6 +107,7 @@ void SessionModel::OnNotification(DebuggerNotificationType type, void* data) {
 					Notify([](auto& o) { o.OnTargetAttached(); });
 				else {
 					m_CurrentThread = 0;
+					m_CurrentFrame = 0;
 					Notify([](auto& o) { o.OnTargetEnded(); });
 				}
 			}
@@ -112,8 +116,19 @@ void SessionModel::OnNotification(DebuggerNotificationType type, void* data) {
 
 		case DebuggerNotificationType::ContextChanged:
 			m_CurrentThread = static_cast<ContextData*>(data)->ThreadId;
+			m_CurrentFrame = 0;
 			Notify([](auto& o) { o.OnContextChanged(); });
 			break;
+
+		case DebuggerNotificationType::ScopeChanged: {
+			// (the engine says so for every reset to frame 0 as well, and SetScopeFrame says it again: only a change counts)
+			auto frame = static_cast<ScopeData*>(data)->FrameIndex;
+			if (frame != m_CurrentFrame) {
+				m_CurrentFrame = frame;
+				Notify([](auto& o) { o.OnScopeChanged(); });
+			}
+			break;
+		}
 
 		case DebuggerNotificationType::BreakpointsChanged:
 			Notify([](auto& o) { o.OnBreakpointsChanged(); });

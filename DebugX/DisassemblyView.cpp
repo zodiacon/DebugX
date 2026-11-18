@@ -78,12 +78,16 @@ LRESULT CDisassemblyView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
 	m_Text->SetMarginTypeN(MarginSymbols, MarginType::Symbol);
 	m_Text->SetMarginWidthN(MarginSymbols, 18);
-	m_Text->SetMarginMaskN(MarginSymbols, (1 << MarkerBreakpoint) | (1 << MarkerCurrent));
+	m_Text->SetMarginMaskN(MarginSymbols, (1 << MarkerBreakpoint) | (1 << MarkerCurrent) | (1 << MarkerFrame));
 	m_Text->SetMarginSensitiveN(MarginSymbols, true);
 	m_Text->MarkerDefine(MarkerBreakpoint, MarkerSymbol::Circle);
 	m_Text->MarkerDefine(MarkerCurrent, MarkerSymbol::ShortArrow);
 	m_Text->MarkerSetFore(MarkerCurrent, static_cast<Colour>(RGB(0, 0, 0)));
 	m_Text->MarkerSetBack(MarkerCurrent, static_cast<Colour>(RGB(255, 230, 0)));
+	// where the scope frame (chosen in the call stack) is: the instruction its call returns to
+	m_Text->MarkerDefine(MarkerFrame, MarkerSymbol::ShortArrow);
+	m_Text->MarkerSetFore(MarkerFrame, static_cast<Colour>(RGB(0, 0, 0)));
+	m_Text->MarkerSetBack(MarkerFrame, static_cast<Colour>(RGB(80, 200, 80)));
 
 	ApplyColors();
 	InitPane();
@@ -166,8 +170,18 @@ Task<void> CDisassemblyView::Refresh() {
 	if (!*alive)
 		co_return;
 
+	// in another frame than 0, the window starts where that frame is, not where the thread is
+	ULONG64 frameIp = 0;
+	ULONG frame = 0;
+	if (FAILED(co_await DebugManager::DebuggerX().GetScope(frameIp, frame)))
+		frame = 0;
+	if (!*alive)
+		co_return;
+	if (frame == 0)
+		frameIp = 0;
+
 	std::vector<DisassemblyLine> lines;
-	co_await DebugManager::DebuggerX().Disassemble(ip, LineCount, lines);
+	co_await DebugManager::DebuggerX().Disassemble(frameIp ? frameIp : ip, LineCount, lines);
 	if (!*alive)
 		co_return;
 
@@ -193,11 +207,17 @@ Task<void> CDisassemblyView::Refresh() {
 
 	m_Text->MarkerDeleteAll(MarkerBreakpoint);
 	m_Text->MarkerDeleteAll(MarkerCurrent);
+	m_Text->MarkerDeleteAll(MarkerFrame);
 	Line currentLine = -1;
 	for (size_t i = 0; i < m_LineAddresses.size(); i++) {
 		auto address = m_LineAddresses[i];
 		if (address == ip) {
 			m_Text->MarkerAdd(static_cast<Line>(i), MarkerCurrent);
+			if (!frameIp)
+				currentLine = static_cast<Line>(i);
+		}
+		if (frameIp && address == frameIp) {
+			m_Text->MarkerAdd(static_cast<Line>(i), MarkerFrame);
 			currentLine = static_cast<Line>(i);
 		}
 		for (auto& bp : m_Breakpoints) {

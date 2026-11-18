@@ -10,6 +10,8 @@
 #include "OutputView.h"
 #include "MemoryView.h"
 #include "DisassemblyView.h"
+#include "LocalsView.h"
+#include "WatchView.h"
 #include "resource.h"
 
 using namespace DebugEngine;
@@ -32,6 +34,8 @@ namespace {
 		{ L"processes", L"Processes", IDI_PROCESSES, ID_VIEW_PROCESSES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Kernel, true, L"registers", Make<CKernelProcessesView> },
 		{ L"memory", L"Memory", IDI_MEMORY, ID_VIEW_MEMORY, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"breakpoints", Make<CMemoryView> },
 		{ L"disassembly", L"Disassembly", IDI_STRUCT, ID_VIEW_DISASSEMBLY, PaneKind::Tool, DockSide::Left, { 560, 300 }, TargetType::Unknown, true, L"callstack", Make<CDisassemblyView> },
+		{ L"locals", L"Locals", IDI_TOOL, ID_VIEW_LOCALS, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"output", Make<CLocalsView> },
+		{ L"watch", L"Watch", IDI_FIND, ID_VIEW_WATCH, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"locals", Make<CWatchView> },
 	};
 }
 

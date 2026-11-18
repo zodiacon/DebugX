@@ -4,6 +4,7 @@
 #include <format>
 #include <functional>
 #include <mutex>
+#include <set>
 #include <atlcom.h>
 #include <wil\resource.h>
 #include <DbgModel.h>
@@ -50,6 +51,7 @@ namespace {
 			case DebuggerNotificationType::ModuleLoaded:
 			case DebuggerNotificationType::ModuleUnloaded: delete static_cast<ModuleEventData*>(data); break;
 			case DebuggerNotificationType::ContextChanged: delete static_cast<ContextData*>(data); break;
+			case DebuggerNotificationType::ScopeChanged: delete static_cast<ScopeData*>(data); break;
 			default: break;
 		}
 	}
@@ -126,6 +128,10 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers);
 	Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames);
 	Task<HRESULT> SetCurrentThread(ULONG threadId);
+	Task<HRESULT> SetScopeFrame(ULONG frameIndex);
+	Task<HRESULT> GetScope(ULONG64& instructionOffset, ULONG& frameIndex);
+	Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
+	Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded);
 	Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
 	Task<HRESULT> AddBreakpoint(PCWSTR expression);
 	Task<HRESULT> RemoveBreakpoint(ULONG id);
@@ -198,6 +204,9 @@ private:
 	bool DoPostCommand();
 	HRESULT EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads, ULONG currentThread);
 	void PostContextChanged();
+	void PostScopeChanged();
+	// flattens the group into rows, expanding the entries whose path is in 'expanded' (debug thread)
+	HRESULT WalkSymbolGroup(IDebugSymbolGroup2* group, const std::set<std::wstring>& expanded, std::vector<SymbolEntry>& entries);
 
 	void PostNotification(DebuggerNotificationType type, void* data);
 
@@ -240,7 +249,7 @@ private:
 	virtual HRESULT __stdcall GetInterestMask(PULONG Mask) override {
 		*Mask = DEBUG_EVENT_BREAKPOINT | DEBUG_EVENT_CHANGE_DEBUGGEE_STATE | DEBUG_EVENT_CREATE_PROCESS | DEBUG_EVENT_CREATE_THREAD
 			| DEBUG_EVENT_EXCEPTION | DEBUG_EVENT_LOAD_MODULE | DEBUG_EVENT_SYSTEM_ERROR | DEBUG_EVENT_CHANGE_ENGINE_STATE | DEBUG_EVENT_UNLOAD_MODULE
-			| DEBUG_EVENT_EXIT_PROCESS | DEBUG_EVENT_EXIT_THREAD | DEBUG_EVENT_SESSION_STATUS;
+			| DEBUG_EVENT_EXIT_PROCESS | DEBUG_EVENT_EXIT_THREAD | DEBUG_EVENT_SESSION_STATUS | DEBUG_EVENT_CHANGE_SYMBOL_STATE;
 
 		return S_OK;
 	}
@@ -324,6 +333,9 @@ private:
 		return S_OK;
 	}
 	virtual HRESULT __stdcall ChangeSymbolState(ULONG Flags, ULONG64 Argument) override {
+		// (.frame, the call stack's selection, or the engine going back to frame 0; not the debugger's own look at other threads)
+		if ((Flags & DEBUG_CSS_SCOPE) && m_InternalSwitch == 0)
+			PostScopeChanged();
 		return S_OK;
 	}
 	virtual HRESULT __stdcall CreateProcessW(ULONG64 ImageFileHandle, ULONG64 Handle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName,
@@ -581,6 +593,12 @@ void DebuggerX::Impl::PostContextChanged() {
 		PostNotification(DebuggerNotificationType::ContextChanged, new ContextData{ id });
 }
 
+void DebuggerX::Impl::PostScopeChanged() {
+	ULONG frame = 0;
+	if (m_spSymbols && SUCCEEDED(m_spSymbols->GetCurrentScopeFrameIndex(&frame)))
+		PostNotification(DebuggerNotificationType::ScopeChanged, new ScopeData{ frame });
+}
+
 bool DebuggerX::Impl::DoPostCommand() {
 	UpdateStatus();
 	m_spControl->OutputPromptWide(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
@@ -786,11 +804,22 @@ Task<HRESULT> DebuggerX::Impl::EnumProcesses(std::vector<ProcessInfo>& processes
 		ULONG currentProcess, currentThread = DEBUG_ANY_ID;
 		m_spSystem->GetCurrentProcessId(&currentProcess);
 		m_spSystem->GetCurrentThreadId(&currentThread);
+		// Switching threads puts the scope back to frame 0: the frame the user chose is restored afterwards (unannounced:
+		// as far as anybody can tell, it never changed).
 		struct Switching {
-			Switching(int& count) : Count(count) { ++Count; }
-			~Switching() { --Count; }
-			int& Count;
-		} switching(m_InternalSwitch);
+			Switching(Impl* self) : Self(self) {
+				++Self->m_InternalSwitch;
+				if (FAILED(Self->m_spSymbols->GetCurrentScopeFrameIndex(&Frame)))
+					Frame = 0;
+			}
+			~Switching() {
+				if (Frame)
+					Self->m_spSymbols->SetScopeFrameByIndex(Frame);
+				--Self->m_InternalSwitch;
+			}
+			Impl* Self;
+			ULONG Frame{ 0 };
+		} switching(this);
 		WCHAR exe[MAX_PATH * 2];
 		ULONG64 d;
 		for (ULONG i = 0; i < count; i++) {
@@ -819,12 +848,12 @@ Task<HRESULT> DebuggerX::Impl::GetRegisters(std::vector<RegisterInfo>& registers
 		ULONG count;
 		HR(m_spRegisters->GetNumberRegisters(&count));
 		std::vector<DEBUG_VALUE> values(count);
-		// (all at once; one that cannot be read fails them all, then they are asked for one at a time)
-		const bool all = SUCCEEDED(m_spRegisters->GetValues(count, nullptr, 0, values.data()));
+		// (as of the scope frame; all at once; one that cannot be read fails them all, then they are asked for one at a time)
+		const bool all = SUCCEEDED(m_spRegisters->GetValues2(DEBUG_REGSRC_FRAME, count, nullptr, 0, values.data()));
 		registers.reserve(count);
 		WCHAR name[64];
 		for (ULONG i = 0; i < count; i++) {
-			if (!all && FAILED(m_spRegisters->GetValue(i, &values[i])))
+			if (!all && FAILED(m_spRegisters->GetValues2(DEBUG_REGSRC_FRAME, 1, nullptr, i, &values[i])))
 				continue;
 			if (FAILED(m_spRegisters->GetDescriptionWide(i, name, _countof(name), nullptr, nullptr)))
 				continue;
@@ -858,6 +887,92 @@ Task<HRESULT> DebuggerX::Impl::SetCurrentThread(ULONG threadId) {
 		HR(m_spSystem->SetCurrentThreadId(threadId));
 		// (the engine may or may not say so itself, when it is asked to switch by its own client)
 		PostContextChanged();
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetScopeFrame(ULONG frameIndex) {
+	co_return co_await Run([this, frameIndex] {
+		HR(m_spSymbols->SetScopeFrameByIndex(frameIndex));
+		// (as with the thread: whether the engine says so itself is not to be relied on; the receiver ignores a repeat)
+		PostScopeChanged();
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::GetScope(ULONG64& instructionOffset, ULONG& frameIndex) {
+	co_return co_await Run([this, &instructionOffset, &frameIndex] {
+		HR(m_spSymbols->GetScope(&instructionOffset, nullptr, nullptr, 0));
+		return m_spSymbols->GetCurrentScopeFrameIndex(&frameIndex);
+		});
+}
+
+HRESULT DebuggerX::Impl::WalkSymbolGroup(IDebugSymbolGroup2* group, const std::set<std::wstring>& expanded, std::vector<SymbolEntry>& entries) {
+	ULONG count;
+	HR(group->GetNumberSymbols(&count));
+	std::vector<std::wstring> parents;		// the names of the entry's ancestors, by depth
+	WCHAR text[1024];
+	// (expanding an entry inserts its children right after it: the count grows as the walk goes)
+	for (ULONG i = 0; i < count; i++) {
+		DEBUG_SYMBOL_PARAMETERS params;
+		if (FAILED(group->GetSymbolParameters(i, 1, &params)))
+			continue;
+
+		SymbolEntry entry;
+		entry.Depth = params.Flags & DEBUG_SYMBOL_EXPANSION_LEVEL_MASK;
+		if (SUCCEEDED(group->GetSymbolNameWide(i, text, _countof(text), nullptr)))
+			entry.Name = text;
+		parents.resize(entry.Depth);
+		for (auto& name : parents)
+			(entry.Path += name) += L'\n';
+		entry.Path += entry.Name;
+		parents.push_back(entry.Name);
+
+		entry.Expandable = params.SubElements > 0;
+		entry.Expanded = (params.Flags & DEBUG_SYMBOL_EXPANDED) != 0;
+		if (entry.Expandable && !entry.Expanded && expanded.contains(entry.Path) && SUCCEEDED(group->ExpandSymbol(i, TRUE))) {
+			entry.Expanded = true;
+			group->GetNumberSymbols(&count);
+		}
+		if (SUCCEEDED(group->GetSymbolTypeNameWide(i, text, _countof(text), nullptr)))
+			entry.Type = text;
+		if (SUCCEEDED(group->GetSymbolValueTextWide(i, text, _countof(text), nullptr)))
+			entry.Value = text;
+		entries.push_back(std::move(entry));
+	}
+	return S_OK;
+}
+
+Task<HRESULT> DebuggerX::Impl::GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded) {
+	co_return co_await Run([this, &entries, expanded = std::set<std::wstring>(expanded.begin(), expanded.end())] {
+		// (a new group each time: its values are read when it is made)
+		CComPtr<IDebugSymbolGroup2> group;
+		HR(m_spSymbols->GetScopeSymbolGroup2(DEBUG_SCOPE_GROUP_ALL, nullptr, &group));
+		return WalkSymbolGroup(group, expanded, entries);
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded) {
+	co_return co_await Run([this, &entries, expressions = std::move(expressions), expanded = std::set<std::wstring>(expanded.begin(), expanded.end())] {
+		// a group for each expression: one that does not evaluate is not in a group, and has a row of its own all the same
+		for (auto& expr : expressions) {
+			CComPtr<IDebugSymbolGroup2> group;
+			HR(m_spSymbols->CreateSymbolGroup2(&group));
+			ULONG index = DEBUG_ANY_ID;
+			// (a name it does not know is S_FALSE, not a failure: the entry is there, and its "value" is the engine's
+			// banner about unqualified symbols)
+			auto hr = group->AddSymbolWide(expr.c_str(), &index);
+			if (hr != S_OK) {
+				SymbolEntry entry;
+				entry.Path = entry.Name = expr;
+				entry.Value = SUCCEEDED(hr) ? std::wstring(L"<unknown symbol or invalid expression>")
+					: std::format(L"<cannot evaluate: 0x{:08X}>", static_cast<unsigned>(hr));
+				entry.Error = true;
+				entries.push_back(std::move(entry));
+				continue;
+			}
+			WalkSymbolGroup(group, expanded, entries);
+		}
 		return S_OK;
 		});
 }
@@ -1069,6 +1184,22 @@ Task<HRESULT> DebuggerX::GetStackTrace(std::vector<StackFrameInfo>& frames, ULON
 
 Task<HRESULT> DebuggerX::SetCurrentThread(ULONG threadId) {
 	return m_Impl->SetCurrentThread(threadId);
+}
+
+Task<HRESULT> DebuggerX::SetScopeFrame(ULONG frameIndex) {
+	return m_Impl->SetScopeFrame(frameIndex);
+}
+
+Task<HRESULT> DebuggerX::GetScope(ULONG64& instructionOffset, ULONG& frameIndex) {
+	return m_Impl->GetScope(instructionOffset, frameIndex);
+}
+
+Task<HRESULT> DebuggerX::GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded) {
+	return m_Impl->GetLocals(entries, std::move(expanded));
+}
+
+Task<HRESULT> DebuggerX::EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded) {
+	return m_Impl->EvaluateWatches(entries, std::move(expressions), std::move(expanded));
 }
 
 Task<HRESULT> DebuggerX::EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints) {

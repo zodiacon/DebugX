@@ -227,6 +227,7 @@
     <ClCompile Include="MainFrm.cpp" />
     <ClCompile Include="AddBreakpointDlg.cpp" />
     <ClCompile Include="AttachKernelDlg.cpp" />
+    <ClCompile Include="WatchView.cpp" />
     <ClCompile Include="BreakpointsView.cpp" />
     <ClCompile Include="CallStackView.cpp" />
     <ClCompile Include="ModulesView.cpp" />
@@ -258,6 +259,9 @@
     <ClInclude Include="MainFrm.h" />
     <ClInclude Include="AddBreakpointDlg.h" />
     <ClInclude Include="AttachKernelDlg.h" />
+    <ClInclude Include="LocalsView.h" />
+    <ClInclude Include="SymbolPane.h" />
+    <ClInclude Include="WatchView.h" />
     <ClInclude Include="BreakpointsView.h" />
     <ClInclude Include="CallStackView.h" />
     <ClInclude Include="ListPane.h" />

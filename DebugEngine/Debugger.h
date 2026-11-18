@@ -34,7 +34,8 @@ namespace DebugEngine {
 		BusyChanged,		// the first call is in flight, or the last one has completed
 		TargetChanged,		// a target was attached or opened, or the session has ended
 		BreakpointsChanged,	// a breakpoint was added, removed, enabled, disabled or changed (by whoever)
-		ContextChanged		// the current thread has changed, or its registers were written to (data: ContextData)
+		ContextChanged,		// the current thread has changed, or its registers were written to (data: ContextData)
+		ScopeChanged		// the frame of the current thread's stack that locals and registers are about (data: ScopeData)
 	};
 
 	enum class ExecutionStatus {
@@ -119,6 +120,25 @@ namespace DebugEngine {
 	// ContextChanged: the engine's id of the current thread
 	struct ContextData {
 		ULONG ThreadId;
+	};
+
+	// ScopeChanged: the index of the frame in the current thread's stack (0: the innermost, where the thread is)
+	struct ScopeData {
+		ULONG FrameIndex;
+	};
+
+	// A variable (or one of its members, elements, ...) in a tree of them, flattened: a row for each that can be seen,
+	// in order, children after their parent. Path identifies it across refreshes (its names from the root, separated
+	// by '\n'); what is expanded is asked for by path, so a row's place in the list is never needed to find it.
+	struct SymbolEntry {
+		std::wstring Path;
+		std::wstring Name;
+		std::wstring Type;
+		std::wstring Value;		// or why there is none (an expression that does not evaluate)
+		ULONG Depth{ 0 };
+		bool Expandable{ false };
+		bool Expanded{ false };
+		bool Error{ false };
 	};
 
 	struct RegisterInfo {
@@ -237,11 +257,22 @@ namespace DebugEngine {
 		Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
 		Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
 
-		// about the current thread of the target
+		// about the current thread of the target; the registers are as they were in the current scope frame
+		// (only the nonvolatile ones are reliable in a frame other than 0)
 		Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers);
 		Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames = 128);
 		// the thread by the engine's id (ThreadInfo::Id)
 		Task<HRESULT> SetCurrentThread(ULONG threadId);
+
+		// the frame of the current thread's stack (StackFrameInfo::Index) that locals, registers and expressions are
+		// about; it goes back to 0 whenever the target stops or the current thread changes
+		Task<HRESULT> SetScopeFrame(ULONG frameIndex);
+		// where the current scope frame is executing, and its index
+		Task<HRESULT> GetScope(ULONG64& instructionOffset, ULONG& frameIndex);
+		// the arguments and locals of the current scope frame; 'expanded' has the paths (SymbolEntry::Path) to expand
+		Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
+		// a tree for each expression (in the current scope); one that does not evaluate is an Error entry
+		Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded);
 
 		Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
 		// a breakpoint at an address or symbol, as the debugger takes them (module!function, 0x7ff6`1234, ...)

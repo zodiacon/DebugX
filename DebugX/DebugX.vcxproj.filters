@@ -48,6 +48,9 @@
     <ClCompile Include="BreakpointsView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="WatchView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
     <ClCompile Include="AttachKernelDlg.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -117,6 +120,15 @@
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="BreakpointsView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="LocalsView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="SymbolPane.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="WatchView.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="AttachKernelDlg.h">

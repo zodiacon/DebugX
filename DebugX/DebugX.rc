@@ -80,6 +80,8 @@ BEGIN
         MENUITEM "&Breakpoints",                ID_VIEW_BREAKPOINTS
         MENUITEM "&Memory",                     ID_VIEW_MEMORY
         MENUITEM "&Disassembly",                ID_VIEW_DISASSEMBLY
+        MENUITEM "&Locals",                     ID_VIEW_LOCALS
+        MENUITEM "&Watch",                      ID_VIEW_WATCH
     END
     POPUP "&Debug"
     BEGIN

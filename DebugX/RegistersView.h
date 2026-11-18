@@ -4,7 +4,8 @@
 #include "ListPane.h"
 #include "resource.h"
 
-// The registers of the current thread. The ones that are not what they were when the target last stopped are in red.
+// The registers of the current thread, as of the scope frame. The ones that are not what they were when the target last
+// stopped are in red (in frame 0 only: in another one, there is nothing to compare with).
 class CRegistersView : public CListPane<CRegistersView> {
 public:
 	BEGIN_MSG_MAP(CRegistersView)
@@ -21,6 +22,9 @@ public:
 
 	// ISessionObserver
 	void OnContextChanged() override {
+		RequestRefresh();
+	}
+	void OnScopeChanged() override {
 		RequestRefresh();
 	}
 	void OnResumed() override {
@@ -43,6 +47,8 @@ private:
 	std::vector<Register> m_Items;
 	// the values when the target stopped last, and whose they are: what is compared with
 	std::map<std::wstring, std::wstring> m_Previous;
+	// the values last seen in frame 0: what becomes m_Previous when the target runs again
+	std::map<std::wstring, std::wstring> m_LastFrame0;
 	ULONG m_PreviousThread{ 0 };
 	bool m_Resumed{ true };
 };

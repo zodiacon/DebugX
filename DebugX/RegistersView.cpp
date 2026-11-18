@@ -25,6 +25,7 @@ void CRegistersView::DoSort(const SortInfo* si) {
 void CRegistersView::OnTargetEnded() {
 	m_Items.clear();
 	m_Previous.clear();
+	m_LastFrame0.clear();
 	m_PreviousThread = 0;
 	m_Resumed = true;
 	UpdateList(0);
@@ -41,24 +42,29 @@ DebugEngine::Task<void> CRegistersView::Refresh() {
 
 	// What is compared with is the state at the last stop, not at the last refresh: the same stop can be looked at more
 	// than once, and the changes it made have to stay in red. Another thread has nothing in common with this one.
+	// (another frame's registers are not the thread's at the stop, and are never what is compared with)
 	const auto thread = DebugManager::Session().CurrentThreadId();
+	const auto frame0 = DebugManager::Session().CurrentFrame() == 0;
 	if (thread != m_PreviousThread) {
 		m_Previous.clear();
+		m_LastFrame0.clear();
 		m_PreviousThread = thread;
 		m_Resumed = false;
 	}
 	else if (m_Resumed) {
-		m_Previous.clear();
-		for (auto& r : m_Items)
-			m_Previous[r.Name] = r.Value;
+		m_Previous = m_LastFrame0;
 		m_Resumed = false;
 	}
 
 	m_Items.clear();
 	m_Items.reserve(registers.size());
+	if (frame0)
+		m_LastFrame0.clear();
 	for (auto& r : registers) {
 		auto it = m_Previous.find(r.Name);
-		const bool changed = it != m_Previous.end() && it->second != r.Value;
+		const bool changed = frame0 && it != m_Previous.end() && it->second != r.Value;
+		if (frame0)
+			m_LastFrame0[r.Name] = r.Value;
 		m_Items.push_back({ std::move(r.Name), std::move(r.Value), changed });
 	}
 	UpdateList(m_Items.size());
