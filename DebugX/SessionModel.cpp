@@ -30,7 +30,8 @@ bool SessionModel::IsRunning() const {
 }
 
 bool SessionModel::CanRun() const {
-	return IsBroken() && !IsBusy() && Target() != TargetType::LocalKernel;
+	// (a local kernel never stops, a dump never runs)
+	return IsBroken() && !IsBusy() && Target() != TargetType::LocalKernel && (Target() & TargetType::Dump) != TargetType::Dump;
 }
 
 // An observer can remove itself, or another one, while it handles an event.

@@ -42,6 +42,7 @@
 #define IDD_PROCSELECT                  236
 #define IDD_ADDBREAKPOINT               240
 #define IDI_MEMORY                      241
+#define IDD_ATTACHKERNEL                242
 #define IDI_WINDOW_CLOSE                238
 #define IDI_ICON3                       239
 #define IDI_WINDOW_CLOSEALL             239
@@ -55,6 +56,7 @@
 #define IDC_BROWSEDIR                   1006
 #define IDC_REFRESH                     1009
 #define IDC_BPEXPR                      1010
+#define IDC_KERNELCONN                  1011
 #define ID_WINDOW_CLOSE                 32772
 #define ID_WINDOW_CLOSE_ALL             32773
 #define ID_FILE_DUMMY                   32775
@@ -95,9 +97,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        242
+#define _APS_NEXT_RESOURCE_VALUE        243
 #define _APS_NEXT_COMMAND_VALUE         32808
-#define _APS_NEXT_CONTROL_VALUE         1011
+#define _APS_NEXT_CONTROL_VALUE         1012
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

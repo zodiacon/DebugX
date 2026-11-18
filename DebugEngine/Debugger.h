@@ -222,10 +222,17 @@ namespace DebugEngine {
 		Task<HRESULT> AttachToProcess(DWORD pid, AttachType attach = AttachType::Default);
 		Task<HRESULT> LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, PCWSTR workingDir = nullptr, AttachType attach = AttachType::Default);
 		Task<HRESULT> AttachLocalKernel();
+		// a kernel debugging connection, as windbg -k takes it: "net:port=50000,key=a.b.c.d", "com:port=COM1,baud=115200", ...
+		// The task completes once the target has connected (Break gives up waiting).
+		Task<HRESULT> AttachKernel(PCWSTR connectOptions);
 		Task<HRESULT> ExecuteCommand(PCWSTR command);
 		Task<HRESULT> OutputPrompt();
 		// Ends the session and terminates the target. A running target is interrupted first.
 		Task<HRESULT> Stop();
+		// Ends the session and leaves the target running. A running target is interrupted first.
+		Task<HRESULT> Detach();
+		// whether the engine's output is in DML (Debugger Markup Language) where the command can produce it
+		Task<HRESULT> SetDmlEnabled(bool enabled);
 
 		Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
 		Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);

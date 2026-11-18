@@ -114,9 +114,12 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> AttachToProcess(DWORD pid, AttachType attach);
 	Task<HRESULT> LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs, PCWSTR workingDir, AttachType attach);
 	Task<HRESULT> AttachLocalKernel();
+	Task<HRESULT> AttachKernel(PCWSTR connectOptions);
 	Task<HRESULT> ExecuteCommand(PCWSTR command);
 	Task<HRESULT> OutputPrompt();
 	Task<HRESULT> Stop();
+	Task<HRESULT> Detach();
+	Task<HRESULT> SetDmlEnabled(bool enabled);
 	Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
 	Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
 	Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);
@@ -611,13 +614,17 @@ bool DebuggerX::Impl::DoPostCommand() {
 }
 
 Task<HRESULT> DebuggerX::Impl::OpenDumpFile(PCWSTR filename) {
-	auto hr = co_await Run([this, filename = std::wstring(filename)] {
+	// (the coroutine's frame outlives the call on the debug thread)
+	ULONG debuggeeClass = DEBUG_CLASS_UNINITIALIZED;
+	auto hr = co_await Run([this, filename = std::wstring(filename), &debuggeeClass] {
 		HR(m_spClient->OpenDumpFileWide(filename.c_str(), 0));
 		HR(m_spControl->WaitForEvent(0, INFINITE));
+		ULONG qualifier;
+		HR(m_spControl->GetDebuggeeType(&debuggeeClass, &qualifier));
 		return S_OK;
 		});
 	if (SUCCEEDED(hr))
-		SetTargetType(TargetType::Dump);
+		SetTargetType(debuggeeClass == DEBUG_CLASS_KERNEL ? TargetType::DumpKernel : TargetType::DumpUser);
 	co_return hr;
 }
 
@@ -666,6 +673,22 @@ Task<HRESULT> DebuggerX::Impl::AttachLocalKernel() {
 	co_return hr;
 }
 
+Task<HRESULT> DebuggerX::Impl::AttachKernel(PCWSTR connectOptions) {
+	auto hr = co_await Run([this, options = std::wstring(connectOptions)] {
+		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
+		HR(m_spClient->AttachKernelWide(DEBUG_ATTACH_KERNEL_CONNECTION, options.c_str()));
+		// waits for the target to connect; Break (SetInterrupt) ends the wait
+		auto hr = m_spControl->WaitForEvent(0, INFINITE);
+		UpdateStatus();
+		if (FAILED(hr))
+			m_spClient->EndSession(DEBUG_END_PASSIVE);
+		return hr;
+		});
+	if (SUCCEEDED(hr))
+		SetTargetType(TargetType::LiveKernel);
+	co_return hr;
+}
+
 Task<HRESULT> DebuggerX::Impl::ExecuteCommand(PCWSTR command) {
 	co_return co_await Run([this, cmd = std::wstring(command)] {
 		HR(m_spControl->ExecuteWide(DEBUG_OUTCTL_ALL_CLIENTS, cmd.c_str(), DEBUG_EXECUTE_DEFAULT));
@@ -687,6 +710,27 @@ Task<HRESULT> DebuggerX::Impl::Stop() {
 
 	co_return co_await Run([this] {
 		return m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::Detach() {
+	if (IsExecuting(m_Status))
+		Break();
+
+	const auto liveUser = (m_TargetType & TargetType::LiveUser) == TargetType::LiveUser;
+	co_return co_await Run([this, liveUser] {
+		// a user-mode process is let go of (and keeps running); anything else is just no longer looked at
+		if (liveUser)
+			HR(m_spClient->DetachProcesses());
+		HR(m_spClient->EndSession(DEBUG_END_PASSIVE));
+		UpdateStatus();
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetDmlEnabled(bool enabled) {
+	co_return co_await Run([this, enabled] {
+		return enabled ? m_spControl->AddEngineOptions(DEBUG_ENGOPT_PREFER_DML) : m_spControl->RemoveEngineOptions(DEBUG_ENGOPT_PREFER_DML);
 		});
 }
 
@@ -987,8 +1031,20 @@ Task<HRESULT> DebuggerX::OutputPrompt() {
 	return m_Impl->OutputPrompt();
 }
 
+Task<HRESULT> DebuggerX::AttachKernel(PCWSTR connectOptions) {
+	return m_Impl->AttachKernel(connectOptions);
+}
+
 Task<HRESULT> DebuggerX::Stop() {
 	return m_Impl->Stop();
+}
+
+Task<HRESULT> DebuggerX::Detach() {
+	return m_Impl->Detach();
+}
+
+Task<HRESULT> DebuggerX::SetDmlEnabled(bool enabled) {
+	return m_Impl->SetDmlEnabled(enabled);
 }
 
 Task<HRESULT> DebuggerX::EnumModules(std::vector<ModuleInfo>& modules) {

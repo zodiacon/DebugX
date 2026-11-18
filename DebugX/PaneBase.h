@@ -42,6 +42,8 @@ public:
 		MESSAGE_HANDLER(WM_SHOWWINDOW, OnShowWindow)
 		// the dock shows and sizes a pane's window in one go, and its parent may not be showing yet at the first of these
 		MESSAGE_HANDLER(WM_WINDOWPOSCHANGED, OnShowWindow)
+		// View > Refresh, forwarded by the frame to the active pane
+		COMMAND_ID_HANDLER(ID_VIEW_REFRESH, OnViewRefresh)
 	END_MSG_MAP()
 
 	bool CanRefresh() const {
@@ -104,6 +106,11 @@ private:
 		if (msg == WM_WINDOWPOSCHANGED || wParam)
 			TryRefresh();
 		handled = FALSE;
+		return 0;
+	}
+
+	LRESULT OnViewRefresh(WORD, WORD, HWND, BOOL&) {
+		RequestRefresh();
 		return 0;
 	}
 

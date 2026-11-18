@@ -16,6 +16,7 @@
 #include "ProcessSelectDlg.h"
 #include "PaneRegistry.h"
 #include "AddBreakpointDlg.h"
+#include "AttachKernelDlg.h"
 
 using namespace DebugEngine;
 using namespace WTLDock;
@@ -109,6 +110,11 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 
 	DebugManager::Session().AddObserver(this);
 
+	// (the engine starts out preferring DML)
+	if (!AppSettings::Get().Dml())
+		DebugManager::DebuggerX().SetDmlEnabled(false);
+	UISetCheck(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, AppSettings::Get().Dml() != 0);
+
 	ApplyTheme();
 	InitDock();
 	UpdateUI(true);
@@ -145,7 +151,55 @@ LRESULT CMainFrame::OnFileExit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCt
 	return 0;
 }
 
+LRESULT CMainFrame::OnOpenDumpFile(WORD, WORD, HWND, BOOL&) {
+	if (!CanStartSession())
+		return 0;
+
+	CFileDialog dlg(TRUE, L"dmp", nullptr,
+		OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_ENABLESIZING,
+		L"Dump Files (*.dmp;*.mdmp;*.hdmp)\0*.dmp;*.mdmp;*.hdmp\0All Files\0*.*\0", *this);
+	// the system's file picker does not take the dark mode hook
+	WTLHelper::SuspendHook();
+	auto ok = dlg.DoModal() == IDOK;
+	WTLHelper::ResumeHook();
+	if (ok)
+		OpenDumpFile(dlg.m_szFileName);
+
+	return 0;
+}
+
+LRESULT CMainFrame::OnAttachKernel(WORD, WORD, HWND, BOOL&) {
+	if (!CanStartSession())
+		return 0;
+
+	CAttachKernelDlg dlg(AppSettings::Get().KernelConnection().c_str());
+	if (dlg.DoModal(m_hWnd) == IDOK) {
+		AppSettings::Get().KernelConnection((PCWSTR)dlg.GetConnection());
+		AttachKernel(dlg.GetConnection());
+	}
+	return 0;
+}
+
+LRESULT CMainFrame::OnDebugDetach(WORD, WORD, HWND, BOOL&) {
+	if (DebugManager::Session().HasTarget())
+		DebugManager::DebuggerX().Detach();
+
+	return 0;
+}
+
+LRESULT CMainFrame::OnToggleDml(WORD, WORD id, HWND, BOOL&) {
+	auto enable = !AppSettings::Get().Dml();
+	AppSettings::Get().Dml(enable ? 1 : 0);
+	DebugManager::DebuggerX().SetDmlEnabled(enable);
+	UISetCheck(id, enable);
+
+	return 0;
+}
+
 LRESULT CMainFrame::OnAttachLocalKernel(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
+	if (!CanStartSession())
+		return 0;
+
 	if (!SecurityHelper::IsRunningElevated()) {
 		int reply = AtlMessageBox(*this, L"Local kernel debugging requires admin privileges. Run elevated now?",
 			IDS_TITLE, MB_ICONEXCLAMATION | MB_YESNO);
@@ -230,6 +284,9 @@ LRESULT CMainFrame::OnWindowResetLayout(WORD, WORD, HWND, BOOL&) {
 }
 
 LRESULT CMainFrame::OnRunExe(WORD, WORD, HWND, BOOL&) {
+	if (!CanStartSession())
+		return 0;
+
 	CRunExeDlg dlg;
 	if (dlg.DoModal() == IDOK)
 		RunExecutable(dlg.GetExePath(), dlg.GetArguments(), dlg.GetWorkingDir());
@@ -238,6 +295,9 @@ LRESULT CMainFrame::OnRunExe(WORD, WORD, HWND, BOOL&) {
 }
 
 LRESULT CMainFrame::OnAttachProcess(WORD, WORD, HWND, BOOL&) {
+	if (!CanStartSession())
+		return 0;
+
 	CProcessSelectDlg dlg;
 	if (dlg.DoModal() == IDOK) {
 		CString name;
@@ -262,37 +322,50 @@ LRESULT CMainFrame::OnToggleDarkMode(WORD, WORD, HWND, BOOL&) {
 	return 0;
 }
 
+// (the commands below can also come from the keyboard, whatever the menu last showed: they check for themselves)
 LRESULT CMainFrame::OnDebugBreak(WORD, WORD, HWND, BOOL&) {
-	DebugManager::DebuggerX().Break();
+	auto& session = DebugManager::Session();
+	if (session.IsRunning() || session.IsBusy())
+		DebugManager::DebuggerX().Break();
 
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugGo(WORD, WORD, HWND, BOOL&) {
-	DebugManager::DebuggerX().ExecuteCommand(L"g");
+	if (DebugManager::Session().CanRun())
+		DebugManager::DebuggerX().ExecuteCommand(L"g");
 
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStop(WORD, WORD, HWND, BOOL&) {
-	DebugManager::DebuggerX().Stop();
+	if (DebugManager::Session().HasTarget())
+		DebugManager::DebuggerX().Stop();
 
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStepOver(WORD, WORD, HWND, BOOL&) {
-	DebugManager::DebuggerX().ExecuteCommand(L"p");
+	if (DebugManager::Session().CanRun())
+		DebugManager::DebuggerX().ExecuteCommand(L"p");
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStepInto(WORD, WORD, HWND, BOOL&) {
-	DebugManager::DebuggerX().ExecuteCommand(L"t");
+	if (DebugManager::Session().CanRun())
+		DebugManager::DebuggerX().ExecuteCommand(L"t");
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStepOut(WORD, WORD, HWND, BOOL&) {
-	DebugManager::DebuggerX().ExecuteCommand(L"gu");
+	if (DebugManager::Session().CanRun())
+		DebugManager::DebuggerX().ExecuteCommand(L"gu");
 	return 0;
+}
+
+bool CMainFrame::CanStartSession() const {
+	auto& session = DebugManager::Session();
+	return !session.HasTarget() && !session.IsBusy();
 }
 
 LRESULT CMainFrame::OnDebugAddBreakpoint(WORD, WORD, HWND, BOOL&) {
@@ -350,11 +423,40 @@ Task<void> CMainFrame::AttachLocalKernel() {
 		AtlMessageBox(*this, L"Failed to attach to the local kernel", IDS_TITLE, MB_ICONERROR);
 		co_return;
 	}
-	UIEnable(ID_DEBUG_ATTACHTOKERNEL, false);
-	UIEnable(ID_DEBUG_ATTACHTOLOCALKERNEL, false);
-	UIEnable(ID_DEBUG_ATTACHTOPROCESS, false);
-	UIEnable(ID_DEBUG_RUNEXECUTABLE, false);
+	co_await dbg.OutputPrompt();
+}
 
+Task<void> CMainFrame::AttachKernel(CString connection) {
+	auto alive = m_Lifetime.Watch();
+	auto& dbg = DebugManager::DebuggerX();
+
+	auto hr = co_await dbg.AttachKernel(connection);
+	if (!*alive)
+		co_return;
+
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"Failed to attach to the kernel with \"%s\" (0x%08X)", (PCWSTR)connection, static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+	co_await dbg.OutputPrompt();
+}
+
+Task<void> CMainFrame::OpenDumpFile(CString path) {
+	auto alive = m_Lifetime.Watch();
+	auto& dbg = DebugManager::DebuggerX();
+
+	auto hr = co_await dbg.OpenDumpFile(path);
+	if (!*alive)
+		co_return;
+
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"Failed to open %s (0x%08X)", (PCWSTR)path, static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
 	co_await dbg.OutputPrompt();
 }
 
@@ -460,10 +562,20 @@ void CMainFrame::UpdateUI(bool force) {
 	const auto target = session.Target();
 	const auto canRun = session.CanRun();
 	const auto attached = status != ExecutionStatus::NoDebuggee;
+	const auto canStart = CanStartSession();
+	const auto isDump = (target & TargetType::Dump) == TargetType::Dump;
+
+	UIEnable(ID_FILE_OPEN, canStart, force);
+	UIEnable(ID_DEBUG_ATTACHTOPROCESS, canStart, force);
+	UIEnable(ID_DEBUG_RUNEXECUTABLE, canStart, force);
+	UIEnable(ID_DEBUG_ATTACHTOLOCALKERNEL, canStart, force);
+	UIEnable(ID_DEBUG_ATTACHTOKERNEL, canStart, force);
 
 	UIEnable(ID_DEBUG_GO, canRun, force);
 	UIEnable(ID_DEBUG_BREAK, session.IsRunning() || session.IsBusy(), force);
 	UIEnable(ID_DEBUG_STOP, attached, force);
+	UIEnable(ID_DEBUG_DETACH, session.HasTarget() && !isDump, force);
+	UIEnable(ID_VIEW_REFRESH, session.HasTarget(), force);
 	UIEnable(ID_DEBUG_STEPOVER, canRun, force);
 	UIEnable(ID_DEBUG_STEPINTO, canRun, force);
 	UIEnable(ID_DEBUG_STEPOUT, canRun, force);

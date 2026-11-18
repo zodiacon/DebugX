@@ -54,8 +54,6 @@ BEGIN
     POPUP "&File"
     BEGIN
         MENUITEM "&Open Dump File...\tCtrl+O",  ID_FILE_OPEN
-        MENUITEM "&Save\tCtrl+S",               ID_FILE_SAVE
-        MENUITEM "Save &As...",                 ID_FILE_SAVE_AS
         MENUITEM SEPARATOR
         MENUITEM "E&xit",                       ID_APP_EXIT
     END
@@ -70,7 +68,7 @@ BEGIN
         MENUITEM "&Toolbar",                    ID_VIEW_TOOLBAR
         MENUITEM "&Status Bar",                 ID_VIEW_STATUS_BAR
         MENUITEM SEPARATOR
-        MENUITEM "&Refresh",                    ID_VIEW_REFRESH
+        MENUITEM "&Refresh\tCtrl+R",            ID_VIEW_REFRESH
         MENUITEM SEPARATOR
         MENUITEM "&Command",                    ID_VIEW_COMMAND
         MENUITEM "&Output",                     ID_VIEW_OUTPUT
@@ -90,14 +88,14 @@ BEGIN
         MENUITEM "Attach to &Local Kernel",     ID_DEBUG_ATTACHTOLOCALKERNEL
         MENUITEM "Attach to &Kernel...",        ID_DEBUG_ATTACHTOKERNEL
         MENUITEM SEPARATOR
-        MENUITEM "&Go",                         ID_DEBUG_GO
-        MENUITEM "&Break",                      ID_DEBUG_BREAK
-        MENUITEM "&Stop",                       ID_DEBUG_STOP
+        MENUITEM "&Go\tF5",                     ID_DEBUG_GO
+        MENUITEM "&Break\tCtrl+Break",          ID_DEBUG_BREAK
+        MENUITEM "&Stop\tShift+F5",             ID_DEBUG_STOP
         MENUITEM "&Detach",                     ID_DEBUG_DETACH
         MENUITEM SEPARATOR
-        MENUITEM "&Step Over",                  ID_DEBUG_STEPOVER
-        MENUITEM "Ste&p Into",                  ID_DEBUG_STEPINTO
-        MENUITEM "Step &Out",                   ID_DEBUG_STEPOUT
+        MENUITEM "&Step Over\tF10",             ID_DEBUG_STEPOVER
+        MENUITEM "Ste&p Into\tF11",             ID_DEBUG_STEPINTO
+        MENUITEM "Step &Out\tShift+F11",        ID_DEBUG_STEPOUT
         MENUITEM SEPARATOR
         MENUITEM "Add &Breakpoint...\tF9",       ID_DEBUG_ADDBREAKPOINT
     END
@@ -248,6 +246,18 @@ BEGIN
     PUSHBUTTON      "  Cancel",IDCANCEL,148,41,54,14,BS_FLAT
 END
 
+IDD_ATTACHKERNEL DIALOGEX 0, 0, 290, 76
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Attach to Kernel"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Connection (as windbg -k takes it):",IDC_STATIC,7,7,276,8
+    EDITTEXT        IDC_KERNELCONN,7,19,276,14,ES_AUTOHSCROLL
+    LTEXT           "e.g. net:port=50000,key=1.2.3.4   or   com:port=COM1,baud=115200",IDC_STATIC,7,37,276,8
+    DEFPUSHBUTTON   "  OK",IDOK,86,55,56,14,BS_CENTER | BS_FLAT | WS_DISABLED
+    PUSHBUTTON      "  Cancel",IDCANCEL,148,55,54,14,BS_FLAT
+END
+
 IDD_PROCSELECT DIALOGEX 0, 0, 309, 254
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Select Process to Attach"
@@ -302,21 +312,22 @@ END
 
 IDR_MAINFRAME ACCELERATORS
 BEGIN
-    "N",            ID_FILE_NEW,            VIRTKEY, CONTROL
     "O",            ID_FILE_OPEN,           VIRTKEY, CONTROL
-    "S",            ID_FILE_SAVE,           VIRTKEY, CONTROL
-    "P",            ID_FILE_PRINT,          VIRTKEY, CONTROL
-    "Z",            ID_EDIT_UNDO,           VIRTKEY, CONTROL
+    "R",            ID_VIEW_REFRESH,        VIRTKEY, CONTROL
     "X",            ID_EDIT_CUT,            VIRTKEY, CONTROL
     "C",            ID_EDIT_COPY,           VIRTKEY, CONTROL
     "V",            ID_EDIT_PASTE,          VIRTKEY, CONTROL
-    VK_F9,          ID_DEBUG_ADDBREAKPOINT, VIRTKEY
-    VK_BACK,        ID_EDIT_UNDO,           VIRTKEY, ALT
     VK_DELETE,      ID_EDIT_CUT,            VIRTKEY, SHIFT
     VK_INSERT,      ID_EDIT_COPY,           VIRTKEY, CONTROL
     VK_INSERT,      ID_EDIT_PASTE,          VIRTKEY, SHIFT
-    VK_F6,          ID_NEXT_PANE,           VIRTKEY 
-    VK_F6,          ID_PREV_PANE,           VIRTKEY, SHIFT
+    VK_F5,          ID_DEBUG_GO,            VIRTKEY
+    VK_F5,          ID_DEBUG_STOP,          VIRTKEY, SHIFT
+    VK_CANCEL,      ID_DEBUG_BREAK,         VIRTKEY, CONTROL
+    VK_F6,          ID_DEBUG_ATTACHTOPROCESS, VIRTKEY
+    VK_F9,          ID_DEBUG_ADDBREAKPOINT, VIRTKEY
+    VK_F10,         ID_DEBUG_STEPOVER,      VIRTKEY
+    VK_F11,         ID_DEBUG_STEPINTO,      VIRTKEY
+    VK_F11,         ID_DEBUG_STEPOUT,       VIRTKEY, SHIFT
 END
 
 

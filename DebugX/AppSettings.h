@@ -10,8 +10,12 @@ struct AppSettings : Settings {
 	BEGIN_SETTINGS(AppSettings)
 		SETTING(DarkMode, -1, SettingType::Int32);		// 1 dark, 0 light, -1 (never chosen): as the system is
 		SETTING_STRING(PaneStates, L"");		// what the tool windows keep of themselves (PaneRegistry), a line for each
+		SETTING(Dml, 1, SettingType::Int32);		// the engine's output in DML where it can be (Options > Debugger Markup Language)
+		SETTING_STRING(KernelConnection, L"net:port=50000,key=");	// the last Attach to Kernel connection string
 	END_SETTINGS
 
 	DEF_SETTING(DarkMode, int)
 	DEF_SETTING_STRING(PaneStates)
+	DEF_SETTING(Dml, int)
+	DEF_SETTING_STRING(KernelConnection)
 };
