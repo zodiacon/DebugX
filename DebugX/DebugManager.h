@@ -18,6 +18,10 @@ public:
 	static DebugEngine::DebuggerX& DebuggerX();
 	static SessionModel& Session();
 
+	// Set Next Statement, from wherever it is asked for: moves the current thread to 'address', asking first (with 'owner'
+	// as the message box's) if it is in another function. Beeps if the target cannot be changed now.
+	static DebugEngine::Task<void> SetNextStatement(HWND owner, ULONG64 address);
+
 private:
 	DebugManager() = default;
 	DebugManager(const DebugManager&) = delete;

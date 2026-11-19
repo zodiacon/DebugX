@@ -94,12 +94,14 @@ BEGIN
         MENUITEM "&Go\tF5",                     ID_DEBUG_GO
         MENUITEM "&Break\tCtrl+Break",          ID_DEBUG_BREAK
         MENUITEM "&Stop\tShift+F5",             ID_DEBUG_STOP
+        MENUITEM "R&estart\tCtrl+Shift+F5",     ID_DEBUG_RESTART
         MENUITEM "&Detach",                     ID_DEBUG_DETACH
         MENUITEM SEPARATOR
         MENUITEM "&Step Over\tF10",             ID_DEBUG_STEPOVER
         MENUITEM "Ste&p Into\tF11",             ID_DEBUG_STEPINTO
         MENUITEM "Step &Out\tShift+F11",        ID_DEBUG_STEPOUT
         MENUITEM "Run to &Cursor\tCtrl+F10",     ID_DEBUG_RUNTOCURSOR
+        MENUITEM "Set &Next Statement\tCtrl+Shift+F10", ID_DEBUG_SETNEXTSTATEMENT
         MENUITEM SEPARATOR
         MENUITEM "Add &Breakpoint...\tF9",       ID_DEBUG_ADDBREAKPOINT
         MENUITEM "E&xception Settings...\tCtrl+Alt+E", ID_DEBUG_EXCEPTIONS
@@ -388,6 +390,8 @@ BEGIN
     VK_INSERT,      ID_EDIT_PASTE,          VIRTKEY, SHIFT
     VK_F5,          ID_DEBUG_GO,            VIRTKEY
     VK_F5,          ID_DEBUG_STOP,          VIRTKEY, SHIFT
+    VK_F5,          ID_DEBUG_RESTART,       VIRTKEY, SHIFT, CONTROL
+    VK_F10,         ID_DEBUG_SETNEXTSTATEMENT, VIRTKEY, SHIFT, CONTROL
     VK_CANCEL,      ID_DEBUG_BREAK,         VIRTKEY, CONTROL
     VK_F6,          ID_DEBUG_ATTACHTOPROCESS, VIRTKEY
     VK_F9,          ID_DEBUG_ADDBREAKPOINT, VIRTKEY

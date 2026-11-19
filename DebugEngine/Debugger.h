@@ -182,6 +182,9 @@ namespace DebugEngine {
 		ULONG Line{ 0 };		// 1-based
 	};
 
+	// SetInstructionOffset: the address is in another function
+	inline constexpr HRESULT SetNextOtherFunction = MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x201);
+
 	enum class StepKind {
 		Into,	// t
 		Over,	// p
@@ -344,6 +347,10 @@ namespace DebugEngine {
 		// line information and 'bySourceLine' is set, else by an instruction. The engine's own code level (l+t / l-t,
 		// which p and t typed in the Command view go by) is left as it was.
 		Task<HRESULT> Step(StepKind kind, bool bySourceLine);
+		// Set Next Statement: moves the current thread's instruction pointer (the target must be stopped); ContextChanged
+		// follows. An address in another function than the one the thread is in is refused (SetNextOtherFunction) unless
+		// 'otherFunction' is set: the stack is then not what that code expects.
+		Task<HRESULT> SetInstructionOffset(ULONG64 offset, bool otherFunction = false);
 
 		// The engine's symbol and source paths, as .sympath and .srcpath have them ("srv*C:\Symbols*https://...;C:\src").
 		// They are the engine's, not a session's: they carry over from one target to the next.

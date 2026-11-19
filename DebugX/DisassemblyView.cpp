@@ -263,10 +263,11 @@ Task<void> CDisassemblyView::ToggleBreakpointAt(ULONG64 address) {
 }
 
 Task<void> CDisassemblyView::RunToCursor(ULONG64 address) {
-	auto alive = m_Lifetime.Watch();
-	co_await DebugManager::DebuggerX().ExecuteCommand(std::format(L"g 0x{:X}", address).c_str());
-	if (!*alive)
+	if (!DebugManager::Session().CanRun()) {
+		::MessageBeep(MB_ICONWARNING);
 		co_return;
+	}
+	co_await DebugManager::DebuggerX().ExecuteCommand(std::format(L"g 0x{:X}", address).c_str());
 }
 
 LRESULT CDisassemblyView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
@@ -287,11 +288,26 @@ LRESULT CDisassemblyView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) 
 
 	CMenu menu;
 	menu.CreatePopupMenu();
-	menu.AppendMenu(address ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DISASM_TOGGLEBREAKPOINT, L"Toggle &Breakpoint");
-	menu.AppendMenu(address ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DEBUG_RUNTOCURSOR, L"&Run to Cursor");
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
-		case ID_DISASM_TOGGLEBREAKPOINT: if (address) ToggleBreakpointAt(address); break;
-		case ID_DEBUG_RUNTOCURSOR: if (address) RunToCursor(address); break;
-	}
+	auto& session = DebugManager::Session();
+	auto canRun = address && session.CanRun();
+	menu.AppendMenu(address ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DISASM_TOGGLEBREAKPOINT, L"Toggle &Breakpoint\tF9");
+	menu.AppendMenu(canRun ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DEBUG_RUNTOCURSOR, L"&Run to Cursor\tCtrl+F10");
+	menu.AppendMenu(canRun ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DEBUG_SETNEXTSTATEMENT, L"Set &Next Statement\tCtrl+Shift+F10");
+	RunCommand(menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd), address);
 	return 0;
+}
+
+LRESULT CDisassemblyView::OnCaretCommand(WORD, WORD id, HWND, BOOL&) {
+	RunCommand(id, AddressAtPosition(m_Text->CurrentPos()));
+	return 0;
+}
+
+void CDisassemblyView::RunCommand(UINT id, ULONG64 address) {
+	if (!address)
+		return;
+	switch (id) {
+		case ID_DISASM_TOGGLEBREAKPOINT: ToggleBreakpointAt(address); break;
+		case ID_DEBUG_RUNTOCURSOR: RunToCursor(address); break;
+		case ID_DEBUG_SETNEXTSTATEMENT: DebugManager::SetNextStatement(m_hWnd, address); break;
+	}
 }

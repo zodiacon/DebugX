@@ -38,6 +38,7 @@ public:
 		// (F9 and Ctrl+F10 come from the frame, for the line the caret is on)
 		COMMAND_ID_HANDLER(ID_DISASM_TOGGLEBREAKPOINT, OnToggleBreakpoint)
 		COMMAND_ID_HANDLER(ID_DEBUG_RUNTOCURSOR, OnRunToCursor)
+		COMMAND_ID_HANDLER(ID_DEBUG_SETNEXTSTATEMENT, OnSetNextStatement)
 		CHAIN_MSG_MAP(CPaneBase<CSourceView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(2)
@@ -89,6 +90,7 @@ private:
 	LRESULT OnTextContextMenu(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnToggleBreakpoint(WORD, WORD, HWND, BOOL&);
 	LRESULT OnRunToCursor(WORD, WORD, HWND, BOOL&);
+	LRESULT OnSetNextStatement(WORD, WORD, HWND, BOOL&);
 
 	// reads the file into the control (UTF-8, UTF-16 or the ANSI code page); false if it cannot be read
 	bool LoadFile();
@@ -99,6 +101,7 @@ private:
 	std::wstring LineExpression(ULONG line) const;
 	DebugEngine::Task<void> ToggleBreakpointAt(ULONG line);
 	DebugEngine::Task<void> RunToLine(ULONG line);
+	DebugEngine::Task<void> SetNextStatement(ULONG line);
 
 	struct LineBreakpoint {
 		ULONG Id;

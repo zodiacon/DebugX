@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <optional>
 #include "DebugManager.h"
 #include "Lifetime.h"
 #include "SourceDocuments.h"
@@ -43,6 +44,7 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_BREAK, OnDebugBreak)
 		COMMAND_ID_HANDLER(ID_DEBUG_GO, OnDebugGo)
 		COMMAND_ID_HANDLER(ID_DEBUG_STOP, OnDebugStop)
+		COMMAND_ID_HANDLER(ID_DEBUG_RESTART, OnDebugRestart)
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPINTO, OnDebugStepInto)
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOVER, OnDebugStepOver)
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOUT, OnDebugStepOut)
@@ -95,6 +97,8 @@ private:
 	DebugEngine::Task<void> AttachLocalKernel();
 	DebugEngine::Task<void> AttachKernel(CString connection);
 	DebugEngine::Task<void> OpenDumpFile(CString path);
+	// the executable of the session ended and launched again, with the breakpoints it had
+	DebugEngine::Task<void> Restart();
 	DebugEngine::Task<void> AddBreakpoint(DebugEngine::BreakpointSettings settings);
 	DebugEngine::Task<void> EditExceptionSettings();
 	// the Exception Settings the user saved, applied to the engine (at startup)
@@ -135,6 +139,7 @@ private:
 	LRESULT OnDebugBreak(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugGo(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStop(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugRestart(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStepOver(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStepInto(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStepOut(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -147,5 +152,11 @@ private:
 private:
 	WTLDock::CDockHost m_Dock;
 	SourceDocuments m_Sources;
+	// how the target being debugged was launched (Run Executable); none: it was attached to or opened
+	struct Launch {
+		CString ExePath, Arguments, WorkingDir;
+	};
+	std::optional<Launch> m_Launch;
+	bool m_Restarting{ false };
 	Lifetime m_Lifetime;
 };

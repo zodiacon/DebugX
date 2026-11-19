@@ -146,6 +146,7 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines);
 	Task<HRESULT> GetSourceLocations(std::vector<ULONG64> offsets, std::vector<SourceLocation>& locations);
 	Task<HRESULT> Step(StepKind kind, bool bySourceLine);
+	Task<HRESULT> SetInstructionOffset(ULONG64 offset, bool otherFunction);
 	Task<HRESULT> GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath);
 	Task<HRESULT> SetSymbolPath(PCWSTR path);
 	Task<HRESULT> SetSourcePath(PCWSTR path);
@@ -221,6 +222,9 @@ private:
 	void PostScopeChanged();
 	// the index of the current scope frame (debug thread)
 	HRESULT GetScopeFrameIndex(ULONG& index);
+	// (debug thread) the symbols of the process's executable, loaded now: a `file:line` (a breakpoint, g) is looked up
+	// only in symbols that are loaded, and the System32 dbgeng has not loaded any at the initial break
+	void LoadExecutableSymbols();
 	// (debug thread) Step's helpers: whether the current thread is on a source line / at a jmp; one step command at a code level
 	bool HasLineAtIp(ULONG* line = nullptr, std::wstring* file = nullptr, ULONG64* displacement = nullptr);
 	bool IsJumpAtIp();
@@ -785,6 +789,16 @@ void DebuggerX::Impl::PostContextChanged() {
 		PostNotification(DebuggerNotificationType::ContextChanged, new ContextData{ id });
 }
 
+void DebuggerX::Impl::LoadExecutableSymbols() {
+	wchar_t path[MAX_PATH * 2];
+	if (FAILED(m_spSystem->GetCurrentProcessExecutableNameWide(path, _countof(path), nullptr)))
+		return;
+	std::wstring name(path);
+	if (auto slash = name.find_last_of(L"\\/"); slash != std::wstring::npos)
+		name.erase(0, slash + 1);
+	m_spSymbols->ReloadWide((L"/f " + name).c_str());
+}
+
 HRESULT DebuggerX::Impl::GetScopeFrameIndex(ULONG& index) {
 	if (SUCCEEDED(m_spSymbols->GetCurrentScopeFrameIndex(&index)))
 		return S_OK;
@@ -853,7 +867,9 @@ Task<HRESULT> DebuggerX::Impl::AttachToProcess(DWORD pid, AttachType attach) {
 	auto hr = co_await Run([this, pid, attach] {
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 		HR(m_spClient->AttachProcess(0, pid, static_cast<ULONG>(attach)));
-		return m_spControl->WaitForEvent(0, INFINITE);
+		HR(m_spControl->WaitForEvent(0, INFINITE));
+		LoadExecutableSymbols();
+		return S_OK;
 		});
 	if (SUCCEEDED(hr))
 		SetTargetType(TargetType::LiveUser);
@@ -876,6 +892,7 @@ Task<HRESULT> DebuggerX::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLin
 		HR(m_spClient->CreateProcessAndAttach2Wide(0, cmd.data(), &options, sizeof(options),
 			initialDir.empty() ? nullptr : initialDir.c_str(), nullptr, 0, static_cast<ULONG>(attach)));
 		HR(m_spControl->WaitForEvent(0, INFINITE));
+		LoadExecutableSymbols();
 		DoPostCommand();
 		return S_OK;
 		});
@@ -1510,6 +1527,52 @@ Task<HRESULT> DebuggerX::Impl::ReloadSymbols() {
 		});
 }
 
+Task<HRESULT> DebuggerX::Impl::SetInstructionOffset(ULONG64 offset, bool otherFunction) {
+	co_return co_await Run([this, offset, otherFunction] {
+		if (m_Status != DEBUG_STATUS_BREAK)
+			return E_UNEXPECTED;
+
+		ULONG64 ip;
+		HR(m_spRegisters->GetInstructionOffset(&ip));
+		if (!otherFunction && ip != offset) {
+			// (by where each one's symbol starts; where either has none, nothing is known to say otherwise)
+			auto functionOf = [this](ULONG64 address) -> ULONG64 {
+				ULONG64 displacement;
+				return SUCCEEDED(m_spSymbols->GetNameByOffsetWide(address, nullptr, 0, nullptr, &displacement)) ? address - displacement : 0;
+				};
+			auto from = functionOf(ip), to = functionOf(offset);
+			if (from && to && from != to)
+				return SetNextOtherFunction;
+		}
+
+		ULONG machine;
+		HR(m_spControl->GetEffectiveProcessorType(&machine));
+		PCWSTR name;
+		switch (machine) {
+			case IMAGE_FILE_MACHINE_AMD64: name = L"rip"; break;
+			case IMAGE_FILE_MACHINE_I386: name = L"eip"; break;
+			case IMAGE_FILE_MACHINE_ARM64:
+			case IMAGE_FILE_MACHINE_ARMNT: name = L"pc"; break;
+			default: return E_NOTIMPL;
+		}
+		ULONG index;
+		HR(m_spRegisters->GetIndexByNameWide(name, &index));
+		DEBUG_REGISTER_DESCRIPTION desc;
+		HR(m_spRegisters->GetDescriptionWide(index, nullptr, 0, nullptr, &desc));
+		DEBUG_VALUE v{};
+		v.Type = desc.Type;
+		if (desc.Type == DEBUG_VALUE_INT32)
+			v.I32 = static_cast<ULONG>(offset);
+		else
+			v.I64 = offset;
+		HR(m_spRegisters->SetValue(index, &v));
+		// (as SetRegister: the scope's copy of the context is not updated)
+		m_spSymbols->ResetScope();
+		PostContextChanged();
+		return S_OK;
+		});
+}
+
 Task<HRESULT> DebuggerX::Impl::ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size) {
 	co_return co_await Run([this, address, &buffer, size] {
 		buffer.resize(size);
@@ -1750,6 +1813,10 @@ Task<HRESULT> DebuggerX::GetSourceLocations(std::vector<ULONG64> offsets, std::v
 
 Task<HRESULT> DebuggerX::Step(StepKind kind, bool bySourceLine) {
 	return m_Impl->Step(kind, bySourceLine);
+}
+
+Task<HRESULT> DebuggerX::SetInstructionOffset(ULONG64 offset, bool otherFunction) {
+	return m_Impl->SetInstructionOffset(offset, otherFunction);
 }
 
 Task<HRESULT> DebuggerX::GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath) {

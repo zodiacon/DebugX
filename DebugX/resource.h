@@ -122,6 +122,8 @@
 #define ID_OPTIONS_SYMBOLPATHS          32812
 #define ID_DEBUG_RELOADSYMBOLS          32813
 #define ID_FILE_OPENSOURCE              32814
+#define ID_DEBUG_SETNEXTSTATEMENT       32815
+#define ID_DEBUG_RESTART                32816
 #define ID_VIEW_LOCALS                  32808
 #define ID_VIEW_WATCH                   32809
 #define ID_BREAKPOINT_EDIT              32810
@@ -132,7 +134,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        245
-#define _APS_NEXT_COMMAND_VALUE         32815
+#define _APS_NEXT_COMMAND_VALUE         32817
 #define _APS_NEXT_CONTROL_VALUE         1037
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

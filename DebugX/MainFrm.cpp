@@ -89,6 +89,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 		{ ID_DEBUG_GO, IDI_GO },
 		{ ID_DEBUG_BREAK, IDI_PAUSE },
 		{ ID_DEBUG_STOP, IDI_STOP },
+		{ ID_DEBUG_RESTART, IDI_REFRESH },
 		{ 0 },
 		{ ID_DEBUG_STEPINTO, IDI_STEP_INTO },
 		{ ID_DEBUG_STEPOVER, IDI_DEBUG_STEP_OVER },
@@ -352,6 +353,68 @@ LRESULT CMainFrame::OnDebugStop(WORD, WORD, HWND, BOOL&) {
 	return 0;
 }
 
+LRESULT CMainFrame::OnDebugRestart(WORD, WORD, HWND, BOOL&) {
+	if (m_Launch && !m_Restarting && DebugManager::Session().HasTarget())
+		Restart();
+	else
+		::MessageBeep(MB_ICONWARNING);
+
+	return 0;
+}
+
+Task<void> CMainFrame::Restart() {
+	auto alive = m_Lifetime.Watch();
+	auto& session = DebugManager::Session();
+	auto& dbg = DebugManager::DebuggerX();
+	auto launch = *m_Launch;
+	m_Restarting = true;
+	UpdateUI();
+
+	// The breakpoints go with the session: they are read first, to be set again in the new one. A running target keeps
+	// the engine's thread in WaitForEvent: it is interrupted, or the request would wait for it to stop.
+	if (session.IsRunning())
+		dbg.Break();
+	std::vector<BreakpointInfo> breakpoints;
+	co_await dbg.EnumBreakpoints(breakpoints);
+	if (!*alive)
+		co_return;
+	auto hr = co_await dbg.Stop();
+	if (!*alive)
+		co_return;
+	if (SUCCEEDED(hr))
+		hr = co_await dbg.LaunchAndAttach(launch.ExePath, launch.Arguments, launch.WorkingDir);
+	if (!*alive)
+		co_return;
+	m_Restarting = false;
+	if (FAILED(hr)) {
+		m_Launch.reset();
+		UpdateUI();
+		CString text;
+		text.Format(L"Failed to restart %s (0x%08X)", (PCWSTR)launch.ExePath, static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+	m_Launch = launch;
+	UpdateUI();
+
+	// (a data breakpoint's address was worked out in the old process: it is not set again)
+	int failed = 0;
+	for (auto& bp : breakpoints) {
+		if (bp.IsData)
+			continue;
+		if (FAILED(co_await dbg.AddBreakpoint(static_cast<const BreakpointSettings&>(bp))))
+			failed++;
+		if (!*alive)
+			co_return;
+	}
+	co_await dbg.OutputPrompt();
+	if (*alive && failed) {
+		CString text;
+		text.Format(L"%d breakpoint(s) of the previous session could not be set again", failed);
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONWARNING);
+	}
+}
+
 LRESULT CMainFrame::OnDebugStepOver(WORD, WORD, HWND, BOOL&) {
 	Step(StepKind::Over);
 	return 0;
@@ -458,7 +521,7 @@ void CMainFrame::ApplySavedSymbolPaths() {
 
 bool CMainFrame::CanStartSession() const {
 	auto& session = DebugManager::Session();
-	return !session.HasTarget() && !session.IsBusy();
+	return !session.HasTarget() && !session.IsBusy() && !m_Restarting;
 }
 
 LRESULT CMainFrame::OnDebugExceptions(WORD, WORD, HWND, BOOL&) {
@@ -522,7 +585,8 @@ LRESULT CMainFrame::OnDebugAddBreakpoint(WORD, WORD, HWND, BOOL&) {
 		return 0;
 
 	// F9 in a source file is on the line with the caret, as in other debuggers
-	if (SourceDocuments::IsSourceId(ActivePaneId())) {
+	// (and in the Disassembly window, on the instruction)
+	if (SourceDocuments::IsSourceId(ActivePaneId()) || ActivePaneId() == L"disassembly") {
 		if (auto pane = m_Dock.ActivePane(); pane->hWnd)
 			::SendMessage(pane->hWnd, WM_COMMAND, ID_DISASM_TOGGLEBREAKPOINT, 0);
 		return 0;
@@ -547,6 +611,8 @@ Task<void> CMainFrame::RunExecutable(CString exePath, CString arguments, CString
 		AtlMessageBox(*this, L"Failed to launch process", IDS_TITLE, MB_ICONERROR);
 		co_return;
 	}
+	m_Launch = Launch{ exePath, arguments, workingDir };
+	UpdateUI();
 	co_await dbg.OutputPrompt();
 }
 
@@ -554,6 +620,7 @@ Task<void> CMainFrame::AttachToProcess(DWORD pid) {
 	auto alive = m_Lifetime.Watch();
 	auto& dbg = DebugManager::DebuggerX();
 
+	m_Launch.reset();		// (no Restart for it)
 	auto hr = co_await dbg.AttachToProcess(pid);
 	if (!*alive)
 		co_return;
@@ -571,6 +638,7 @@ Task<void> CMainFrame::AttachLocalKernel() {
 	auto alive = m_Lifetime.Watch();
 	auto& dbg = DebugManager::DebuggerX();
 
+	m_Launch.reset();		// (no Restart for it)
 	auto hr = co_await dbg.AttachLocalKernel();
 	if (!*alive)
 		co_return;
@@ -586,6 +654,7 @@ Task<void> CMainFrame::AttachKernel(CString connection) {
 	auto alive = m_Lifetime.Watch();
 	auto& dbg = DebugManager::DebuggerX();
 
+	m_Launch.reset();		// (no Restart for it)
 	auto hr = co_await dbg.AttachKernel(connection);
 	if (!*alive)
 		co_return;
@@ -603,6 +672,7 @@ Task<void> CMainFrame::OpenDumpFile(CString path) {
 	auto alive = m_Lifetime.Watch();
 	auto& dbg = DebugManager::DebuggerX();
 
+	m_Launch.reset();		// (no Restart for it)
 	auto hr = co_await dbg.OpenDumpFile(path);
 	if (!*alive)
 		co_return;
@@ -655,6 +725,8 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_DEBUG_GO, IDI_GO },
 		{ ID_DEBUG_BREAK, IDI_PAUSE },
 		{ ID_DEBUG_STOP, IDI_STOP },
+		{ ID_DEBUG_RESTART, IDI_REFRESH },
+		{ ID_DEBUG_SETNEXTSTATEMENT, IDI_ICON9 },
 		{ ID_DEBUG_STEPINTO, IDI_STEP_INTO },
 		{ ID_DEBUG_STEPOVER, IDI_DEBUG_STEP_OVER },
 		{ ID_DEBUG_STEPOUT, IDI_DEBUG_STEP_OUT },
@@ -746,6 +818,8 @@ void CMainFrame::UpdateUI(bool force) {
 	UIEnable(ID_DEBUG_STEPINTO, canRun, force);
 	UIEnable(ID_DEBUG_STEPOUT, canRun, force);
 	UIEnable(ID_DEBUG_RUNTOCURSOR, canRun, force);
+	UIEnable(ID_DEBUG_SETNEXTSTATEMENT, canRun, force);
+	UIEnable(ID_DEBUG_RESTART, m_Launch.has_value() && !m_Restarting && session.HasTarget(), force);
 	UIEnable(ID_DEBUG_RELOADSYMBOLS, session.HasTarget() && !session.IsRunning(), force);
 	UIEnable(ID_OPTIONS_SYMBOLPATHS, !session.IsRunning(), force);
 

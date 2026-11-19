@@ -32,6 +32,10 @@ public:
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		MESSAGE_HANDLER(WTLHelper::ThemeChangedMessage, OnThemeChanged)
 		NOTIFY_HANDLER(TextId, SCN_MARGINCLICK, OnMarginClick)
+		// (F9, Ctrl+F10 and Ctrl+Shift+F10 come from the frame, for the line the caret is on)
+		COMMAND_ID_HANDLER(ID_DISASM_TOGGLEBREAKPOINT, OnCaretCommand)
+		COMMAND_ID_HANDLER(ID_DEBUG_RUNTOCURSOR, OnCaretCommand)
+		COMMAND_ID_HANDLER(ID_DEBUG_SETNEXTSTATEMENT, OnCaretCommand)
 		CHAIN_MSG_MAP(CPaneBase<CDisassemblyView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(2)
@@ -72,8 +76,11 @@ private:
 	LRESULT OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnMarginClick(int, LPNMHDR, BOOL&);
 	LRESULT OnTextContextMenu(UINT, WPARAM, LPARAM, BOOL&);
+	LRESULT OnCaretCommand(WORD, WORD id, HWND, BOOL&);
 
 	void ApplyColors();
+	// a command of the menu (ID_DISASM_TOGGLEBREAKPOINT, ID_DEBUG_RUNTOCURSOR, ID_DEBUG_SETNEXTSTATEMENT) on an instruction
+	void RunCommand(UINT id, ULONG64 address);
 	DebugEngine::Task<void> ToggleBreakpointAt(ULONG64 address);
 	DebugEngine::Task<void> RunToCursor(ULONG64 address);
 	// the address the line under 'pos' (a buffer position) is for, or 0 if it is out of range

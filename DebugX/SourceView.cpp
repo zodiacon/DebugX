@@ -317,6 +317,23 @@ Task<void> CSourceView::RunToLine(ULONG line) {
 	co_await DebugManager::DebuggerX().ExecuteCommand(command.c_str());
 }
 
+Task<void> CSourceView::SetNextStatement(ULONG line) {
+	auto alive = m_Lifetime.Watch();
+	if (!DebugManager::Session().CanRun()) {
+		::MessageBeep(MB_ICONWARNING);
+		co_return;
+	}
+	ULONG64 address;
+	auto hr = co_await DebugManager::DebuggerX().Evaluate(LineExpression(line).c_str(), address);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		AtlMessageBox(m_hWnd, std::format(L"There is no code at line {} (0x{:08X})", line, static_cast<unsigned>(hr)).c_str(), IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+	co_await DebugManager::SetNextStatement(m_hWnd, address);
+}
+
 LRESULT CSourceView::OnMarginClick(int, LPNMHDR hdr, BOOL&) {
 	auto data = reinterpret_cast<const NotificationData*>(hdr);
 	ToggleBreakpointAt(static_cast<ULONG>(m_Text->LineFromPosition(data->position)) + 1);
@@ -330,6 +347,11 @@ LRESULT CSourceView::OnToggleBreakpoint(WORD, WORD, HWND, BOOL&) {
 
 LRESULT CSourceView::OnRunToCursor(WORD, WORD, HWND, BOOL&) {
 	RunToLine(CaretLine());
+	return 0;
+}
+
+LRESULT CSourceView::OnSetNextStatement(WORD, WORD, HWND, BOOL&) {
+	SetNextStatement(CaretLine());
 	return 0;
 }
 
@@ -355,11 +377,13 @@ LRESULT CSourceView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	menu.CreatePopupMenu();
 	menu.AppendMenu(session.HasTarget() && !session.IsRunning() ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DISASM_TOGGLEBREAKPOINT, L"Toggle &Breakpoint\tF9");
 	menu.AppendMenu(session.CanRun() ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DEBUG_RUNTOCURSOR, L"&Run to Cursor\tCtrl+F10");
+	menu.AppendMenu(session.CanRun() ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DEBUG_SETNEXTSTATEMENT, L"Set &Next Statement\tCtrl+Shift+F10");
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING, ID_EDIT_COPY, L"&Copy\tCtrl+C");
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
 		case ID_DISASM_TOGGLEBREAKPOINT: ToggleBreakpointAt(CaretLine()); break;
 		case ID_DEBUG_RUNTOCURSOR: RunToLine(CaretLine()); break;
+		case ID_DEBUG_SETNEXTSTATEMENT: SetNextStatement(CaretLine()); break;
 		case ID_EDIT_COPY: m_Text->Copy(); break;
 	}
 	return 0;
