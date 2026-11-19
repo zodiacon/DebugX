@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <map>
 #include "Debugger.h"
 #include "Lifetime.h"
 #include "PaneBase.h"
@@ -12,6 +13,8 @@
 // (click the margin, or right-click for the menu) and an arrow on the current instruction. Refreshes,
 // like the other live panes, whenever the target breaks (CPaneBase); "Go to Address" and "Run to
 // Cursor" are on the right-click menu, there being nowhere else for them yet.
+// With Show Source Lines (right-click; on by default, kept with the pane), each source line the instructions come from
+// is shown before them, as a comment.
 class CDisassemblyView :
 	public CFrameWindowImpl<CDisassemblyView, CWindow, CControlWinTraits>,
 	public CPaneBase<CDisassemblyView> {
@@ -69,6 +72,14 @@ public:
 	}
 	void OnTargetEnded() override;
 
+	// IPane: Show Source Lines
+	std::wstring SaveState() const override {
+		return m_ShowSource ? L"s=1" : L"s=0";
+	}
+	void LoadState(PCWSTR state) override {
+		m_ShowSource = !state || wcscmp(state, L"s=0") != 0;
+	}
+
 	// CPaneBase
 	DebugEngine::Task<void> Refresh();
 
@@ -93,6 +104,8 @@ private:
 	ULONG64 AddressAtPosition(Scintilla::Position pos);
 
 	static constexpr ULONG LineCount = 200;
+	// the text of a source file, a line each (read once; empty if it cannot be)
+	const std::vector<std::wstring>& SourceLines(const std::wstring& path);
 
 	CContainedWindowT<CScintillaCtrl> m_Text;
 	std::vector<ULONG64> m_LineAddresses;		// parallel to the document's lines
@@ -100,5 +113,7 @@ private:
 	ULONG64 m_GoToAddress{ 0 };		// where Go to Address sent the view; 0: where the scope frame is
 	ULONG64 m_ShownGoTo{ 0 };		// the m_GoToAddress the text is for
 	std::wstring m_GoToExpression;	// what was typed for it last
+	bool m_ShowSource{ true };
+	std::map<std::wstring, std::vector<std::wstring>> m_SourceFiles;
 	Lifetime m_Lifetime;
 };

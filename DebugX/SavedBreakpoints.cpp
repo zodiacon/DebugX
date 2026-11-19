@@ -169,6 +169,8 @@ void SavedBreakpoints::Save(const std::wstring& key, const std::vector<Breakpoin
 
 	auto programs = LoadAll();
 	auto it = std::find_if(programs.begin(), programs.end(), [&](auto& p) { return p.Key == key; });
+	if (it == programs.end() && program.Breakpoints.empty())
+		return;		// (none, as before)
 	if (it != programs.end()) {
 		// (nothing to write if nothing changed)
 		auto same = it->Breakpoints.size() == program.Breakpoints.size() && std::equal(it->Breakpoints.begin(), it->Breakpoints.end(),

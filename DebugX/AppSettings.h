@@ -18,6 +18,7 @@ struct AppSettings : Settings {
 		SETTING_STRING(SymbolPath, L"");
 		SETTING_STRING(SourcePath, L"");
 		SETTING_STRING(RecentTargets, L"");		// File > Recent Targets (RecentTargets.h), a line for each
+		SETTING(DebugChildProcesses, 0, SettingType::Int32);	// Options > Debug Child Processes
 	END_SETTINGS
 
 	DEF_SETTING(DarkMode, int)
@@ -28,4 +29,5 @@ struct AppSettings : Settings {
 	DEF_SETTING_STRING(SymbolPath)
 	DEF_SETTING_STRING(SourcePath)
 	DEF_SETTING_STRING(RecentTargets)
+	DEF_SETTING(DebugChildProcesses, int)
 };

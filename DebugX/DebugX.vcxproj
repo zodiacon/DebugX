@@ -254,6 +254,11 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="UserThreadsView.cpp" />
+    <ClCompile Include="UserProcessesView.cpp" />
+    <ClCompile Include="HandlesView.cpp" />
+    <ClCompile Include="IrpsView.cpp" />
+    <ClCompile Include="ObjectsView.cpp" />
+    <ClCompile Include="DriversView.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AboutDlg.h" />
@@ -298,6 +303,11 @@
     <ClInclude Include="RunExeDlg.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="UserThreadsView.h" />
+    <ClInclude Include="UserProcessesView.h" />
+    <ClInclude Include="HandlesView.h" />
+    <ClInclude Include="IrpsView.h" />
+    <ClInclude Include="ObjectsView.h" />
+    <ClInclude Include="DriversView.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="DebugX.rc" />

@@ -2,6 +2,8 @@
 #include "MemoryView.h"
 #include "DebugManager.h"
 #include <format>
+#include "InputDlg.h"
+#include "ScintillaCtrl.h"
 
 using namespace DebugEngine;
 
@@ -87,7 +89,7 @@ LRESULT CMemoryView::OnHexRightClick(int, LPNMHDR hdr, BOOL& handled) {
 		return 0;
 	}
 
-	enum { CmdSize1 = 1, CmdSize2, CmdSize4, CmdSize8, CmdLine16, CmdLine32 };
+	enum { CmdSize1 = 1, CmdSize2, CmdSize4, CmdSize8, CmdLine16, CmdLine32, CmdSearch, CmdSearchNext };
 	const auto size = m_Hex.GetDataSize();
 	const auto perLine = m_Hex.GetBytesPerLine();
 	CMenu menu;
@@ -102,6 +104,10 @@ LRESULT CMemoryView::OnHexRightClick(int, LPNMHDR hdr, BOOL& handled) {
 	menu.AppendMenu(MF_SEPARATOR);
 	radio(CmdLine16, perLine == 16, L"&16 Bytes a Line");
 	radio(CmdLine32, perLine == 32, L"&32 Bytes a Line");
+	menu.AppendMenu(MF_SEPARATOR);
+	const auto canSearch = m_Buffer && DebugManager::Session().HasTarget() && !DebugManager::Session().IsRunning();
+	menu.AppendMenu(canSearch ? MF_STRING : MF_STRING | MF_GRAYED, CmdSearch, L"&Search...");
+	menu.AppendMenu(canSearch && !m_SearchPattern.empty() ? MF_STRING : MF_STRING | MF_GRAYED, CmdSearchNext, L"Search &Next");
 
 	CPoint pt;
 	::GetCursorPos(&pt);
@@ -111,6 +117,8 @@ LRESULT CMemoryView::OnHexRightClick(int, LPNMHDR hdr, BOOL& handled) {
 			break;
 		case CmdLine16: m_Hex.SetBytesPerLine(16); break;
 		case CmdLine32: m_Hex.SetBytesPerLine(32); break;
+		case CmdSearch: Search(false); break;
+		case CmdSearchNext: Search(true); break;
 	}
 	return 0;
 }
@@ -207,7 +215,77 @@ Task<void> CMemoryView::Refresh() {
 	m_Hex.SetSize(size);
 	m_Hex.SetBiasOffset(static_cast<int64_t>(address));
 	m_Hex.GotoOffset(caret < size ? caret : 0);
+	if (m_SelectAfterRefresh > 0 && m_SelectAfterRefresh <= size)
+		m_Hex.SetSelection(0, m_SelectAfterRefresh);
+	m_SelectAfterRefresh = 0;
 	m_Hex.Refresh();
 	UpdateWritable();
 	RefreshDone();
+}
+
+std::vector<BYTE> CMemoryView::ParsePattern(const CString& input) {
+	CString text(input);
+	text.Trim();
+	std::vector<BYTE> bytes;
+	if (text.GetLength() >= 3 && (text[0] == L'L' || text[0] == L'l') && text[1] == L'"' && text[text.GetLength() - 1] == L'"') {
+		// UTF-16
+		auto s = text.Mid(2, text.GetLength() - 3);
+		auto p = reinterpret_cast<const BYTE*>((PCWSTR)s);
+		bytes.assign(p, p + s.GetLength() * sizeof(wchar_t));
+	}
+	else if (text.GetLength() >= 2 && text[0] == L'"' && text[text.GetLength() - 1] == L'"') {
+		// as the program would have it in a char string: UTF-8 (ASCII is the same)
+		auto s = ToUtf8((PCWSTR)text.Mid(1, text.GetLength() - 2));
+		bytes.assign(s.begin(), s.end());
+	}
+	else {
+		// hex bytes, with or without spaces between them
+		text.Remove(L' ');
+		if (text.GetLength() % 2)
+			return {};
+		for (int i = 0; i < text.GetLength(); i += 2) {
+			wchar_t digits[3] = { text[i], text[i + 1], 0 };
+			wchar_t* end;
+			auto value = wcstoul(digits, &end, 16);
+			if (*end)
+				return {};
+			bytes.push_back(static_cast<BYTE>(value));
+		}
+	}
+	return bytes;
+}
+
+Task<void> CMemoryView::Search(bool next) {
+	auto alive = m_Lifetime.Watch();
+	if (!m_Buffer)
+		co_return;
+	if (!next || m_SearchPattern.empty()) {
+		CInputDlg dlg(L"Search Memory", L"Bytes (4D 5A 90), a string (\"text\") or a UTF-16 string (L\"text\"):", m_SearchText);
+		if (dlg.DoModal(m_hWnd) != IDOK || !*alive)
+			co_return;
+		auto pattern = ParsePattern(dlg.GetText());
+		if (pattern.empty()) {
+			AtlMessageBox(m_hWnd, L"That is not something to search for: hex bytes, \"text\" or L\"text\"", IDS_TITLE, MB_ICONWARNING);
+			co_return;
+		}
+		m_SearchText = dlg.GetText();
+		m_SearchPattern = std::move(pattern);
+	}
+
+	const auto start = m_Buffer->GetAddress() + m_Hex.GetCaretOffset() + (next ? 1 : 0);
+	ULONG64 found = 0;
+	auto hr = co_await DebugManager::DebuggerX().SearchMemory(start, m_SearchPattern, found);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"%s was not found after 0x%llX", (PCWSTR)m_SearchText, start);
+		AtlMessageBox(m_hWnd, (PCWSTR)text, IDS_TITLE, MB_ICONINFORMATION);
+		co_return;
+	}
+	// (shown from where it is, selected)
+	m_Expression.Format(L"0x%llX", found);
+	m_AddressEdit.SetWindowText(m_Expression);
+	m_SelectAfterRefresh = static_cast<int64_t>(m_SearchPattern.size());
+	RequestRefresh();
 }

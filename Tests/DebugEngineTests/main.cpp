@@ -50,6 +50,7 @@ namespace {
 		{ "dump", DumpSuite },
 		{ "kernel", KernelSuite },
 		{ "values", ValueSuite },
+		{ "procs", ProcessSuite },
 	};
 
 	// dbgeng.dll is delay-loaded: whichever is loaded first is the one the engine uses

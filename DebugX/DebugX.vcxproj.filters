@@ -24,6 +24,21 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="IrpsView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="ObjectsView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="DriversView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="HandlesView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="UserProcessesView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
     <ClCompile Include="stdafx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -128,6 +143,21 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="IrpsView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjectsView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="DriversView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="HandlesView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="UserProcessesView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>

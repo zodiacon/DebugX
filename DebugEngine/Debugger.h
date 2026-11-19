@@ -88,6 +88,12 @@ namespace DebugEngine {
 		ULONG64 Teb;
 		HANDLE Handle;
 		ULONG Pid;
+		ULONG ProcessId{ 0 };		// the engine's id of its process (ProcessInfo::Id)
+		std::wstring Name;			// its description (SetThreadDescription), if it has one
+		ULONG64 InstructionOffset{ 0 };
+		std::wstring Location;		// where it is: module!function+0x10
+		ULONG SuspendCount{ 0 };	// as the engine reports it (a thread of a live target that is stopped counts the debugger's one)
+		bool Frozen{ false };		// the debugger does not let it run when the target runs (SetThreadFrozen)
 		bool Current{ false };		// the thread the engine's commands and the panes that show a thread are about
 	};
 
@@ -98,6 +104,18 @@ namespace DebugEngine {
 		HANDLE Handle;
 		std::wstring ImagePath;
 		ULONG UpTimeSec;
+		ULONG ThreadCount{ 0 };
+		bool Current{ false };		// the process the engine's commands and the panes are about
+	};
+
+	// a handle of the current process (EnumHandles)
+	struct HandleInfo {
+		ULONG64 Handle{ 0 };
+		std::wstring Type;
+		std::wstring Name;			// empty if it has none, or it is not asked for (see EnumHandles)
+		ULONG GrantedAccess{ 0 };
+		ULONG Attributes{ 0 };		// OBJ_INHERIT, OBJ_PROTECT_CLOSE (2, 1)
+		ULONG64 Object{ 0 };		// the kernel object's address (0 if not known: not elevated)
 	};
 
 	struct CreateProcessData {
@@ -331,6 +349,12 @@ namespace DebugEngine {
 
 		Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
 		Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
+		// The handles of the current process (a live user-mode target on this computer only: E_NOTIMPL otherwise). The name of
+		// a file that is not a disk file is not asked for: for a synchronous pipe with a read waiting, that would never return.
+		Task<HRESULT> EnumHandles(std::vector<HandleInfo>& handles);
+		// The first place at or after 'start' where the bytes are: in user mode, in the committed memory of the current
+		// process up to its end; in kernel mode, in the next 'kernelRange' bytes. HRESULT_FROM_WIN32(ERROR_NOT_FOUND): none
+		Task<HRESULT> SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange = 0x10000000);
 
 		// about the current thread of the target; the registers are as they were in the current scope frame
 		// (only the nonvolatile ones are reliable in a frame other than 0)
@@ -338,6 +362,15 @@ namespace DebugEngine {
 		Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames = 128);
 		// the thread by the engine's id (ThreadInfo::Id)
 		Task<HRESULT> SetCurrentThread(ULONG threadId);
+		// the process by the engine's id (ProcessInfo::Id); its current thread becomes the current one. ContextChanged follows
+		Task<HRESULT> SetCurrentProcess(ULONG processId);
+		// Freezes a thread (the engine's id), or thaws it: a frozen thread does not run when the target does (~f, ~u)
+		Task<HRESULT> SetThreadFrozen(ULONG threadId, bool frozen);
+		// suspends a thread (one more suspend count, ~n), or resumes it (one less, ~m)
+		Task<HRESULT> SuspendThread(ULONG threadId, bool suspend);
+		// whether the processes a program starts are debugged too (by a launch from now on, and by the session there is:
+		// .childdbg); off by default
+		Task<HRESULT> SetDebugChildProcesses(bool debug);
 
 		// the frame of the current thread's stack (StackFrameInfo::Index) that locals, registers and expressions are
 		// about; it goes back to 0 whenever the target stops or the current thread changes

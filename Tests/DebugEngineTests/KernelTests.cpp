@@ -131,6 +131,59 @@ Task<void> KernelSuite(DebuggerX& dbg) {
 		Check(co_await Eval(dbg, L"@$thread") == self_thread->Address, "@$thread is it");
 	}
 
+	// the object manager's namespace, the drivers, and the IRP of a read that waits (a thread of this process, on a pipe)
+	HANDLE pipeRead = nullptr, pipeWrite = nullptr;
+	::CreatePipe(&pipeRead, &pipeWrite, nullptr, 0);
+	DWORD readerTid = 0;
+	auto reader = ::CreateThread(nullptr, 0, [](void* p) -> DWORD {
+		char buffer[8];
+		DWORD read;
+		::ReadFile(static_cast<HANDLE>(p), buffer, sizeof(buffer), &read, nullptr);
+		return 0;
+		}, pipeRead, 0, &readerTid);
+	::Sleep(200);
+	std::vector<KernelObject> root;
+	std::vector<KernelDriver> drivers;
+	std::vector<KernelIrp> irps;
+	CString dosDevices;
+	co_await dbg.RunAsync([&](IDebugClient* client) -> HRESULT {
+		KernelObjectAnalyzer objects(client);
+		root = objects.EnumDirectory(objects.GetRootDirectory());
+		drivers = objects.EnumDrivers();
+		if (auto link = objects.FindObject(L"\\DosDevices"))
+			dosDevices = objects.GetSymbolicLinkTarget(link);
+		KernelProcessEnumerator processes(client);
+		while (auto p = processes.GetNextProcess()) {
+			if (p->GetProcessId() != pid)
+				continue;
+			auto enumerator = p->GetThreadEnumerator();
+			while (auto t = enumerator->GetNextThread())
+				if (t->GetClientId().ThreadId == readerTid)
+					irps = objects.EnumThreadIrps(t->GetAddress());
+			break;
+		}
+		return S_OK;
+		});
+	printf("  %zu objects in \\, %zu drivers, \\DosDevices -> %ls\n", root.size(), drivers.size(), (PCWSTR)dosDevices);
+	auto inRoot = [&](PCWSTR name, PCWSTR type) {
+		return std::any_of(root.begin(), root.end(), [&](auto& o) { return o.Name == name && o.Type == type; });
+	};
+	Check(inRoot(L"Driver", L"Directory") && inRoot(L"Device", L"Directory") && inRoot(L"ObjectTypes", L"Directory"), "\\ has Driver, Device, ObjectTypes");
+	Check(dosDevices == L"\\??", "\\DosDevices is a symbolic link to \\??");
+	auto null = std::find_if(drivers.begin(), drivers.end(), [](auto& d) { return d.Name.CompareNoCase(L"\\Driver\\Null") == 0; });
+	Check(null != drivers.end() && null->DeviceCount >= 1 && null->Start != 0 && null->MajorFunctions[0] != 0, "\\Driver\\Null: its devices, image, dispatch routines");
+	Check(std::any_of(drivers.begin(), drivers.end(), [](auto& d) { return d.Name.CompareNoCase(L"\\FileSystem\\Npfs") == 0; }), "\\FileSystem\\Npfs");
+	for (auto& irp : irps)
+		printf("  IRP 0x%llX %ls %ls (%ls)\n", irp.Address, (PCWSTR)MajorFunctionName(irp.MajorFunction), (PCWSTR)irp.DriverName, (PCWSTR)irp.FileName);
+	Check(std::any_of(irps.begin(), irps.end(), [](auto& irp) { return irp.MajorFunction == 3 && irp.DriverName.CompareNoCase(L"\\FileSystem\\Npfs") == 0; }),
+		"the waiting read's IRP: IRP_MJ_READ, in Npfs");
+	DWORD written;
+	::WriteFile(pipeWrite, "x", 1, &written, nullptr);
+	::WaitForSingleObject(reader, 5000);
+	::CloseHandle(reader);
+	::CloseHandle(pipeRead);
+	::CloseHandle(pipeWrite);
+
 	co_await dbg.Detach();
 	::PostQuitMessage(0);
 }

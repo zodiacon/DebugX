@@ -4,10 +4,14 @@
 #include "SortHelper.h"
 
 void CUserThreadsView::InitList() {
-	m_List.InsertColumn(0, L"Index", LVCFMT_LEFT, 80);
-	m_List.InsertColumn(1, L"TID", LVCFMT_RIGHT, 100);
-	m_List.InsertColumn(2, L"PID", LVCFMT_RIGHT, 110);
-	m_List.InsertColumn(3, L"TEB", LVCFMT_RIGHT, 100);
+	m_List.InsertColumn(0, L"Index", LVCFMT_LEFT, 60);
+	m_List.InsertColumn(1, L"TID", LVCFMT_RIGHT, 110);
+	m_List.InsertColumn(2, L"Name", LVCFMT_LEFT, 120);
+	m_List.InsertColumn(3, L"Location", LVCFMT_LEFT, 260);
+	m_List.InsertColumn(4, L"Suspend", LVCFMT_RIGHT, 60);
+	m_List.InsertColumn(5, L"State", LVCFMT_LEFT, 60);
+	m_List.InsertColumn(6, L"PID", LVCFMT_RIGHT, 110);
+	m_List.InsertColumn(7, L"TEB", LVCFMT_RIGHT, 130);
 
 	// the thread, and the thread that is current
 	CImageList images;
@@ -24,8 +28,12 @@ CString CUserThreadsView::GetColumnText(HWND hWnd, int row, int column) const {
 	switch (column) {
 		case 0: text.Format(L"%u", t.Id); break;
 		case 1: text.Format(L"%u (0x%X)", t.ThreadId, t.ThreadId); break;
-		case 2: text.Format(L"%u (0x%X)", t.Pid, t.Pid); break;
-		case 3: text.Format(L"0x%llX", t.Teb); break;
+		case 2: text = t.Name.c_str(); break;
+		case 3: text = t.Location.c_str(); break;
+		case 4: text.Format(L"%u", t.SuspendCount); break;
+		case 5: text = t.Frozen ? L"Frozen" : L""; break;
+		case 6: text.Format(L"%u (0x%X)", t.Pid, t.Pid); break;
+		case 7: text.Format(L"0x%llX", t.Teb); break;
 	}
 
 	return text;
@@ -43,8 +51,12 @@ void CUserThreadsView::DoSort(const SortInfo* si) {
 		switch (si->SortColumn) {
 			case 0: return SortHelper::Sort(t1.Id, t2.Id, si->SortAscending);
 			case 1: return SortHelper::Sort(t1.ThreadId, t2.ThreadId, si->SortAscending);
-			case 2: return SortHelper::Sort(t1.Pid, t2.Pid, si->SortAscending);
-			case 3: return SortHelper::Sort(t1.Teb, t2.Teb, si->SortAscending);
+			case 2: return SortHelper::Sort(t1.Name, t2.Name, si->SortAscending);
+			case 3: return SortHelper::Sort(t1.Location, t2.Location, si->SortAscending);
+			case 4: return SortHelper::Sort(t1.SuspendCount, t2.SuspendCount, si->SortAscending);
+			case 5: return SortHelper::Sort(t1.Frozen, t2.Frozen, si->SortAscending);
+			case 6: return SortHelper::Sort(t1.Pid, t2.Pid, si->SortAscending);
+			case 7: return SortHelper::Sort(t1.Teb, t2.Teb, si->SortAscending);
 		}
 		return false;
 		});
@@ -56,6 +68,72 @@ bool CUserThreadsView::OnDoubleClickList(HWND, int row, int col, POINT const& pt
 
 	SwitchTo(m_Items[row].Id);
 	return true;
+}
+
+bool CUserThreadsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
+	if (row < 0 || row >= static_cast<int>(m_Items.size()))
+		return false;
+	m_List.SelectItem(row);
+	auto& t = m_Items[row];
+	// (a dump's threads are as they were: nothing to do to them)
+	const bool live = DebugManager::Session().IsBroken() && (DebugManager::Session().Target() & DebugEngine::TargetType::Live) == DebugEngine::TargetType::Live;
+	auto flags = [&](bool enabled) { return enabled ? MF_STRING : MF_STRING | MF_GRAYED; };
+
+	enum { CmdSwitch = 1, CmdFreeze, CmdThaw, CmdSuspend, CmdResume, CmdCopy };
+	CMenu menu;
+	menu.CreatePopupMenu();
+	menu.AppendMenu(MF_STRING, CmdSwitch, L"&Switch to Thread");
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(flags(live && !t.Frozen), CmdFreeze, L"&Freeze");
+	menu.AppendMenu(flags(live && t.Frozen), CmdThaw, L"&Thaw");
+	menu.AppendMenu(flags(live), CmdSuspend, L"S&uspend");
+	menu.AppendMenu(flags(live && t.SuspendCount > 0), CmdResume, L"&Resume");
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(MF_STRING, CmdCopy, L"&Copy Location");
+	menu.SetMenuDefaultItem(CmdSwitch);
+	// (the rows can change while the menu is up: what it needs is taken now)
+	const auto id = t.Id;
+	const auto location = t.Location;
+	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+		case CmdSwitch: SwitchTo(id); break;
+		case CmdFreeze: Apply(id, Action::Freeze); break;
+		case CmdThaw: Apply(id, Action::Thaw); break;
+		case CmdSuspend: Apply(id, Action::Suspend); break;
+		case CmdResume: Apply(id, Action::Resume); break;
+		case CmdCopy:
+			if (OpenClipboard()) {
+				::EmptyClipboard();
+				auto& text = location;
+				auto size = (text.size() + 1) * sizeof(wchar_t);
+				if (auto hData = ::GlobalAlloc(GMEM_MOVEABLE, size)) {
+					memcpy(::GlobalLock(hData), text.c_str(), size);
+					::GlobalUnlock(hData);
+					if (!::SetClipboardData(CF_UNICODETEXT, hData))
+						::GlobalFree(hData);
+				}
+				::CloseClipboard();
+			}
+			break;
+	}
+	return true;
+}
+
+DebugEngine::Task<void> CUserThreadsView::Apply(ULONG threadId, Action action) {
+	auto alive = m_Lifetime.Watch();
+	auto& dbg = DebugManager::DebuggerX();
+	HRESULT hr = E_FAIL;
+	switch (action) {
+		case Action::Freeze: hr = co_await dbg.SetThreadFrozen(threadId, true); break;
+		case Action::Thaw: hr = co_await dbg.SetThreadFrozen(threadId, false); break;
+		case Action::Suspend: hr = co_await dbg.SuspendThread(threadId, true); break;
+		case Action::Resume: hr = co_await dbg.SuspendThread(threadId, false); break;
+	}
+	if (!*alive)
+		co_return;
+	if (FAILED(hr))
+		::MessageBeep(MB_ICONWARNING);
+	// (the engine does not tell of it)
+	RequestRefresh();
 }
 
 void CUserThreadsView::OnThreadCreated(const DebugEngine::ThreadCreateData& data) {

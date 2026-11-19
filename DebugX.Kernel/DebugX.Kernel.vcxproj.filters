@@ -36,6 +36,9 @@
     <ClInclude Include="KernelThreadAnalyzer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="KernelObjectAnalyzer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="KernelProcessThreadEnumerator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -57,6 +60,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="KernelThreadAnalyzer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="KernelObjectAnalyzer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="KernelProcessThreadEnumerator.cpp">

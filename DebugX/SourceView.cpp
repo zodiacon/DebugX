@@ -25,22 +25,6 @@ namespace {
 		return false;
 	}
 
-	// a file's bytes as UTF-8: a BOM says what they are, else UTF-8 if they are valid UTF-8, else the ANSI code page
-	std::string ToUtf8Text(std::string bytes) {
-		if (bytes.size() >= 3 && static_cast<BYTE>(bytes[0]) == 0xEF && static_cast<BYTE>(bytes[1]) == 0xBB && static_cast<BYTE>(bytes[2]) == 0xBF)
-			return bytes.substr(3);
-		if (bytes.size() >= 2 && static_cast<BYTE>(bytes[0]) == 0xFF && static_cast<BYTE>(bytes[1]) == 0xFE) {
-			std::wstring_view wide(reinterpret_cast<const wchar_t*>(bytes.data() + 2), (bytes.size() - 2) / sizeof(wchar_t));
-			return ToUtf8(std::wstring(wide));
-		}
-		if (bytes.empty() || ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0) > 0)
-			return bytes;
-
-		std::wstring wide(::MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0), L'\0');
-		::MultiByteToWideChar(CP_ACP, 0, bytes.data(), static_cast<int>(bytes.size()), wide.data(), static_cast<int>(wide.size()));
-		return ToUtf8(wide);
-	}
-
 	bool SamePath(const std::wstring& a, const std::wstring& b) {
 		return !a.empty() && _wcsicmp(a.c_str(), b.c_str()) == 0;
 	}

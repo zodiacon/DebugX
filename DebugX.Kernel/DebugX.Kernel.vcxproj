@@ -163,6 +163,7 @@
     <ClInclude Include="KernelProcessEnumerator.h" />
     <ClInclude Include="KernelProcessThreadEnumerator.h" />
     <ClInclude Include="KernelThreadAnalyzer.h" />
+    <ClInclude Include="KernelObjectAnalyzer.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
@@ -175,6 +176,7 @@
     <ClCompile Include="KernelProcessAnalyzer.cpp" />
     <ClCompile Include="KernelProcessThreadEnumerator.cpp" />
     <ClCompile Include="KernelThreadAnalyzer.cpp" />
+    <ClCompile Include="KernelObjectAnalyzer.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>

@@ -15,6 +15,7 @@
 // CanRefresh's usual "the target just broke" trigger implies it should.
 // While a live target is stopped the bytes can be edited (overwrite only: the Insert key is kept from the control):
 // each change is written to the target as it is made (TargetMemoryBuffer), and shows in red until the next refresh.
+// Right-click: the display format, and Search / Search Next (bytes, a string; in all of the process's memory from the caret).
 class CMemoryView :
 	public CFrameWindowImpl<CMemoryView, CWindow, CControlWinTraits>,
 	public CPaneBase<CMemoryView> {
@@ -86,6 +87,10 @@ private:
 	LRESULT OnAddressChar(UINT, WPARAM wParam, LPARAM, BOOL& handled);
 
 	void Go();
+	// Search: the bytes asked for (hex bytes, "text" or L"text"), from the caret on; Search Next: from past it
+	DebugEngine::Task<void> Search(bool next);
+	// "4D 5A", "MZ", L"MZ" as bytes; empty if it is none of them
+	static std::vector<BYTE> ParsePattern(const CString& text);
 	// the bytes can be edited when there are some, of a live target that is stopped
 	void UpdateWritable();
 	DebugEngine::Task<void> Write(ULONG64 address, std::vector<BYTE> data);
@@ -100,5 +105,9 @@ private:
 	std::unique_ptr<TargetMemoryBuffer> m_Buffer;
 	int m_PendingWrites{ 0 };
 	CString m_Expression;		// what is loaded: re-evaluated on every refresh, so a register expression follows it
+	// what Search looks for, as typed and as bytes; and how much of what it found is selected after the refresh
+	CString m_SearchText;
+	std::vector<BYTE> m_SearchPattern;
+	int64_t m_SelectAfterRefresh{ 0 };
 	Lifetime m_Lifetime;
 };

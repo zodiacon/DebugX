@@ -22,6 +22,32 @@ DebuggerX::Impl* g_Debugger;
 #define HR(x) { auto _hr = (x); if(FAILED(_hr)) return _hr; }
 
 namespace {
+	// DML as text: the tags left out, the entities as the characters they are
+	std::wstring StripDml(std::wstring_view dml) {
+		std::wstring text;
+		for (size_t i = 0; i < dml.size(); i++) {
+			if (dml[i] == L'<') {
+				auto end = dml.find(L'>', i);
+				if (end == std::wstring_view::npos)
+					break;
+				i = end;
+			}
+			else if (dml[i] == L'&') {
+				static const std::pair<std::wstring_view, wchar_t> entities[] = { { L"&lt;", L'<' }, { L"&gt;", L'>' }, { L"&amp;", L'&' }, { L"&quot;", L'"' } };
+				auto it = std::find_if(std::begin(entities), std::end(entities), [&](auto& e) { return dml.substr(i).starts_with(e.first); });
+				if (it == std::end(entities))
+					text += dml[i];
+				else {
+					text += it->second;
+					i += it->first.size() - 1;
+				}
+			}
+			else
+				text += dml[i];
+		}
+		return text;
+	}
+
 	// Both are posted to the message window that the debugger creates on the thread that created it.
 	// WM_DBG_NOTIFY: engine callbacks are waiting in the notification queue
 	// WM_DBG_RESUME: an engine call has completed, lParam is its AsyncOpData
@@ -134,6 +160,12 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers);
 	Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames);
 	Task<HRESULT> SetCurrentThread(ULONG threadId);
+	Task<HRESULT> SetCurrentProcess(ULONG processId);
+	Task<HRESULT> SetThreadFrozen(ULONG threadId, bool frozen);
+	Task<HRESULT> SuspendThread(ULONG threadId, bool suspend);
+	Task<HRESULT> SetDebugChildProcesses(bool debug);
+	Task<HRESULT> EnumHandles(std::vector<HandleInfo>& handles);
+	Task<HRESULT> SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange);
 	Task<HRESULT> SetScopeFrame(ULONG frameIndex);
 	Task<HRESULT> GetScope(ULONG64& instructionOffset, ULONG& frameIndex);
 	Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
@@ -224,6 +256,8 @@ private:
 	void UpdateStatus();
 	bool DoPostCommand();
 	HRESULT EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads, ULONG currentThread);
+	// runs a command and returns what it output, as text (debug thread)
+	std::wstring ExecuteCaptured(const std::wstring& command);
 	void PostContextChanged();
 	void PostScopeChanged();
 	// the index of the current scope frame (debug thread)
@@ -271,6 +305,10 @@ private:
 	int m_InternalSwitch{ 0 };
 	// while WriteMemory writes: it tells of the change itself
 	bool m_Writing{ false };
+	// while the debugger runs a command for what it says (ExecuteCaptured), the output goes here, not to anybody
+	std::wstring* m_Capture{ nullptr };
+	// SetDebugChildProcesses
+	bool m_DebugChildren{ false };
 
 	// What DebugX keeps of a breakpoint that the engine does not (debug thread only). By the breakpoint's GUID: its id
 	// is reused by the engine once it is removed, also by bc in the Command window, which DebugX is not told about.
@@ -472,6 +510,11 @@ private:
 
 	// Inherited via IDebugOutputCallbacks2
 	HRESULT __stdcall Output2(ULONG Which, ULONG Flags, ULONG64 Arg, PCWSTR Text) override {
+		if (m_Capture) {
+			if (Text)
+				*m_Capture += Which == DEBUG_OUTCB_DML ? StripDml(Text) : std::wstring(Text);
+			return S_OK;
+		}
 		auto data = new OutputData;
 		data->IsDml = Which == DEBUG_OUTCB_DML;
 		if (Text)
@@ -874,6 +917,8 @@ Task<HRESULT> DebuggerX::Impl::AttachToProcess(DWORD pid, AttachType attach) {
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 		HR(m_spClient->AttachProcess(0, pid, static_cast<ULONG>(attach)));
 		HR(m_spControl->WaitForEvent(0, INFINITE));
+		if (m_DebugChildren)
+			ExecuteCaptured(L".childdbg 1");
 		LoadExecutableSymbols();
 		return S_OK;
 		});
@@ -893,7 +938,8 @@ Task<HRESULT> DebuggerX::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLin
 
 	auto hr = co_await Run([this, cmd = std::move(cmd), initialDir = std::move(initialDir), attach]() mutable {
 		DEBUG_CREATE_PROCESS_OPTIONS options = { 0 };
-		options.CreateFlags = DEBUG_PROCESS | DEBUG_ONLY_THIS_PROCESS;
+		// (DEBUG_PROCESS alone: the processes it starts are debugged too)
+		options.CreateFlags = m_DebugChildren ? DEBUG_PROCESS : DEBUG_PROCESS | DEBUG_ONLY_THIS_PROCESS;
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 		HR(m_spClient->CreateProcessAndAttach2Wide(0, cmd.data(), &options, sizeof(options),
 			initialDir.empty() ? nullptr : initialDir.c_str(), nullptr, 0, static_cast<ULONG>(attach)));
@@ -1060,7 +1106,10 @@ Task<HRESULT> DebuggerX::Impl::EnumProcesses(std::vector<ProcessInfo>& processes
 			m_spSystem->GetCurrentProcessHandle(&d);
 			pi.Handle = (HANDLE)d;
 			m_spSystem->GetCurrentProcessUpTime(&pi.UpTimeSec);
+			pi.Current = pi.Id == currentProcess;
+			const auto before = threads.size();
 			EnumThreads(pi, threads, pi.Id == currentProcess ? currentThread : DEBUG_ANY_ID);
+			pi.ThreadCount = static_cast<ULONG>(threads.size() - before);
 			if (SUCCEEDED(m_spSystem->GetCurrentProcessExecutableNameWide(exe, _countof(exe), nullptr)))
 				pi.ImagePath = exe;
 
@@ -1069,6 +1118,116 @@ Task<HRESULT> DebuggerX::Impl::EnumProcesses(std::vector<ProcessInfo>& processes
 		m_spSystem->SetCurrentProcessId(currentProcess);
 		m_spSystem->SetCurrentThreadId(currentThread);
 		return S_OK;
+		});
+}
+
+namespace {
+	// NtQuerySystemInformation(SystemExtendedHandleInformation): the handles of all processes
+	struct SystemHandleEntry {
+		PVOID Object;
+		ULONG_PTR UniqueProcessId;
+		ULONG_PTR HandleValue;
+		ULONG GrantedAccess;
+		USHORT CreatorBackTraceIndex;
+		USHORT ObjectTypeIndex;
+		ULONG HandleAttributes;
+		ULONG Reserved;
+	};
+	struct SystemHandleInformation {
+		ULONG_PTR NumberOfHandles;
+		ULONG_PTR Reserved;
+		SystemHandleEntry Handles[1];
+	};
+	constexpr ULONG SystemExtendedHandleInformation = 64;
+	using NtQuerySystemInformationFn = LONG(NTAPI*)(ULONG, PVOID, ULONG, PULONG);
+}
+
+Task<HRESULT> DebuggerX::Impl::EnumHandles(std::vector<HandleInfo>& handles) {
+	co_return co_await Run([this, &handles]() -> HRESULT {
+		ULONG debuggeeClass = 0, qualifier = 0;
+		HR(m_spControl->GetDebuggeeType(&debuggeeClass, &qualifier));
+		if (debuggeeClass != DEBUG_CLASS_USER_WINDOWS || qualifier != DEBUG_USER_WINDOWS_PROCESS)
+			return E_NOTIMPL;
+		ULONG pid = 0;
+		HR(m_spSystem->GetCurrentProcessSystemId(&pid));
+		ULONG64 processHandle = 0;
+		HR(m_spSystem->GetCurrentProcessHandle(&processHandle));
+
+		auto query = reinterpret_cast<NtQuerySystemInformationFn>(::GetProcAddress(::GetModuleHandleW(L"ntdll"), "NtQuerySystemInformation"));
+		if (!query)
+			return E_NOTIMPL;
+		std::vector<BYTE> buffer(1 << 20);
+		LONG status;
+		while (true) {
+			ULONG needed = 0;
+			status = query(SystemExtendedHandleInformation, buffer.data(), static_cast<ULONG>(buffer.size()), &needed);
+			if (status != static_cast<LONG>(0xC0000004))		// STATUS_INFO_LENGTH_MISMATCH
+				break;
+			buffer.resize((std::max<size_t>)(needed, buffer.size()) * 2);
+		}
+		if (status < 0)
+			return HRESULT_FROM_NT(status);
+
+		auto info = reinterpret_cast<const SystemHandleInformation*>(buffer.data());
+		WCHAR text[1024];
+		for (ULONG_PTR i = 0; i < info->NumberOfHandles; i++) {
+			auto& e = info->Handles[i];
+			if (e.UniqueProcessId != pid)
+				continue;
+			HandleInfo hi;
+			hi.Handle = e.HandleValue;
+			hi.GrantedAccess = e.GrantedAccess;
+			hi.Attributes = e.HandleAttributes;
+			hi.Object = reinterpret_cast<ULONG64>(e.Object);
+			if (SUCCEEDED(m_spData->ReadHandleData(hi.Handle, DEBUG_HANDLE_DATA_TYPE_TYPE_NAME_WIDE, text, sizeof(text), nullptr)))
+				hi.Type = text;
+			// A file's name is asked for only if it is on a disk: asking a synchronous pipe (or a console) with an I/O
+			// waiting would wait for it. Which device it is on can be asked without waiting (GetFileType).
+			bool askName = true;
+			if (hi.Type == L"File") {
+				HANDLE dup = nullptr;
+				askName = false;
+				if (::DuplicateHandle(reinterpret_cast<HANDLE>(processHandle), reinterpret_cast<HANDLE>(hi.Handle), ::GetCurrentProcess(), &dup, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+					askName = ::GetFileType(dup) == FILE_TYPE_DISK;
+					::CloseHandle(dup);
+				}
+			}
+			if (askName && SUCCEEDED(m_spData->ReadHandleData(hi.Handle, DEBUG_HANDLE_DATA_TYPE_OBJECT_NAME_WIDE, text, sizeof(text), nullptr)))
+				hi.Name = text;
+			handles.push_back(std::move(hi));
+		}
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange) {
+	co_return co_await Run([this, start, pattern = std::move(pattern), &found, kernelRange]() -> HRESULT {
+		if (pattern.empty())
+			return E_INVALIDARG;
+		const auto notFound = HRESULT_FROM_WIN32(ERROR_NOT_FOUND);
+		ULONG debuggeeClass = 0, qualifier = 0;
+		HR(m_spControl->GetDebuggeeType(&debuggeeClass, &qualifier));
+		auto search = [&](ULONG64 from, ULONG64 length) {
+			ULONG64 match = 0;
+			auto hr = m_spData->SearchVirtual(from, length, const_cast<BYTE*>(pattern.data()), static_cast<ULONG>(pattern.size()), 1, &match);
+			if (hr == S_OK)
+				found = match;
+			return hr == S_OK;
+		};
+		if (debuggeeClass != DEBUG_CLASS_USER_WINDOWS)
+			return search(start, kernelRange) ? S_OK : notFound;
+
+		// region by region: only the committed memory that can be read (a match across two regions is not found)
+		MEMORY_BASIC_INFORMATION64 mbi;
+		for (ULONG64 offset = start; SUCCEEDED(m_spData->QueryVirtual(offset, &mbi)); ) {
+			const auto end = mbi.BaseAddress + mbi.RegionSize;
+			if (end <= offset)
+				break;
+			if (mbi.State == MEM_COMMIT && !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) && search(offset, end - offset))
+				return S_OK;
+			offset = end;
+		}
+		return notFound;
 		});
 }
 
@@ -1728,10 +1887,12 @@ Task<HRESULT> DebuggerX::Impl::SetRegister(PCWSTR name, PCWSTR value) {
 HRESULT DebuggerX::Impl::EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads, ULONG currentThread) {
 	ULONG count;
 	HR(m_spSystem->GetNumberThreads(&count));
-	threads.reserve(count);
+	threads.reserve(threads.size() + count);
+	const auto first = threads.size();
 	ULONG restore;
 	m_spSystem->GetCurrentThreadId(&restore);
 	ULONG64 d;
+	WCHAR name[512];
 	for (ULONG i = 0; i < count; i++) {
 		ThreadInfo ti;
 		if (FAILED(m_spSystem->GetThreadIdsByIndex(i, 1, &ti.Id, &ti.ThreadId)))
@@ -1741,11 +1902,91 @@ HRESULT DebuggerX::Impl::EnumThreads(const ProcessInfo& pi, std::vector<ThreadIn
 		m_spSystem->GetCurrentThreadHandle(&d);
 		ti.Handle = (HANDLE)d;
 		ti.Pid = pi.ProcessId;
+		ti.ProcessId = pi.Id;
 		ti.Current = ti.Id == currentThread;
-		threads.push_back(ti);
+		ULONG64 displacement = 0;
+		if (SUCCEEDED(m_spRegisters->GetInstructionOffset(&ti.InstructionOffset))) {
+			if (SUCCEEDED(m_spSymbols->GetNameByOffsetWide(ti.InstructionOffset, name, _countof(name), nullptr, &displacement)))
+				ti.Location = displacement ? std::format(L"{}+0x{:X}", name, displacement) : std::wstring(name);
+			else
+				ti.Location = std::format(L"0x{:X}", ti.InstructionOffset);
+		}
+		threads.push_back(std::move(ti));
 	}
 	m_spSystem->SetCurrentThreadId(restore);
+
+	// What the engine knows of them that it has no API for -- the suspend count, frozen, the description -- is in what
+	// ~ says, a line each:  ".  0  Id: 1a2c.3b4 Suspend: 1 Teb: 000000b1`8a3a5000 Unfrozen "Main Thread""
+	auto text = ExecuteCaptured(L"~");
+	size_t pos = 0;
+	while (pos < text.size()) {
+		auto end = text.find(L'\n', pos);
+		if (end == std::wstring::npos)
+			end = text.size();
+		std::wstring_view line(text.data() + pos, end - pos);
+		pos = end + 1;
+		auto id = line.find(L"Id: ");
+		if (id == std::wstring_view::npos)
+			continue;
+		auto dot = line.find(L'.', id);
+		if (dot == std::wstring_view::npos)
+			continue;
+		auto tid = wcstoul(std::wstring(line.substr(dot + 1, 16)).c_str(), nullptr, 16);
+		auto it = std::find_if(threads.begin() + first, threads.end(), [&](auto& t) { return t.ThreadId == tid; });
+		if (it == threads.end())
+			continue;
+		if (auto suspend = line.find(L"Suspend: "); suspend != std::wstring_view::npos)
+			it->SuspendCount = wcstoul(std::wstring(line.substr(suspend + 9, 10)).c_str(), nullptr, 10);
+		it->Frozen = line.find(L" Frozen") != std::wstring_view::npos;
+		auto open = line.find(L'"'), close = line.rfind(L'"');
+		if (open != std::wstring_view::npos && close > open)
+			it->Name = line.substr(open + 1, close - open - 1);
+	}
 	return S_OK;
+}
+
+std::wstring DebuggerX::Impl::ExecuteCaptured(const std::wstring& command) {
+	std::wstring text;
+	auto previous = m_Capture;
+	m_Capture = &text;
+	m_spControl->ExecuteWide(DEBUG_OUTCTL_THIS_CLIENT | DEBUG_OUTCTL_NOT_LOGGED, command.c_str(), DEBUG_EXECUTE_NOT_LOGGED | DEBUG_EXECUTE_NO_REPEAT);
+	m_Capture = previous;
+	return text;
+}
+
+Task<HRESULT> DebuggerX::Impl::SetCurrentProcess(ULONG processId) {
+	co_return co_await Run([this, processId] {
+		HR(m_spSystem->SetCurrentProcessId(processId));
+		PostContextChanged();
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetThreadFrozen(ULONG threadId, bool frozen) {
+	co_return co_await Run([this, threadId, frozen] {
+		// (~Nf: N is the engine's id; one it does not know is a syntax error: "^ Illegal thread error")
+		auto text = ExecuteCaptured(std::format(L"~{}{}", threadId, frozen ? L'f' : L'u'));
+		return text.find(L"Illegal") != std::wstring::npos || text.find(L"^") != std::wstring::npos ? E_INVALIDARG : S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SuspendThread(ULONG threadId, bool suspend) {
+	co_return co_await Run([this, threadId, suspend] {
+		auto text = ExecuteCaptured(std::format(L"~{}{}", threadId, suspend ? L'n' : L'm'));
+		return text.find(L"Illegal") != std::wstring::npos || text.find(L"^") != std::wstring::npos ? E_INVALIDARG : S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetDebugChildProcesses(bool debug) {
+	co_return co_await Run([this, debug] {
+		m_DebugChildren = debug;
+		// (the session there is, if it is a live user-mode one)
+		ULONG debuggeeClass = 0, qualifier = 0;
+		if (m_Status != DEBUG_STATUS_NO_DEBUGGEE && SUCCEEDED(m_spControl->GetDebuggeeType(&debuggeeClass, &qualifier))
+			&& debuggeeClass == DEBUG_CLASS_USER_WINDOWS && qualifier == DEBUG_USER_WINDOWS_PROCESS)
+			ExecuteCaptured(debug ? L".childdbg 1" : L".childdbg 0");
+		return S_OK;
+		});
 }
 
 DebuggerX::DebuggerX() {
@@ -1836,6 +2077,30 @@ Task<HRESULT> DebuggerX::GetStackTrace(std::vector<StackFrameInfo>& frames, ULON
 
 Task<HRESULT> DebuggerX::SetCurrentThread(ULONG threadId) {
 	return m_Impl->SetCurrentThread(threadId);
+}
+
+Task<HRESULT> DebuggerX::SetCurrentProcess(ULONG processId) {
+	return m_Impl->SetCurrentProcess(processId);
+}
+
+Task<HRESULT> DebuggerX::SetThreadFrozen(ULONG threadId, bool frozen) {
+	return m_Impl->SetThreadFrozen(threadId, frozen);
+}
+
+Task<HRESULT> DebuggerX::SuspendThread(ULONG threadId, bool suspend) {
+	return m_Impl->SuspendThread(threadId, suspend);
+}
+
+Task<HRESULT> DebuggerX::SetDebugChildProcesses(bool debug) {
+	return m_Impl->SetDebugChildProcesses(debug);
+}
+
+Task<HRESULT> DebuggerX::EnumHandles(std::vector<HandleInfo>& handles) {
+	return m_Impl->EnumHandles(handles);
+}
+
+Task<HRESULT> DebuggerX::SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange) {
+	return m_Impl->SearchMemory(start, std::move(pattern), found, kernelRange);
 }
 
 Task<HRESULT> DebuggerX::SetScopeFrame(ULONG frameIndex) {

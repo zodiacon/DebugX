@@ -2,6 +2,11 @@
 #include "PaneRegistry.h"
 #include "CommandView.h"
 #include "UserThreadsView.h"
+#include "UserProcessesView.h"
+#include "HandlesView.h"
+#include "DriversView.h"
+#include "ObjectsView.h"
+#include "IrpsView.h"
 #include "KernelProcessesView.h"
 #include "KernelThreadsView.h"
 #include "ModulesView.h"
@@ -30,11 +35,19 @@ namespace {
 		{ L"callstack", L"Call Stack", IDI_CALLSTACK, ID_VIEW_CALLSTACK, PaneKind::Tool, DockSide::Left, { 560, 300 }, TargetType::Unknown, true, nullptr, Make<CCallStackView> },
 		{ L"registers", L"Registers", IDI_REGISTRY, ID_VIEW_REGISTERS, PaneKind::Tool, DockSide::Right, { 440, 300 }, TargetType::Unknown, true, nullptr, Make<CRegistersView> },
 		{ L"threads", L"Threads", IDI_THREADS, ID_VIEW_THREADS, PaneKind::Tool, DockSide::Right, { 420, 300 }, TargetType::User, true, L"registers", Make<CUserThreadsView> },
+		{ L"uprocesses", L"Processes", IDI_PROCESSES, ID_VIEW_USERPROCESSES, PaneKind::Tool, DockSide::Right, { 600, 300 }, TargetType::User, true, L"threads", Make<CUserProcessesView> },
+		{ L"handles", L"Handles", IDI_TOOL, ID_VIEW_HANDLES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::LiveUser, true, L"threads", Make<CHandlesView> },
 		{ L"modules", L"Modules", IDI_DLL, ID_VIEW_MODULES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Unknown, true, L"registers", Make<CModulesView> },
 		{ L"breakpoints", L"Breakpoints", IDI_BREAKPOINTS, ID_VIEW_BREAKPOINTS, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"output", Make<CBreakpointsView> },
-		{ L"processes", L"Processes", IDI_PROCESSES, ID_VIEW_PROCESSES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Kernel, true, L"registers", Make<CKernelProcessesView> },
+		{ L"processes", L"Kernel Processes", IDI_PROCESSES, ID_VIEW_PROCESSES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Kernel, true, L"registers", Make<CKernelProcessesView> },
 		{ L"kthreads", L"Kernel Threads", IDI_THREADS, ID_VIEW_KERNELTHREADS, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Kernel, true, L"processes", Make<CKernelThreadsView> },
+		{ L"drivers", L"Drivers", IDI_DLL, ID_VIEW_DRIVERS, PaneKind::Tool, DockSide::Right, { 800, 300 }, TargetType::Kernel, true, L"processes", Make<CDriversView> },
+		{ L"objects", L"Object Namespace", IDI_STRUCT, ID_VIEW_OBJECTS, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::Kernel, true, L"drivers", Make<CObjectsView> },
+		{ L"irps", L"IRPs", IDI_EVENT, ID_VIEW_IRPS, PaneKind::Tool, DockSide::Right, { 900, 300 }, TargetType::Kernel, true, L"drivers", Make<CIrpsView> },
 		{ L"memory", L"Memory", IDI_MEMORY, ID_VIEW_MEMORY, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"breakpoints", Make<CMemoryView> },
+		{ L"memory2", L"Memory 2", IDI_MEMORY, ID_VIEW_MEMORY2, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"memory", Make<CMemoryView> },
+		{ L"memory3", L"Memory 3", IDI_MEMORY, ID_VIEW_MEMORY3, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"memory", Make<CMemoryView> },
+		{ L"memory4", L"Memory 4", IDI_MEMORY, ID_VIEW_MEMORY4, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"memory", Make<CMemoryView> },
 		{ L"disassembly", L"Disassembly", IDI_STRUCT, ID_VIEW_DISASSEMBLY, PaneKind::Tool, DockSide::Left, { 560, 300 }, TargetType::Unknown, true, L"callstack", Make<CDisassemblyView> },
 		{ L"locals", L"Locals", IDI_TOOL, ID_VIEW_LOCALS, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"output", Make<CLocalsView> },
 		{ L"watch", L"Watch", IDI_FIND, ID_VIEW_WATCH, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"locals", Make<CWatchView> },

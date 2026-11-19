@@ -155,6 +155,7 @@ void CDisassemblyView::ApplyColors() {
 }
 
 void CDisassemblyView::OnTargetEnded() {
+	m_SourceFiles.clear();
 	m_LineAddresses.clear();
 	m_Breakpoints.clear();
 	m_Text->SetReadOnly(false);
@@ -192,10 +193,42 @@ Task<void> CDisassemblyView::Refresh() {
 	if (!*alive)
 		co_return;
 
+	// where each instruction comes from, for the source lines between them
+	std::vector<SourceLocation> locations;
+	if (m_ShowSource) {
+		std::vector<ULONG64> offsets;
+		offsets.reserve(lines.size());
+		for (auto& line : lines)
+			offsets.push_back(line.Address);
+		co_await DebugManager::DebuggerX().GetSourceLocations(std::move(offsets), locations);
+		if (!*alive)
+			co_return;
+		if (locations.size() != lines.size())
+			locations.clear();
+	}
+
 	std::wstring text;
 	m_LineAddresses.clear();
 	m_LineAddresses.reserve(lines.size());
-	for (auto& line : lines) {
+	std::wstring lastFile;
+	ULONG lastLine = 0;
+	for (size_t i = 0; i < lines.size(); i++) {
+		auto& line = lines[i];
+		if (!locations.empty() && !locations[i].File.empty() && (locations[i].Line != lastLine || locations[i].File != lastFile)) {
+			// (a line of its own, with no address: the commands do nothing on it)
+			auto& loc = locations[i];
+			lastFile = loc.File;
+			lastLine = loc.Line;
+			auto name = loc.File.substr(loc.File.find_last_of(L"\\/") + 1);
+			std::wstring source;
+			if (!loc.Path.empty()) {
+				auto& fileLines = SourceLines(loc.Path);
+				if (loc.Line >= 1 && loc.Line <= fileLines.size())
+					source = fileLines[loc.Line - 1];
+			}
+			text += std::format(L"; {}({}): {}\n", name, loc.Line, source);
+			m_LineAddresses.push_back(0);
+		}
 		text += line.Text;
 		text += L'\n';
 		m_LineAddresses.push_back(line.Address);
@@ -309,8 +342,16 @@ LRESULT CDisassemblyView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) 
 	menu.AppendMenu(canRun ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DEBUG_SETNEXTSTATEMENT, L"Set &Next Statement\tCtrl+Shift+F10");
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(session.HasTarget() && !session.IsRunning() ? MF_STRING : (MF_STRING | MF_GRAYED), ID_EDIT_GOTO, L"&Go to Address...\tCtrl+G");
+	enum { CmdShowSource = 1 };
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(MF_STRING | (m_ShowSource ? MF_CHECKED : 0), CmdShowSource, L"Show &Source Lines");
 	auto id = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
-	if (id == ID_EDIT_GOTO)
+	if (id == CmdShowSource) {
+		m_ShowSource = !m_ShowSource;
+		m_ShownGoTo = 0;
+		RequestRefresh();
+	}
+	else if (id == ID_EDIT_GOTO)
 		GoToAddress();
 	else
 		RunCommand(id, address);
@@ -362,4 +403,37 @@ void CDisassemblyView::RunCommand(UINT id, ULONG64 address) {
 		case ID_DEBUG_RUNTOCURSOR: RunToCursor(address); break;
 		case ID_DEBUG_SETNEXTSTATEMENT: DebugManager::SetNextStatement(m_hWnd, address); break;
 	}
+}
+
+const std::vector<std::wstring>& CDisassemblyView::SourceLines(const std::wstring& path) {
+	auto it = m_SourceFiles.find(path);
+	if (it != m_SourceFiles.end())
+		return it->second;
+
+	std::vector<std::wstring> lines;
+	wil::unique_hfile file(::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		nullptr, OPEN_EXISTING, 0, nullptr));
+	LARGE_INTEGER size{};
+	if (file && ::GetFileSizeEx(file.get(), &size) && size.QuadPart < 64 << 20) {
+		std::string bytes(static_cast<size_t>(size.QuadPart), '\0');
+		DWORD read = 0;
+		if (bytes.empty() || ::ReadFile(file.get(), bytes.data(), static_cast<DWORD>(bytes.size()), &read, nullptr)) {
+			bytes.resize(read);
+			auto text = FromUtf8(ToUtf8Text(std::move(bytes)));
+			size_t pos = 0;
+			while (pos <= text.size()) {
+				auto end = text.find(L'\n', pos);
+				if (end == std::wstring::npos)
+					end = text.size();
+				auto line = text.substr(pos, end - pos);
+				if (!line.empty() && line.back() == L'\r')
+					line.pop_back();
+				// (tabs as the code shows them would be wider than the room there is)
+				std::replace(line.begin(), line.end(), L'\t', L' ');
+				lines.push_back(std::move(line));
+				pos = end + 1;
+			}
+		}
+	}
+	return m_SourceFiles.emplace(path, std::move(lines)).first->second;
 }

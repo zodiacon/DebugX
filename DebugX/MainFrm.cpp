@@ -126,6 +126,9 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	if (!AppSettings::Get().Dml())
 		DebugManager::DebuggerX().SetDmlEnabled(false);
 	UISetCheck(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, AppSettings::Get().Dml() != 0);
+	if (AppSettings::Get().DebugChildProcesses())
+		DebugManager::DebuggerX().SetDebugChildProcesses(true);
+	UISetCheck(ID_OPTIONS_DEBUGCHILDPROCESSES, AppSettings::Get().DebugChildProcesses() != 0);
 	ApplySavedEventFilters();
 	ApplySavedSymbolPaths();
 
@@ -208,6 +211,15 @@ LRESULT CMainFrame::OnToggleDml(WORD, WORD id, HWND, BOOL&) {
 	DebugManager::DebuggerX().SetDmlEnabled(enable);
 	UISetCheck(id, enable);
 
+	return 0;
+}
+
+LRESULT CMainFrame::OnToggleChildProcesses(WORD, WORD id, HWND, BOOL&) {
+	// (from the next launch on; the session there is too)
+	auto debug = !AppSettings::Get().DebugChildProcesses();
+	AppSettings::Get().DebugChildProcesses(debug ? 1 : 0);
+	DebugManager::DebuggerX().SetDebugChildProcesses(debug);
+	UISetCheck(id, debug);
 	return 0;
 }
 
@@ -977,6 +989,14 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_VIEW_THREADS, IDI_THREADS },
 		{ ID_VIEW_PROCESSES, IDI_PROCESSES },
 		{ ID_VIEW_KERNELTHREADS, IDI_THREADS },
+		{ ID_VIEW_USERPROCESSES, IDI_PROCESSES },
+		{ ID_VIEW_HANDLES, IDI_TOOL },
+		{ ID_VIEW_DRIVERS, IDI_DLL },
+		{ ID_VIEW_OBJECTS, IDI_STRUCT },
+		{ ID_VIEW_IRPS, IDI_EVENT },
+		{ ID_VIEW_MEMORY2, IDI_MEMORY },
+		{ ID_VIEW_MEMORY3, IDI_MEMORY },
+		{ ID_VIEW_MEMORY4, IDI_MEMORY },
 		{ ID_VIEW_OUTPUT, IDI_EVENT },
 		{ ID_VIEW_MODULES, IDI_DLL },
 		{ ID_VIEW_REGISTERS, IDI_REGISTRY },

@@ -68,3 +68,5 @@ void UnregisterScintillaClasses();
 // the control's text is UTF-8; these convert at the boundary with the rest of the app's wide strings
 std::string ToUtf8(std::wstring_view text);
 std::wstring FromUtf8(std::string_view text);
+// a file's bytes as UTF-8: a BOM says what they are, else UTF-8 if they are valid UTF-8, else the ANSI code page
+std::string ToUtf8Text(std::string bytes);

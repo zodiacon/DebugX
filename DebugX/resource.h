@@ -140,6 +140,15 @@
 #define ID_FILE_CLEARRECENT             32830
 #define ID_DEBUG_SAVEDUMP               32831
 #define ID_VIEW_KERNELTHREADS           32832
+#define ID_VIEW_USERPROCESSES           32833
+#define ID_OPTIONS_DEBUGCHILDPROCESSES  32834
+#define ID_VIEW_HANDLES                 32835
+#define ID_VIEW_MEMORY2                 32836
+#define ID_VIEW_MEMORY3                 32837
+#define ID_VIEW_MEMORY4                 32838
+#define ID_VIEW_DRIVERS                 32839
+#define ID_VIEW_OBJECTS                 32840
+#define ID_VIEW_IRPS                    32841
 #define ID_VIEW_LOCALS                  32808
 #define ID_VIEW_WATCH                   32809
 #define ID_BREAKPOINT_EDIT              32810
@@ -150,7 +159,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        247
-#define _APS_NEXT_COMMAND_VALUE         32833
+#define _APS_NEXT_COMMAND_VALUE         32842
 #define _APS_NEXT_CONTROL_VALUE         1043
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
