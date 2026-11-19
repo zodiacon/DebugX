@@ -152,6 +152,9 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> SetSourcePath(PCWSTR path);
 	Task<HRESULT> ReloadSymbols(PCWSTR module);
 	Task<HRESULT> WriteDump(PCWSTR path, bool full);
+	Task<HRESULT> SetKernelProcess(ULONG64 process, bool invasive);
+	Task<HRESULT> GetKernelProcess(ULONG64& process);
+	Task<HRESULT> SetKernelThread(ULONG64 thread);
 	Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);
 	Task<HRESULT> ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size);
 	Task<HRESULT> WriteMemory(ULONG64 address, std::vector<BYTE> data);
@@ -1528,6 +1531,57 @@ Task<HRESULT> DebuggerX::Impl::ReloadSymbols(PCWSTR module) {
 		});
 }
 
+Task<HRESULT> DebuggerX::Impl::SetKernelProcess(ULONG64 process, bool invasive) {
+	const auto type = m_TargetType;
+	co_return co_await Run([this, process, invasive, type]() -> HRESULT {
+		if ((type & TargetType::Kernel) != TargetType::Kernel)
+			return E_NOTIMPL;
+		if (m_Status != DEBUG_STATUS_BREAK && type != TargetType::LocalKernel)
+			return E_UNEXPECTED;
+		// (a local kernel never stops, a dump never runs: only a kernel over a connection can be switched to for real)
+		if (invasive && type != TargetType::LiveKernel)
+			return E_NOTIMPL;
+
+		// /p: user-mode addresses are translated through the process's page tables; /r: its user-mode modules reloaded
+		auto command = std::format(L".process {}/p /r 0x{:X}", invasive ? L"/i " : L"", process);
+		HR(m_spControl->ExecuteWide(DEBUG_OUTCTL_ALL_CLIENTS, command.c_str(), DEBUG_EXECUTE_NOT_LOGGED | DEBUG_EXECUTE_NO_REPEAT));
+		if (invasive) {
+			// the target runs until the process is the current one, and breaks in
+			HR(m_spControl->ExecuteWide(DEBUG_OUTCTL_ALL_CLIENTS, L"g", DEBUG_EXECUTE_NOT_LOGGED | DEBUG_EXECUTE_NO_REPEAT));
+			DoPostCommand();
+		}
+		else {
+			ULONG64 now = 0;
+			if (FAILED(m_spSystem->GetImplicitProcessDataOffset(&now)) || now != process)
+				return E_FAIL;
+		}
+		// (what the panes show -- modules, memory, the stack -- is in that process now)
+		PostContextChanged();
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::GetKernelProcess(ULONG64& process) {
+	co_return co_await Run([this, &process] {
+		return m_spSystem->GetImplicitProcessDataOffset(&process);
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetKernelThread(ULONG64 thread) {
+	const auto type = m_TargetType;
+	co_return co_await Run([this, thread, type]() -> HRESULT {
+		if ((type & TargetType::Kernel) != TargetType::Kernel)
+			return E_NOTIMPL;
+		auto command = std::format(L".thread /p /r 0x{:X}", thread);
+		HR(m_spControl->ExecuteWide(DEBUG_OUTCTL_ALL_CLIENTS, command.c_str(), DEBUG_EXECUTE_NOT_LOGGED | DEBUG_EXECUTE_NO_REPEAT));
+		ULONG64 now = 0;
+		if (FAILED(m_spSystem->GetImplicitThreadDataOffset(&now)) || now != thread)
+			return E_FAIL;
+		PostContextChanged();
+		return S_OK;
+		});
+}
+
 Task<HRESULT> DebuggerX::Impl::WriteDump(PCWSTR path, bool full) {
 	const auto type = m_TargetType;
 	co_return co_await Run([this, path = std::wstring(path), full, type] {
@@ -1856,6 +1910,18 @@ Task<HRESULT> DebuggerX::SetSourcePath(PCWSTR path) {
 
 Task<HRESULT> DebuggerX::ReloadSymbols(PCWSTR module) {
 	return m_Impl->ReloadSymbols(module);
+}
+
+Task<HRESULT> DebuggerX::SetKernelProcess(ULONG64 process, bool invasive) {
+	return m_Impl->SetKernelProcess(process, invasive);
+}
+
+Task<HRESULT> DebuggerX::GetKernelProcess(ULONG64& process) {
+	return m_Impl->GetKernelProcess(process);
+}
+
+Task<HRESULT> DebuggerX::SetKernelThread(ULONG64 thread) {
+	return m_Impl->SetKernelThread(thread);
 }
 
 Task<HRESULT> DebuggerX::WriteDump(PCWSTR path, bool full) {

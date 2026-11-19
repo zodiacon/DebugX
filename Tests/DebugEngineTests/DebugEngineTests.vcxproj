@@ -52,7 +52,7 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)DebugEngine;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)DebugEngine;$(SolutionDir)DebugX.Kernel;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
@@ -94,10 +94,15 @@
     <ClCompile Include="SourceTests.cpp" />
     <ClCompile Include="NextStatementTests.cpp" />
     <ClCompile Include="DumpTests.cpp" />
+    <ClCompile Include="KernelTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\DebugEngine\DebugEngine.vcxproj">
       <Project>{2846E398-AFCE-4066-AFD6-BFBEF8CB12A4}</Project>
+    </ProjectReference>
+    <!-- (the kernel suite finds processes and threads with its analyzers, as the Processes pane does) -->
+    <ProjectReference Include="..\..\DebugX.Kernel\DebugX.Kernel.vcxproj">
+      <Project>{99987EBF-80E1-45A4-8847-A771E4E6090F}</Project>
     </ProjectReference>
     <!-- (the programs the tests debug, built next to the runner in Tests\) -->
     <ProjectReference Include="..\Targets\loop\loop.vcxproj">

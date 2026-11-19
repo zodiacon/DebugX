@@ -59,6 +59,84 @@ DebugEngine::Task<void> CKernelProcessesView::Refresh() {
 	DoSort(GetSortInfo());
 	m_List.EnableWindow(TRUE);
 	RefreshDone();
+	UpdateCurrent();
+}
+
+DebugEngine::Task<void> CKernelProcessesView::UpdateCurrent() {
+	auto alive = m_Lifetime.Watch();
+	ULONG64 current = 0;
+	co_await DebugManager::DebuggerX().GetKernelProcess(current);
+	if (!*alive)
+		co_return;
+	if (current != m_Current) {
+		m_Current = current;
+		m_List.Invalidate();
+	}
+}
+
+bool CKernelProcessesView::OnDoubleClickList(HWND, int row, int, POINT const&) {
+	if (m_Enumeration || row < 0 || row >= static_cast<int>(m_Items.size()))
+		return false;
+	SwitchTo(m_Items[row].Address, false);
+	return true;
+}
+
+bool CKernelProcessesView::OnRightClickList(HWND, int row, int, POINT const& pt) {
+	if (m_Enumeration || row < 0 || row >= static_cast<int>(m_Items.size()))
+		return false;
+	m_List.SelectItem(row);
+	auto address = m_Items[row].Address;
+	// (only a kernel over a connection can run until the process is the current one)
+	const bool canInvade = DebugManager::Session().Target() == DebugEngine::TargetType::LiveKernel && DebugManager::Session().CanRun();
+
+	enum { CmdSwitch = 1, CmdInvade, CmdDetails, CmdCopy };
+	CMenu menu;
+	menu.CreatePopupMenu();
+	menu.AppendMenu(MF_STRING, CmdSwitch, L"&Switch to Process");
+	menu.AppendMenu(canInvade ? MF_STRING : (MF_STRING | MF_GRAYED), CmdInvade, L"Switch to Process, &Invasively (.process /i)");
+	menu.AppendMenu(MF_STRING, CmdDetails, L"&Details (dt nt!_EPROCESS)");
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(MF_STRING, CmdCopy, L"&Copy EPROCESS");
+	menu.SetMenuDefaultItem(CmdSwitch);
+	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+		case CmdSwitch: SwitchTo(address, false); break;
+		case CmdInvade: SwitchTo(address, true); break;
+		case CmdDetails: {
+			CString command;
+			command.Format(L"dt nt!_EPROCESS 0x%llX", address);
+			DebugManager::DebuggerX().ExecuteCommand(command);
+			break;
+		}
+		case CmdCopy:
+			if (OpenClipboard()) {
+				CString text;
+				text.Format(L"0x%llX", address);
+				::EmptyClipboard();
+				auto size = (text.GetLength() + 1) * sizeof(wchar_t);
+				if (auto hData = ::GlobalAlloc(GMEM_MOVEABLE, size)) {
+					memcpy(::GlobalLock(hData), (PCWSTR)text, size);
+					::GlobalUnlock(hData);
+					if (!::SetClipboardData(CF_UNICODETEXT, hData))
+						::GlobalFree(hData);
+				}
+				::CloseClipboard();
+			}
+			break;
+	}
+	return true;
+}
+
+DebugEngine::Task<void> CKernelProcessesView::SwitchTo(ULONG64 process, bool invasive) {
+	auto alive = m_Lifetime.Watch();
+	auto hr = co_await DebugManager::DebuggerX().SetKernelProcess(process, invasive);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"Failed to switch to process 0x%llX (0x%08X)", process, static_cast<unsigned>(hr));
+		AtlMessageBox(m_hWnd, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+	}
+	// (the mark moves with ContextChanged)
 }
 
 void CKernelProcessesView::DoSort(const SortInfo* si) {
@@ -92,6 +170,13 @@ void CKernelProcessesView::InitList() {
 	m_List.InsertColumn(6, L"Dir Base", LVCFMT_RIGHT, 120);
 	m_List.InsertColumn(7, L"PEB", LVCFMT_RIGHT, 100);
 	m_List.InsertColumn(8, L"Exit Time", LVCFMT_RIGHT, 120);
+
+	// (the one the debugger looks at: an arrow)
+	CImageList images;
+	images.Create(16, 16, ILC_COLOR32, 2, 0);
+	images.AddIcon(AtlLoadIconImage(IDI_PROCESS, 0, 16, 16));
+	images.AddIcon(AtlLoadIconImage(IDI_ICON9, 0, 16, 16));
+	m_List.SetImageList(images, LVSIL_SMALL);
 	//m_List.InsertColumn(6, L"Kernel Time", LVCFMT_RIGHT, 120);
 	//m_List.InsertColumn(7, L"User Time", LVCFMT_RIGHT, 120);
 }
@@ -118,6 +203,8 @@ LRESULT CKernelProcessesView::OnListGetDispInfo(int, LPNMHDR hdr, BOOL&) {
 		return 0;
 	}
 	auto& data = m_Items[item.iItem];
+	if (item.mask & LVIF_IMAGE)
+		item.iImage = data.Address == m_Current ? 1 : 0;
 
 	static std::function<void(KernelProcess&, LVITEM&)> functions[] = {
 		[](auto& data, auto& item) { item.pszText = (PWSTR)(PCWSTR)data.ImageName;	},

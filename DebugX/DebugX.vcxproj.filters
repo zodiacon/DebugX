@@ -54,6 +54,9 @@
     <ClCompile Include="EventFilterText.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="KernelThreadsView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
     <ClCompile Include="RecentTargets.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -159,6 +162,9 @@
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="EventFilterText.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="KernelThreadsView.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="RecentTargets.h">

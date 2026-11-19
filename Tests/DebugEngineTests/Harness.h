@@ -50,3 +50,4 @@ DebugEngine::Task<void> ExceptionSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> SourceSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> NextStatementSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> DumpSuite(DebugEngine::DebuggerX& dbg);
+DebugEngine::Task<void> KernelSuite(DebugEngine::DebuggerX& dbg);

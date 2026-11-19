@@ -365,6 +365,16 @@ namespace DebugEngine {
 		// minidump, with all of the memory (and handles, threads...: .dump /ma) if 'full'. Kernel: a small or full one.
 		Task<HRESULT> WriteDump(PCWSTR path, bool full);
 
+		// Kernel targets. The process (its EPROCESS) whose user-mode memory and modules the debugger looks at: .process /p /r.
+		// 'invasive' (a live kernel over a connection only, E_NOTIMPL otherwise): .process /i, the target runs until that
+		// process is the current one, and breaks in (the task completes then). ContextChanged follows.
+		Task<HRESULT> SetKernelProcess(ULONG64 process, bool invasive = false);
+		// the process the debugger looks at (the implicit process)
+		Task<HRESULT> GetKernelProcess(ULONG64& process);
+		// The thread (its ETHREAD) whose registers and stack the debugger looks at: .thread /p /r. ContextChanged follows.
+		// A local kernel has no thread contexts to switch to (it fails).
+		Task<HRESULT> SetKernelThread(ULONG64 thread);
+
 		// a debugger expression (register, symbol, C-like arithmetic, ...), as typed at the command prompt
 		Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);
 		// reads target memory; 'buffer' is resized to however many bytes were actually read (can be less than

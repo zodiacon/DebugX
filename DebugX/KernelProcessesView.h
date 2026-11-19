@@ -30,10 +30,17 @@ public:
 
 	void InitList();
 	void DoSort(const SortInfo* si);
+	// Switch to Process (.process /p /r: the debugger looks at its user-mode memory and modules; the Kernel Threads pane
+	// lists its threads), also invasively on a kernel over a connection; Details (dt nt!_EPROCESS)
+	bool OnDoubleClickList(HWND, int row, int col, POINT const& pt);
+	bool OnRightClickList(HWND, int row, int col, POINT const& pt);
 
 	// ISessionObserver: the processes of a kernel are looked at when the target is new, or when asked for (Refresh
-	// in the View menu), not every time it stops
+	// in the View menu), not every time it stops; which one the debugger looks at is marked
 	void OnBroke() override {}
+	void OnContextChanged() override {
+		UpdateCurrent();
+	}
 	void OnTargetEnded() override;
 
 	// CPaneBase
@@ -52,7 +59,12 @@ private:
 	LRESULT OnViewRefresh(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnListGetDispInfo(int /*idCtrl*/, LPNMHDR /*pnmh*/, BOOL& /*bHandled*/);
 
+	// the process the debugger looks at, marked in the list
+	DebugEngine::Task<void> UpdateCurrent();
+	DebugEngine::Task<void> SwitchTo(ULONG64 process, bool invasive);
+
 private:
 	SortedFilteredVector<KernelProcess> m_Items;
+	ULONG64 m_Current{ 0 };
 	std::shared_ptr<Enumeration> m_Enumeration;
 };

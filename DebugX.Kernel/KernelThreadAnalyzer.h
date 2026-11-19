@@ -18,6 +18,14 @@ namespace DebugX::Analysis {
 		ULONG64 GetNextThreadLink() const;
 		ULONG GetKernelTime() const;
 		ULONG GetUserTime() const;
+		// the ETHREAD
+		ULONG64 GetAddress() const {
+			return m_Address;
+		}
+		// where the thread started: Win32StartAddress (a user-mode thread's function), else StartAddress
+		ULONG64 GetStartAddress() const;
+		// _KTHREAD.State (KTHREAD_STATE: 0 Initialized, 1 Ready, 2 Running, 3 Standby, 4 Terminated, 5 Waiting, ...)
+		UCHAR GetState() const;
 
 		ULONG64 MoveToNextThread();
 

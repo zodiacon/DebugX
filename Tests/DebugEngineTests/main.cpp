@@ -47,6 +47,7 @@ namespace {
 		{ "src", SourceSuite },
 		{ "next", NextStatementSuite },
 		{ "dump", DumpSuite },
+		{ "kernel", KernelSuite },
 	};
 
 	// dbgeng.dll is delay-loaded: whichever is loaded first is the one the engine uses
@@ -105,6 +106,10 @@ namespace {
 					break;
 				case DebuggerNotificationType::ContextChanged:
 					g_Events.ContextChanged++;
+					break;
+				case DebuggerNotificationType::Output:
+					if (::GetEnvironmentVariableW(L"DEBUGENGINETESTS_OUTPUT", nullptr, 0))
+						printf("%ls", static_cast<OutputData*>(data)->Text.c_str());
 					break;
 				case DebuggerNotificationType::ScopeChanged:
 					g_Events.Scopes.push_back(static_cast<ScopeData*>(data)->FrameIndex);

@@ -139,6 +139,7 @@
 #define ID_FILE_RECENT10                32829
 #define ID_FILE_CLEARRECENT             32830
 #define ID_DEBUG_SAVEDUMP               32831
+#define ID_VIEW_KERNELTHREADS           32832
 #define ID_VIEW_LOCALS                  32808
 #define ID_VIEW_WATCH                   32809
 #define ID_BREAKPOINT_EDIT              32810
@@ -149,7 +150,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        247
-#define _APS_NEXT_COMMAND_VALUE         32832
+#define _APS_NEXT_COMMAND_VALUE         32833
 #define _APS_NEXT_CONTROL_VALUE         1043
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

@@ -50,6 +50,16 @@ ULONG KernelThreadAnalyzer::GetUserTime() const {
 	return ReadVirtual<ULONG>(m_Address + GetFieldOffset(GetTypeId("_KTHREAD"), "UserTime"));
 }
 
+ULONG64 KernelThreadAnalyzer::GetStartAddress() const {
+	auto type = GetTypeId(EThreadName);
+	auto start = ReadVirtual<ULONG64>(m_Address + GetFieldOffset(type, "Win32StartAddress"));
+	return start ? start : ReadVirtual<ULONG64>(m_Address + GetFieldOffset(type, "StartAddress"));
+}
+
+UCHAR KernelThreadAnalyzer::GetState() const {
+	return ReadVirtual<UCHAR>(m_Address + GetFieldOffset(GetTypeId(KThreadName), "State"));
+}
+
 ULONG64 KernelThreadAnalyzer::MoveToNextThread() {
 	return m_Address = GetNextThread();
 }

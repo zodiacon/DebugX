@@ -85,6 +85,7 @@ BEGIN
         MENUITEM "&Output",                     ID_VIEW_OUTPUT
         MENUITEM "&Threads",                    ID_VIEW_THREADS
         MENUITEM "&Processes",                  ID_VIEW_PROCESSES
+        MENUITEM "&Kernel Threads",             ID_VIEW_KERNELTHREADS
         MENUITEM "&Modules",                    ID_VIEW_MODULES
         MENUITEM "&Registers",                  ID_VIEW_REGISTERS
         MENUITEM "Call &Stack",                 ID_VIEW_CALLSTACK
