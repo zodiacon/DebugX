@@ -3,7 +3,9 @@
 namespace DebugX::Analysis {
 	class KernelAnalyzerBase abstract {
 	public:
+		// -1 if the type has no such field (or the type is 0)
 		int GetFieldOffset(ULONG typeId, PCSTR name) const;
+		// 0 if the kernel's symbols have no such type
 		ULONG GetTypeId(PCSTR type) const;
 		ULONG64 KernelBase() const;
 

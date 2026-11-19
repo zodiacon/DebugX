@@ -5,14 +5,24 @@
 
 using namespace DebugX::Analysis;
 
-using PairType = std::pair<ULONG, std::string>;
-
-template<>
-struct std::hash<PairType> {
-	size_t operator()(const PairType& p) const {
-		return p.first ^ std::hash<std::string>().operator()(p.second);
-	}
-};
+namespace {
+	// A lookup the symbols answer is remembered -- one they cannot answer as well: a type or field the kernel's PDB does
+	// not have (public symbols lack some) is looked for through all of them each time, which is slow, and a walk of the
+	// processes asks for each one. Keyed by the kernel's base too: another target can have another kernel.
+	struct Key {
+		ULONG64 Base;
+		ULONG TypeId;
+		std::string Name;
+		bool operator==(const Key& other) const {
+			return Base == other.Base && TypeId == other.TypeId && Name == other.Name;
+		}
+	};
+	struct KeyHash {
+		size_t operator()(const Key& k) const {
+			return std::hash<ULONG64>()(k.Base) ^ (std::hash<ULONG>()(k.TypeId) << 1) ^ std::hash<std::string>()(k.Name);
+		}
+	};
+}
 
 KernelAnalyzerBase::KernelAnalyzerBase(IDebugClient* client) {
 	m_Symbols = client;
@@ -40,30 +50,28 @@ ULONG64 KernelAnalyzerBase::KernelBase() const {
 }
 
 int KernelAnalyzerBase::GetFieldOffset(ULONG typeId, PCSTR name) const {
-	static std::unordered_map<std::pair<ULONG, std::string>, ULONG> fieldMap;
-	auto it = fieldMap.find({ typeId, name });
-	if (it != fieldMap.end())
+	// (-1: no such field, or no such type -- 0)
+	static std::unordered_map<Key, int, KeyHash> offsets;
+	Key key{ KernelBase(), typeId, name };
+	if (auto it = offsets.find(key); it != offsets.end())
 		return it->second;
 
 	ULONG offset;
-	auto hr = Symbols()->GetFieldOffset(KernelBase(), typeId, name, &offset);
-	if (SUCCEEDED(hr)) {
-		fieldMap.insert({ { typeId, name }, offset });
-		return offset;
-	}
-	return -1;
+	int result = typeId != 0 && SUCCEEDED(Symbols()->GetFieldOffset(KernelBase(), typeId, name, &offset)) ? static_cast<int>(offset) : -1;
+	offsets.insert({ std::move(key), result });
+	return result;
 }
 
 ULONG KernelAnalyzerBase::GetTypeId(PCSTR name) const {
-	static std::unordered_map<std::string, ULONG> typeIds;
-	if (auto it = typeIds.find(name); it != typeIds.end())
+	// (0: no such type)
+	static std::unordered_map<Key, ULONG, KeyHash> typeIds;
+	Key key{ KernelBase(), 0, name };
+	if (auto it = typeIds.find(key); it != typeIds.end())
 		return it->second;
 
 	ULONG id;
-	auto hr = Symbols()->GetTypeId(KernelBase(), name, &id);
-	if (SUCCEEDED(hr)) {
-		typeIds.insert({ name, id });
-		return id;
-	}
-	return 0;
+	if (FAILED(Symbols()->GetTypeId(KernelBase(), name, &id)))
+		id = 0;
+	typeIds.insert({ std::move(key), id });
+	return id;
 }

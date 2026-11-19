@@ -211,7 +211,11 @@ LRESULT CKernelProcessesView::OnListGetDispInfo(int, LPNMHDR hdr, BOOL&) {
 		[](auto& data, auto& item) { ::StringCchPrintf(item.pszText, item.cchTextMax, L"0x%llX", data.Address); },
 		[](auto& data, auto& item) { ::StringCchPrintf(item.pszText, item.cchTextMax, L"%d (0x%X)", data.Pid, data.Pid); },
 		[](auto& data, auto& item) { ::StringCchPrintf(item.pszText, item.cchTextMax, L"%d", data.ThreadCount);	},
-		[](auto& data, auto& item) { ::StringCchPrintf(item.pszText, item.cchTextMax, L"%u", data.SessionId);	},
+		[](auto& data, auto& item) {
+			// (empty when it cannot be known: public symbols lack the session's type)
+			if (data.SessionId != DebugX::Analysis::KernelProcessAnalyzer::InvalidSessionId)
+				::StringCchPrintf(item.pszText, item.cchTextMax, L"%u", data.SessionId);
+		},
 		[](auto& data, auto& item) { ::StringCchCopy(item.pszText, item.cchTextMax, (PCWSTR)CTime(*(FILETIME*)&data.CreateTime).Format(L"%D %X")); },
 		[](auto& data, auto& item) { ::StringCchPrintf(item.pszText, item.cchTextMax, L"0x%llX", data.DirBase);	},
 		[](auto& data, auto& item) { ::StringCchPrintf(item.pszText, item.cchTextMax, L"0x%llX", data.Peb);	},

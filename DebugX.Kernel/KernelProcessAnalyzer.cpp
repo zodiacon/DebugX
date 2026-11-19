@@ -21,13 +21,11 @@ struct SE_AUDIT_PROCESS_CREATION_INFO {
 
 KernelProcessAnalyzer::KernelProcessAnalyzer(IDebugClient* pClient) : 
 	KernelAnalyzerBase(pClient), m_Globals(CComQIPtr<IDebugSymbols>(pClient)) {
-	if (EProcessTypeId == 0) {
-		auto hr = Symbols()->GetTypeId(KernelBase(), "_EPROCESS", &EProcessTypeId);
-		ATLASSERT(SUCCEEDED(hr));
-		hr = Symbols()->GetFieldOffset(KernelBase(), EProcessTypeId, "ActiveProcessLinks", &ActiveProcessLinksOffset);
-		ATLASSERT(SUCCEEDED(hr));
-		hr = Symbols()->GetTypeId(KernelBase(), "_KPROCESS", &KProcessTypeId);
-	}
+	// (each time: another target can have another kernel -- the lookups are cached, by kernel)
+	EProcessTypeId = GetTypeId("_EPROCESS");
+	ATLASSERT(EProcessTypeId);
+	ActiveProcessLinksOffset = GetFieldOffset(EProcessTypeId, "ActiveProcessLinks");
+	KProcessTypeId = GetTypeId("_KPROCESS");
 }
 
 DebugX::Analysis::KernelProcessAnalyzer::~KernelProcessAnalyzer() = default;
@@ -50,10 +48,13 @@ ULONG DebugX::Analysis::KernelProcessAnalyzer::GetThreadCount() const {
 }
 
 ULONG DebugX::Analysis::KernelProcessAnalyzer::GetSessionId() const {
+	// (public symbols have no _MM_SESSION_SPACE: then there is nothing to read)
 	auto offset = GetFieldOffset(EProcessTypeId, "Session");
-	auto sessionSpace = ReadVirtual<ULONG64>(m_ProcessAddress + offset);
 	auto offsetSessionId = GetFieldOffset(GetTypeId("_MM_SESSION_SPACE"), "SessionId");
-	return ReadVirtual<ULONG>(sessionSpace + offsetSessionId);
+	if (offset < 0 || offsetSessionId < 0)
+		return InvalidSessionId;
+	auto sessionSpace = ReadVirtual<ULONG64>(m_ProcessAddress + offset);
+	return sessionSpace ? ReadVirtual<ULONG>(sessionSpace + offsetSessionId) : InvalidSessionId;
 }
 
 ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetDirectoryTableBase() const {

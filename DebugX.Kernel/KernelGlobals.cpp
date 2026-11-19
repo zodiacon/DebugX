@@ -9,16 +9,18 @@ KernelGlobals::KernelGlobals(IDebugSymbols* symbols) : m_Symbols(symbols) {
 }
 
 ULONG64 KernelGlobals::GetVariable(PCSTR name) const {
+	// (by the kernel's base too: another target, or another boot, has them elsewhere)
+	ULONG64 base = 0;
+	m_Symbols->GetModuleByModuleName("nt", 0, nullptr, &base);
 	static std::unordered_map<std::string, ULONG64> symbols;
-	if (auto it = symbols.find(name); it != symbols.end())
+	auto key = std::to_string(base) + ":" + name;
+	if (auto it = symbols.find(key); it != symbols.end())
 		return it->second;
 
 	ULONG64 offset;
-	auto hr = m_Symbols->GetOffsetByName(("nt!" + std::string(name)).c_str(), &offset);
-	if (SUCCEEDED(hr)) {
-		symbols.insert({ name, offset });
-		return offset;
-	}
-	return 0;
+	if (FAILED(m_Symbols->GetOffsetByName(("nt!" + std::string(name)).c_str(), &offset)))
+		offset = 0;
+	symbols.insert({ key, offset });
+	return offset;
 }
 

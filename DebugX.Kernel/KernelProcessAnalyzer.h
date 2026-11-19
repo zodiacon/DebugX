@@ -27,7 +27,9 @@ namespace DebugX::Analysis {
 		ULONG64 GetKernelTime() const;
 		ULONG64 GetUserTime() const;
 		ULONG GetThreadCount() const;
+		// InvalidSessionId if it cannot be known (public symbols lack the session's type) or the process has none
 		ULONG GetSessionId() const;
+		static constexpr ULONG InvalidSessionId = ~0UL;
 		ULONG64 GetDirectoryTableBase() const;
 		ULONG64 GetPeb() const;
 		ULONG64 GetHandleTable() const;

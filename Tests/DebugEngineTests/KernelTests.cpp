@@ -67,6 +67,36 @@ Task<void> KernelSuite(DebuggerX& dbg) {
 		return self ? S_OK : E_FAIL;
 		});
 	Check(SUCCEEDED(hr) && self != 0, "this process found among the kernel's (EPROCESS)");
+
+	if (::GetEnvironmentVariableW(L"DEBUGENGINETESTS_PROFILE", nullptr, 0)) {
+		co_await dbg.RunAsync([&](IDebugClient* client) -> HRESULT {
+			LARGE_INTEGER freq, t0, t1;
+			::QueryPerformanceFrequency(&freq);
+			double ms[10]{};
+			int count = 0;
+			KernelProcessEnumerator processes(client);
+			auto time = [&](int i, auto&& f) { ::QueryPerformanceCounter(&t0); f(); ::QueryPerformanceCounter(&t1); ms[i] += (t1.QuadPart - t0.QuadPart) * 1000.0 / freq.QuadPart; };
+			while (true) {
+				KernelProcessAnalyzer* p = nullptr;
+				time(0, [&] { p = processes.GetNextProcess(); });
+				if (!p || ++count > 2000)
+					break;
+				time(1, [&] { p->GetProcessId(); });
+				time(2, [&] { p->GetImageName(); });
+				time(3, [&] { p->GetThreadCount(); });
+				time(4, [&] { p->GetCreateTime(); p->GetExitTime(); });
+				time(5, [&] { p->GetSessionId(); });
+				time(6, [&] { p->GetDirectoryTableBase(); });
+				time(7, [&] { p->GetPeb(); });
+			}
+			const char* names[] = { "next", "pid", "image", "threads", "times", "session", "dirbase", "peb" };
+			printf("  %d processes; ms in all:", count);
+			for (int i = 0; i < 8; i++)
+				printf(" %s %.0f", names[i], ms[i]);
+			printf("\n");
+			return S_OK;
+			});
+	}
 	printf("  EPROCESS 0x%llX, %zu threads\n", self, threads.size());
 	Check(std::any_of(threads.begin(), threads.end(), [](auto& t) { return t.Tid == ::GetCurrentThreadId(); }), "its threads include this one");
 	Check(std::all_of(threads.begin(), threads.end(), [](auto& t) { return t.Start != 0; }), "every thread has a start address");
