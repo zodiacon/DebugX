@@ -49,6 +49,7 @@ namespace {
 		{ "next", NextStatementSuite },
 		{ "dump", DumpSuite },
 		{ "kernel", KernelSuite },
+		{ "values", ValueSuite },
 	};
 
 	// dbgeng.dll is delay-loaded: whichever is loaded first is the one the engine uses
@@ -239,6 +240,6 @@ bool Has(const std::vector<SymbolEntry>& entries, const wchar_t* name, ULONG dep
 void Dump(const char* title, const std::vector<SymbolEntry>& entries) {
 	printf("  --- %s (%zu)\n", title, entries.size());
 	for (auto& e : entries)
-		printf("    %*s%s%ls = %ls  [%ls]%s\n", static_cast<int>(e.Depth) * 2, "", e.Expandable ? (e.Expanded ? "- " : "+ ") : "  ",
-			e.Name.c_str(), e.Value.c_str(), e.Type.c_str(), e.Error ? " ERROR" : "");
+		printf("    %*s%s%ls = %ls  [%ls]%s%ls\n", static_cast<int>(e.Depth) * 2, "", e.Expandable ? (e.Expanded ? "- " : "+ ") : "  ",
+			e.Name.c_str(), e.Value.c_str(), e.Type.c_str(), e.Error ? " ERROR" : "", e.Expression.empty() ? L"" : (L" := " + e.Expression).c_str());
 }

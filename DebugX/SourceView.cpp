@@ -55,6 +55,8 @@ LRESULT CSourceView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Text->SetWrapMode(Wrap::None);
 	m_Text->SetTabWidth(4);
 	m_Text->SetScrollWidthTracking(true);
+	// (the mouse resting on a name shows its value)
+	m_Text->SetMouseDwellTime(500);
 	m_Text->StyleSetFont(static_cast<int>(StylesCommon::Default), "Consolas");
 	m_Text->StyleSetSizeFractional(static_cast<int>(StylesCommon::Default), 1000);
 
@@ -172,6 +174,8 @@ void CSourceView::ApplyColors() {
 	m_Text->SetCaretFore(fore);
 	m_Text->SetSelBack(true, static_cast<Colour>(::GetSysColor(COLOR_HIGHLIGHT)));
 	m_Text->SetSelFore(true, static_cast<Colour>(::GetSysColor(COLOR_HIGHLIGHTTEXT)));
+	m_Text->CallTipSetBack(back);
+	m_Text->CallTipSetFore(fore);
 
 	auto red = static_cast<Colour>(dark ? RGB(200, 60, 60) : RGB(220, 0, 0));
 	m_Text->MarkerSetFore(MarkerBreakpoint, static_cast<Colour>(RGB(255, 255, 255)));
@@ -392,6 +396,77 @@ std::wstring CSourceView::WatchExpression() {
 	if (iswdigit(text[0]))
 		return {};
 	return text;
+}
+
+std::wstring CSourceView::ExpressionAt(Position pos) {
+	if (!m_IsCode)
+		return {};
+
+	auto selStart = m_Text->SelectionStart(), selEnd = m_Text->SelectionEnd();
+	if (selStart != selEnd && pos >= selStart && pos < selEnd)
+		return WatchExpression();
+
+	// a name (or this), not a keyword, a number, or in a comment or a string
+	auto isName = [&](Position start, Position end) {
+		auto style = m_Text->StyleAt(start);
+		return style == SCE_C_IDENTIFIER || (style == SCE_C_WORD && m_Text->StringOfRange({ start, end }) == "this");
+	};
+	auto start = m_Text->WordStartPosition(pos, true), end = m_Text->WordEndPosition(pos, true);
+	if (start == end || end - start > 200 || !isName(start, end))
+		return {};
+
+	// what it is a member of, to the left: a.b, p->b, ns::b (not an element: a[i].b is b)
+	while (true) {
+		auto p = start;
+		if (p >= 1 && m_Text->CharAt(p - 1) == '.')
+			p -= 1;
+		else if (p >= 2 && m_Text->CharAt(p - 1) == '>' && m_Text->CharAt(p - 2) == '-')
+			p -= 2;
+		else if (p >= 2 && m_Text->CharAt(p - 1) == ':' && m_Text->CharAt(p - 2) == ':')
+			p -= 2;
+		else
+			break;
+		auto wordStart = m_Text->WordStartPosition(p, true);
+		if (wordStart == p || !isName(wordStart, p) || end - wordStart > 200)
+			break;
+		start = wordStart;
+	}
+	return FromUtf8(m_Text->StringOfRange({ start, end }));
+}
+
+LRESULT CSourceView::OnDwellStart(int, LPNMHDR hdr, BOOL&) {
+	auto data = reinterpret_cast<const NotificationData*>(hdr);
+	auto dwell = ++m_Dwell;
+	auto& session = DebugManager::Session();
+	// (a position of -1: not over text)
+	if (data->position < 0 || !session.HasTarget() || session.IsRunning())
+		return 0;
+	auto expression = ExpressionAt(data->position);
+	if (!expression.empty())
+		ShowValue(data->position, std::move(expression), dwell);
+	return 0;
+}
+
+LRESULT CSourceView::OnDwellEnd(int, LPNMHDR, BOOL&) {
+	++m_Dwell;
+	m_Text->CallTipCancel();
+	return 0;
+}
+
+Task<void> CSourceView::ShowValue(Position pos, std::wstring expression, ULONG dwell) {
+	auto alive = m_Lifetime.Watch();
+	std::vector<SymbolEntry> entries;
+	auto hr = co_await DebugManager::DebuggerX().EvaluateWatches(entries, { expression }, {});
+	// (nothing for what does not evaluate: a type, a function's name, a name out of scope...)
+	if (!*alive || dwell != m_Dwell || FAILED(hr) || entries.empty() || entries[0].Error)
+		co_return;
+
+	constexpr size_t MaxValue = 300, MaxType = 80;
+	auto& e = entries[0];
+	auto text = expression + L" = " + (e.Value.size() > MaxValue ? e.Value.substr(0, MaxValue) + L"..." : e.Value);
+	if (!e.Type.empty())
+		text += L"   [" + (e.Type.size() > MaxType ? e.Type.substr(0, MaxType) + L"...]" : e.Type + L"]");
+	m_Text->CallTipShow(pos, ToUtf8(text).c_str());
 }
 
 LRESULT CSourceView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {

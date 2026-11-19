@@ -157,6 +157,8 @@ namespace DebugEngine {
 		std::wstring Name;
 		std::wstring Type;
 		std::wstring Value;		// or why there is none (an expression that does not evaluate)
+		// a C++ expression for it that can be assigned to (AssignValue): a number, a pointer, ... that has one; else empty
+		std::wstring Expression;
 		ULONG Depth{ 0 };
 		bool Expandable{ false };
 		bool Expanded{ false };
@@ -223,6 +225,9 @@ namespace DebugEngine {
 		bool Deferred;		// its address cannot be worked out yet: the module it is in is not loaded
 		ULONG64 Offset;
 		ULONG Hits{ 0 };	// the times it broke into the debugger (with its condition true), as far as DebugX has seen
+		// where it is in a way that holds in another session (an address does not: the program is loaded elsewhere):
+		// the expression it was set with, or else `file:line` if it is where a line starts, or module!function+0x10
+		std::wstring Location;
 	};
 
 	struct ExitThreadData {
@@ -343,6 +348,11 @@ namespace DebugEngine {
 		Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
 		// a tree for each expression (in the current scope); one that does not evaluate is an Error entry
 		Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded);
+		// (Locals and watches are the debugger's data model's, as dx shows them: a type with a visualizer -- NatVis, the
+		// standard library's -- by what it shows, with its fields under [Raw View]; see ValueWalker.h)
+		// Assigns the value (a C++ expression) to what the expression (SymbolEntry::Expression) is, in the current scope;
+		// 'error' says why it could not be. MemoryChanged follows, delivered before the task completes.
+		Task<HRESULT> AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error);
 
 		Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
 		// a breakpoint at an address or symbol, as the debugger takes them (module!function, 0x7ff6`1234, ...)

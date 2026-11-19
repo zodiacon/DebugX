@@ -60,6 +60,9 @@
     <ClCompile Include="RecentTargets.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="SavedBreakpoints.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="InputDlg.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -168,6 +171,9 @@
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="RecentTargets.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SavedBreakpoints.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="AppMessages.h">

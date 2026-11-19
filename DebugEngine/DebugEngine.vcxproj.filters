@@ -30,6 +30,9 @@
     <ClInclude Include="Debugger.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ValueWalker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="AsyncTask.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -42,6 +45,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="EngineLoader.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ValueWalker.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="Debugger.cpp">

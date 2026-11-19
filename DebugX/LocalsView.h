@@ -5,7 +5,8 @@
 #include "resource.h"
 
 // The arguments and local variables of the scope frame (the call stack's chosen frame; 0 when the target stops).
-// Right-click: Add to Watch (a member or element too, as an expression from its variable).
+// Right-click: Edit Value (F2; see CSymbolPane), Add to Watch (a member or element too, as an expression from its
+// variable).
 class CLocalsView : public CSymbolPane<CLocalsView> {
 public:
 	BEGIN_MSG_MAP(CLocalsView)
@@ -21,15 +22,24 @@ public:
 			return false;
 		m_List.SelectItem(row);
 
-		enum { CmdAddWatch = 1, CmdCopyValue };
+		enum { CmdAddWatch = 1, CmdCopyValue, CmdEditValue };
 		CMenu menu;
 		menu.CreatePopupMenu();
+		menu.AppendMenu(CanEditValue(row) ? MF_STRING : MF_GRAYED, CmdEditValue, L"&Edit Value\tF2");
 		menu.AppendMenu(MF_STRING, CmdAddWatch, L"Add to &Watch");
 		menu.AppendMenu(MF_STRING, CmdCopyValue, L"&Copy Value");
 		switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
 			case CmdAddWatch: AddToWatch(m_hWnd, Expression(row).c_str()); break;
 			case CmdCopyValue: CopyText(m_Entries[row].Value); break;
+			case CmdEditValue: BeginEdit(row); break;
 		}
+		return true;
+	}
+
+	bool OnKey(UINT vk, int row) {
+		if (vk != VK_F2)
+			return false;
+		BeginEdit(row);
 		return true;
 	}
 
@@ -40,8 +50,11 @@ public:
 	}
 
 private:
-	// a row as an expression: its variable, then each member (through a pointer: ->) or element down to it
+	// a row as an expression: the one it has (SymbolEntry::Expression); else its variable, then each member (through a
+	// pointer: ->) or element down to it
 	std::wstring Expression(int row) const {
+		if (!m_Entries[row].Expression.empty())
+			return m_Entries[row].Expression;
 		std::vector<int> chain{ row };
 		for (int i = row - 1; i >= 0 && m_Entries[chain.back()].Depth > 0; i--) {
 			if (m_Entries[i].Depth < m_Entries[chain.back()].Depth)

@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Debugger.h"
+#include "ValueWalker.h"
 #include <algorithm>
 #include <atomic>
 #include <format>
@@ -137,6 +138,7 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> GetScope(ULONG64& instructionOffset, ULONG& frameIndex);
 	Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
 	Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded);
+	Task<HRESULT> AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error);
 	Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
 	Task<HRESULT> AddBreakpoint(BreakpointSettings settings);
 	Task<HRESULT> UpdateBreakpoint(ULONG id, BreakpointSettings settings);
@@ -237,8 +239,8 @@ private:
 	// the mnemonic of the instruction at 'offset' ("jmp"), and where it ends; empty if it does not disassemble
 	std::wstring MnemonicAt(ULONG64 offset, ULONG64& end);
 	HRESULT StepOnce(PCWSTR command, ULONG level);
-	// flattens the group into rows, expanding the entries whose path is in 'expanded' (debug thread)
-	HRESULT WalkSymbolGroup(IDebugSymbolGroup2* group, const std::set<std::wstring>& expanded, std::vector<SymbolEntry>& entries);
+	// the data model's evaluation of a C++ (dx) expression in the current scope (debug thread); an error is an object too
+	HRESULT EvaluateModel(const std::wstring& expression, CComPtr<IModelObject>& result);
 
 	void PostNotification(DebuggerNotificationType type, void* data);
 
@@ -1134,72 +1136,67 @@ Task<HRESULT> DebuggerX::Impl::GetScope(ULONG64& instructionOffset, ULONG& frame
 		});
 }
 
-HRESULT DebuggerX::Impl::WalkSymbolGroup(IDebugSymbolGroup2* group, const std::set<std::wstring>& expanded, std::vector<SymbolEntry>& entries) {
-	ULONG count;
-	HR(group->GetNumberSymbols(&count));
-	std::vector<std::wstring> parents;		// the names of the entry's ancestors, by depth
-	WCHAR text[1024];
-	// (expanding an entry inserts its children right after it: the count grows as the walk goes)
-	for (ULONG i = 0; i < count; i++) {
-		DEBUG_SYMBOL_PARAMETERS params;
-		if (FAILED(group->GetSymbolParameters(i, 1, &params)))
-			continue;
-
-		SymbolEntry entry;
-		entry.Depth = params.Flags & DEBUG_SYMBOL_EXPANSION_LEVEL_MASK;
-		if (SUCCEEDED(group->GetSymbolNameWide(i, text, _countof(text), nullptr)))
-			entry.Name = text;
-		parents.resize(entry.Depth);
-		for (auto& name : parents)
-			(entry.Path += name) += L'\n';
-		entry.Path += entry.Name;
-		parents.push_back(entry.Name);
-
-		entry.Expandable = params.SubElements > 0;
-		entry.Expanded = (params.Flags & DEBUG_SYMBOL_EXPANDED) != 0;
-		if (entry.Expandable && !entry.Expanded && expanded.contains(entry.Path) && SUCCEEDED(group->ExpandSymbol(i, TRUE))) {
-			entry.Expanded = true;
-			group->GetNumberSymbols(&count);
-		}
-		if (SUCCEEDED(group->GetSymbolTypeNameWide(i, text, _countof(text), nullptr)))
-			entry.Type = text;
-		if (SUCCEEDED(group->GetSymbolValueTextWide(i, text, _countof(text), nullptr)))
-			entry.Value = text;
-		entries.push_back(std::move(entry));
-	}
-	return S_OK;
+HRESULT DebuggerX::Impl::EvaluateModel(const std::wstring& expression, CComPtr<IModelObject>& result) {
+	CComQIPtr<IDebugHostEvaluator2> evaluator(m_spDebugHost);
+	if (!evaluator)
+		return E_NOINTERFACE;
+	CComPtr<IDebugHostContext> context;
+	HR(m_spDebugHost->GetCurrentContext(&context));
+	CComPtr<IKeyStore> metadata;
+	result.Release();
+	return evaluator->EvaluateExtendedExpression(context, expression.c_str(), nullptr, &result, &metadata);
 }
 
 Task<HRESULT> DebuggerX::Impl::GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded) {
 	co_return co_await Run([this, &entries, expanded = std::set<std::wstring>(expanded.begin(), expanded.end())] {
-		// (a new group each time: its values are read when it is made)
-		CComPtr<IDebugSymbolGroup2> group;
-		HR(m_spSymbols->GetScopeSymbolGroup2(DEBUG_SCOPE_GROUP_ALL, nullptr, &group));
-		return WalkSymbolGroup(group, expanded, entries);
+		// (the scope frame's: @$curframe follows SetScopeFrame)
+		ValueWalker walker(m_spData, expanded, entries);
+		CComPtr<IModelObject> parameters, locals;
+		auto hr = EvaluateModel(L"@$curframe.Parameters", parameters);
+		if (SUCCEEDED(hr))
+			walker.AddKeys(parameters);
+		auto hr2 = EvaluateModel(L"@$curframe.LocalVariables", locals);
+		if (SUCCEEDED(hr2))
+			walker.AddKeys(locals);
+		return SUCCEEDED(hr) || SUCCEEDED(hr2) ? S_OK : hr2;
 		});
 }
 
 Task<HRESULT> DebuggerX::Impl::EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded) {
 	co_return co_await Run([this, &entries, expressions = std::move(expressions), expanded = std::set<std::wstring>(expanded.begin(), expanded.end())] {
-		// a group for each expression: one that does not evaluate is not in a group, and has a row of its own all the same
+		ValueWalker walker(m_spData, expanded, entries);
 		for (auto& expr : expressions) {
-			CComPtr<IDebugSymbolGroup2> group;
-			HR(m_spSymbols->CreateSymbolGroup2(&group));
-			ULONG index = DEBUG_ANY_ID;
-			// (a name it does not know is S_FALSE, not a failure: the entry is there, and its "value" is the engine's
-			// banner about unqualified symbols)
-			auto hr = group->AddSymbolWide(expr.c_str(), &index);
-			if (hr != S_OK) {
-				SymbolEntry entry;
-				entry.Path = entry.Name = expr;
-				entry.Value = SUCCEEDED(hr) ? std::wstring(L"<unknown symbol or invalid expression>")
-					: std::format(L"<cannot evaluate: 0x{:08X}>", static_cast<unsigned>(hr));
-				entry.Error = true;
-				entries.push_back(std::move(entry));
+			CComPtr<IModelObject> value;
+			auto hr = EvaluateModel(expr, value);
+			if (value) {
+				// (an expression that does not evaluate is an error object, with the reason: "Unable to bind name 'x'")
+				walker.Add(value, expr, expr);
 				continue;
 			}
-			WalkSymbolGroup(group, expanded, entries);
+			SymbolEntry entry;
+			entry.Path = entry.Name = expr;
+			entry.Value = std::format(L"<cannot evaluate: 0x{:08X}>", static_cast<unsigned>(hr));
+			entry.Error = true;
+			entries.push_back(std::move(entry));
 		}
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error) {
+	co_return co_await Run([this, &error, expression = std::wstring(expression), value = std::wstring(value)] {
+		// (the data model assigns: dx x = 5)
+		CComPtr<IModelObject> result;
+		m_Writing = true;
+		auto hr = EvaluateModel(L"(" + expression + L") = (" + value + L")", result);
+		m_Writing = false;
+		if (FAILED(hr)) {
+			error = result ? DisplayString(result) : std::wstring();
+			if (error.empty())
+				error = std::format(L"0x{:08X}", static_cast<unsigned>(hr));
+			return hr;
+		}
+		PostNotification(DebuggerNotificationType::MemoryChanged, nullptr);
 		return S_OK;
 		});
 }
@@ -1231,6 +1228,17 @@ Task<HRESULT> DebuggerX::Impl::EnumBreakpoints(std::vector<BreakpointInfo>& brea
 			}
 			if (SUCCEEDED(bp->GetOffsetExpressionWide(text, _countof(text), nullptr)))
 				bi.Expression = text;
+			// (where it is, for another session: an address does not hold -- the program is loaded elsewhere)
+			const bool atAddress = bi.Expression.empty() || bi.Expression.starts_with(L"0x") || iswdigit(bi.Expression[0]);
+			bi.Location = bi.Expression;
+			if (!bi.IsData && !bi.Deferred && atAddress) {
+				ULONG line = 0;
+				ULONG64 displacement = 0;
+				if (SUCCEEDED(m_spSymbols->GetLineByOffsetWide(p.Offset, &line, text, _countof(text), nullptr, &displacement)) && displacement == 0)
+					bi.Location = std::format(L"`{}:{}`", text, line);
+				else if (SUCCEEDED(m_spSymbols->GetNameByOffsetWide(p.Offset, text, _countof(text), nullptr, &displacement)))
+					bi.Location = displacement ? std::format(L"{}+0x{:X}", text, displacement) : std::wstring(text);
+			}
 			if (bi.Expression.empty() && !bi.Deferred)
 				bi.Expression = std::format(L"0x{:X}", p.Offset);
 			if (SUCCEEDED(bp->GetCommandWide(text, _countof(text), nullptr)))
@@ -1844,6 +1852,10 @@ Task<HRESULT> DebuggerX::GetLocals(std::vector<SymbolEntry>& entries, std::vecto
 
 Task<HRESULT> DebuggerX::EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded) {
 	return m_Impl->EvaluateWatches(entries, std::move(expressions), std::move(expanded));
+}
+
+Task<HRESULT> DebuggerX::AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error) {
+	return m_Impl->AssignValue(expression, value, error);
 }
 
 Task<HRESULT> DebuggerX::EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints) {

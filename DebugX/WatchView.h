@@ -5,7 +5,8 @@
 #include "resource.h"
 
 // Expressions the user wants to see the value of, evaluated in the scope frame whenever the target stops. The last
-// row is for adding one: double click it, press Insert, or right-click. F2 edits an expression, Delete removes it.
+// row is for adding one: double click it, press Insert, or right-click. F2 edits an expression (on a member of one: its
+// value), Delete removes it; a double click on a value edits it (see CSymbolPane).
 // The expressions are kept between runs (with the pane's state).
 class CWatchView : public CSymbolPane<CWatchView> {
 public:

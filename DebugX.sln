@@ -29,6 +29,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestTarget.exc", "Tests\Tar
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestTarget.scope", "Tests\Targets\scope\scope.vcxproj", "{89B78929-7E72-4E49-9D74-614731A4096F}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TestTarget.values", "Tests\Targets\values\values.vcxproj", "{4F6A2C1E-8B3D-4E5F-9A7C-2D1B3E4F5A6B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -123,6 +125,12 @@ Global
 		{89B78929-7E72-4E49-9D74-614731A4096F}.Release|x64.ActiveCfg = Release|x64
 		{89B78929-7E72-4E49-9D74-614731A4096F}.Release|x64.Build.0 = Release|x64
 		{89B78929-7E72-4E49-9D74-614731A4096F}.Release|x86.ActiveCfg = Release|x64
+		{4F6A2C1E-8B3D-4E5F-9A7C-2D1B3E4F5A6B}.Debug|x64.ActiveCfg = Debug|x64
+		{4F6A2C1E-8B3D-4E5F-9A7C-2D1B3E4F5A6B}.Debug|x64.Build.0 = Debug|x64
+		{4F6A2C1E-8B3D-4E5F-9A7C-2D1B3E4F5A6B}.Debug|x86.ActiveCfg = Debug|x64
+		{4F6A2C1E-8B3D-4E5F-9A7C-2D1B3E4F5A6B}.Release|x64.ActiveCfg = Release|x64
+		{4F6A2C1E-8B3D-4E5F-9A7C-2D1B3E4F5A6B}.Release|x64.Build.0 = Release|x64
+		{4F6A2C1E-8B3D-4E5F-9A7C-2D1B3E4F5A6B}.Release|x86.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -133,6 +141,7 @@ Global
 		{69E5D343-6226-4F5D-8D19-0148A7392292} = {7CDB509D-F712-4820-AA96-13FEC08B0B81}
 		{5AD538FD-159C-44E1-80F0-4E9AE81BCB89} = {7CDB509D-F712-4820-AA96-13FEC08B0B81}
 		{89B78929-7E72-4E49-9D74-614731A4096F} = {7CDB509D-F712-4820-AA96-13FEC08B0B81}
+		{4F6A2C1E-8B3D-4E5F-9A7C-2D1B3E4F5A6B} = {7CDB509D-F712-4820-AA96-13FEC08B0B81}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {009E2ECB-EC75-4A1D-8A8A-89F662BD4387}

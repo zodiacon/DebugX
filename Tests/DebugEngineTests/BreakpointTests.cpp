@@ -56,6 +56,24 @@ Task<void> BreakpointSuite(DebuggerX& dbg) {
 	Check(co_await Iteration(dbg) == 8, "condition on a local (doubled == 16) stops at i == 8");
 	co_await dbg.ExecuteCommand(L"bc *");
 
+	// where a breakpoint is, for another session (what DebugX saves): not its address
+	co_await dbg.ExecuteCommand(L"bp `loop.cpp:9`");
+	auto work = co_await Eval(dbg, L"loop!Work");
+	co_await dbg.ExecuteCommand(std::format(L"bp 0x{:X}", work + 1).c_str());
+	s = {};
+	s.Expression = L"loop!Work";
+	co_await dbg.AddBreakpoint(s);
+	bps = co_await Breakpoints(dbg);
+	for (auto& bp : bps)
+		printf("  breakpoint %ls: location %ls\n", bp.Expression.c_str(), bp.Location.c_str());
+	Check(std::any_of(bps.begin(), bps.end(), [](auto& bp) { return bp.Location.starts_with(L"`") && bp.Location.ends_with(L"loop.cpp:9`"); }),
+		"a breakpoint on a line, set at its address: `file:line`");
+	Check(std::any_of(bps.begin(), bps.end(), [](auto& bp) { return bp.Location == L"loop!Work+0x1"; }),
+		"one inside a function: function+offset");
+	Check(std::any_of(bps.begin(), bps.end(), [](auto& bp) { return bp.Location == L"loop!Work" && bp.Expression == L"loop!Work"; }),
+		"one set with an expression: the expression");
+	co_await dbg.ExecuteCommand(L"bc *");
+
 	// data breakpoint: misaligned, then a good one
 	s = {};
 	s.IsData = true;

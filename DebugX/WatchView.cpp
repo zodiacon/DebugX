@@ -8,7 +8,7 @@ namespace {
 	constexpr wchar_t Separator = L'\t';
 	constexpr PCWSTR ExpressionsTag = L"|e:";
 
-	enum { CmdAdd = 1, CmdEdit, CmdRemove, CmdRemoveAll };
+	enum { CmdAdd = 1, CmdEdit, CmdRemove, CmdRemoveAll, CmdEditValue };
 }
 
 void CWatchView::InitList() {
@@ -37,6 +37,10 @@ int CWatchView::ExpressionIndex(int row) const {
 }
 
 bool CWatchView::OnDoubleClickList(HWND hWnd, int row, int col, POINT const& pt) {
+	if (col == 1 && CanEditValue(row)) {
+		BeginEdit(row);
+		return true;
+	}
 	if (IsNewRow(row) || (ExpressionIndex(row) >= 0 && !m_Entries[row].Expandable)) {
 		Edit(row);
 		return true;
@@ -54,12 +58,14 @@ bool CWatchView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(MF_STRING, CmdAdd, L"&Add Watch\tIns");
 	menu.AppendMenu(isExpression ? MF_STRING : MF_GRAYED, CmdEdit, L"&Edit\tF2");
 	menu.AppendMenu(isExpression ? MF_STRING : MF_GRAYED, CmdRemove, L"&Remove\tDel");
+	menu.AppendMenu(CanEditValue(row) ? MF_STRING : MF_GRAYED, CmdEditValue, isExpression ? L"Edit &Value" : L"Edit &Value\tF2");
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(m_Expressions.empty() ? MF_GRAYED : MF_STRING, CmdRemoveAll, L"Remove A&ll");
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
 		case CmdAdd: Edit(static_cast<int>(m_Entries.size())); break;
 		case CmdEdit: Edit(row); break;
 		case CmdRemove: Remove(row); break;
+		case CmdEditValue: BeginEdit(row); break;
 		case CmdRemoveAll:
 			m_Expressions.clear();
 			m_Expanded.clear();
@@ -72,7 +78,13 @@ bool CWatchView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 bool CWatchView::OnKey(UINT vk, int row) {
 	switch (vk) {
 		case VK_INSERT: Edit(static_cast<int>(m_Entries.size())); return true;
-		case VK_F2: Edit(row); return true;
+		case VK_F2:
+			// (the expression of a watch; the value of a member of one)
+			if (ExpressionIndex(row) >= 0 || IsNewRow(row))
+				Edit(row);
+			else
+				BeginEdit(row);
+			return true;
 		case VK_DELETE: Remove(row); return true;
 		case VK_RETURN:
 			if (IsNewRow(row)) {

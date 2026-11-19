@@ -31,6 +31,8 @@ public:
 
 	// ISessionObserver
 	void OnSessionChanged() override;
+	void OnBreakpointsChanged() override;
+	void OnTargetEnded() override;
 
 	BEGIN_MSG_MAP(CMainFrame)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
@@ -112,6 +114,12 @@ private:
 	DebugEngine::Task<void> OpenDumpFile(CString path);
 	// the executable of the session ended and launched again, with the breakpoints it had
 	DebugEngine::Task<void> Restart();
+	// SavedBreakpoints: the program's, set again in the new session (it is the program of m_BreakpointsKey after);
+	// the number that could not be set
+	DebugEngine::Task<int> RestoreBreakpoints(std::wstring key);
+	// the breakpoints of the program being debugged, as they are now, are saved
+	DebugEngine::Task<void> SaveBreakpoints();
+	void ReportRestoreFailures(int failed);
 	DebugEngine::Task<void> AddBreakpoint(DebugEngine::BreakpointSettings settings);
 	DebugEngine::Task<void> EditExceptionSettings();
 	// the Exception Settings the user saved, applied to the engine (at startup)
@@ -182,5 +190,7 @@ private:
 	std::optional<Launch> m_Launch;
 	FindOptions m_Find;
 	bool m_Restarting{ false };
+	// the program whose breakpoints are kept (SavedBreakpoints::KeyOf): one that was run or attached to; empty: none
+	std::wstring m_BreakpointsKey;
 	Lifetime m_Lifetime;
 };

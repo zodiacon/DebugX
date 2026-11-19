@@ -22,6 +22,7 @@
 #include "SymbolPathsDlg.h"
 #include "SourceView.h"
 #include "RecentTargets.h"
+#include "SavedBreakpoints.h"
 #include <TlHelp32.h>
 #include <format>
 
@@ -377,14 +378,18 @@ Task<void> CMainFrame::Restart() {
 	m_Restarting = true;
 	UpdateUI();
 
-	// The breakpoints go with the session: they are read first, to be set again in the new one. A running target keeps
-	// the engine's thread in WaitForEvent: it is interrupted, or the request would wait for it to stop.
+	// The breakpoints go with the session: they are saved first, to be set again in the new one (as when the program is
+	// next run). A running target keeps the engine's thread in WaitForEvent: it is interrupted, or the request would
+	// wait for it to stop.
 	if (session.IsRunning())
 		dbg.Break();
 	std::vector<BreakpointInfo> breakpoints;
 	co_await dbg.EnumBreakpoints(breakpoints);
 	if (!*alive)
 		co_return;
+	auto key = SavedBreakpoints::KeyOf((PCWSTR)launch.ExePath);
+	SavedBreakpoints::Save(key, breakpoints);
+	m_BreakpointsKey.clear();
 	auto hr = co_await dbg.Stop();
 	if (!*alive)
 		co_return;
@@ -404,22 +409,58 @@ Task<void> CMainFrame::Restart() {
 	m_Launch = launch;
 	UpdateUI();
 
-	// (a data breakpoint's address was worked out in the old process: it is not set again)
+	auto failed = co_await RestoreBreakpoints(key);
+	if (!*alive)
+		co_return;
+	co_await dbg.OutputPrompt();
+	if (*alive)
+		ReportRestoreFailures(failed);
+}
+
+Task<int> CMainFrame::RestoreBreakpoints(std::wstring key) {
+	auto alive = m_Lifetime.Watch();
+	m_BreakpointsKey.clear();
 	int failed = 0;
-	for (auto& bp : breakpoints) {
-		if (bp.IsData)
-			continue;
-		if (FAILED(co_await dbg.AddBreakpoint(static_cast<const BreakpointSettings&>(bp))))
+	for (auto& bp : SavedBreakpoints::Load(key)) {
+		if (FAILED(co_await DebugManager::DebuggerX().AddBreakpoint(bp)))
 			failed++;
 		if (!*alive)
-			co_return;
+			co_return failed;
 	}
-	co_await dbg.OutputPrompt();
-	if (*alive && failed) {
-		CString text;
-		text.Format(L"%d breakpoint(s) of the previous session could not be set again", failed);
-		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONWARNING);
-	}
+	// (from now on, what changes is saved: not before, or each one set would save the ones set so far)
+	if (DebugManager::Session().HasTarget())
+		m_BreakpointsKey = key;
+	co_return failed;
+}
+
+void CMainFrame::ReportRestoreFailures(int failed) {
+	if (failed == 0)
+		return;
+	CString text;
+	text.Format(L"%d breakpoint(s) of the last session could not be set again", failed);
+	AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONWARNING);
+}
+
+void CMainFrame::OnBreakpointsChanged() {
+	// Only while the target is stopped: when it ends, the engine removes them -- those changes are not the user's
+	if (!m_BreakpointsKey.empty() && DebugManager::Session().IsBroken())
+		SaveBreakpoints();
+}
+
+void CMainFrame::OnTargetEnded() {
+	m_BreakpointsKey.clear();
+}
+
+Task<void> CMainFrame::SaveBreakpoints() {
+	auto alive = m_Lifetime.Watch();
+	auto key = m_BreakpointsKey;
+	std::vector<BreakpointInfo> breakpoints;
+	auto hr = co_await DebugManager::DebuggerX().EnumBreakpoints(breakpoints);
+	// (the session can have ended meanwhile: the engine's notice of it comes before this, and then there are none)
+	auto& session = DebugManager::Session();
+	if (!*alive || FAILED(hr) || key != m_BreakpointsKey || !session.HasTarget() || !session.IsBroken())
+		co_return;
+	SavedBreakpoints::Save(key, breakpoints);
 }
 
 LRESULT CMainFrame::OnDebugStepOver(WORD, WORD, HWND, BOOL&) {
@@ -677,7 +718,12 @@ Task<void> CMainFrame::RunExecutable(CString exePath, CString arguments, CString
 	m_Launch = Launch{ exePath, arguments, workingDir };
 	RecentTargets::Add({ RecentTarget::Kind::Run, (PCWSTR)exePath, (PCWSTR)arguments, (PCWSTR)workingDir });
 	UpdateUI();
+	auto failed = co_await RestoreBreakpoints(SavedBreakpoints::KeyOf((PCWSTR)exePath));
+	if (!*alive)
+		co_return;
 	co_await dbg.OutputPrompt();
+	if (*alive)
+		ReportRestoreFailures(failed);
 }
 
 Task<void> CMainFrame::AttachToProcess(DWORD pid, CString name) {
@@ -685,6 +731,8 @@ Task<void> CMainFrame::AttachToProcess(DWORD pid, CString name) {
 	auto& dbg = DebugManager::DebuggerX();
 
 	m_Launch.reset();		// (no Restart for it)
+	// (whose breakpoints: asked now, while the process is there)
+	auto key = SavedBreakpoints::KeyOf(SavedBreakpoints::ImagePathOf(pid));
 	auto hr = co_await dbg.AttachToProcess(pid);
 	if (!*alive)
 		co_return;
@@ -697,7 +745,12 @@ Task<void> CMainFrame::AttachToProcess(DWORD pid, CString name) {
 	}
 	if (!name.IsEmpty())
 		RecentTargets::Add({ RecentTarget::Kind::Attach, (PCWSTR)name });
+	auto failed = co_await RestoreBreakpoints(key);
+	if (!*alive)
+		co_return;
 	co_await dbg.OutputPrompt();
+	if (*alive)
+		ReportRestoreFailures(failed);
 }
 
 Task<void> CMainFrame::AttachLocalKernel() {
