@@ -15,6 +15,12 @@ HRESULT DebugManager::Init() {
 	if (m_Debugger)
 		return E_UNEXPECTED;
 
+	// dbgeng.dll is delay-loaded: the Windows Kits debugger's if it is installed (symbol servers, the !-commands), else
+	// System32's, which has neither
+	m_EnginePath = LoadEngine(EngineSource::Automatic);
+	if (m_EnginePath.empty())
+		return HRESULT_FROM_WIN32(ERROR_MOD_NOT_FOUND);
+
 	auto debugger = std::make_unique<DebugEngine::DebuggerX>();
 	auto session = std::make_unique<SessionModel>(*debugger);
 	auto hr = debugger->Create([model = session.get()](auto type, void* data) {

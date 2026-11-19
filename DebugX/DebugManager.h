@@ -17,6 +17,10 @@ public:
 
 	static DebugEngine::DebuggerX& DebuggerX();
 	static SessionModel& Session();
+	// the dbgeng.dll in use (Init loads it)
+	static const std::wstring& EnginePath() {
+		return Get().m_EnginePath;
+	}
 
 	// Set Next Statement, from wherever it is asked for: moves the current thread to 'address', asking first (with 'owner'
 	// as the message box's) if it is in another function. Beeps if the target cannot be changed now.
@@ -29,4 +33,5 @@ private:
 
 	std::unique_ptr<DebugEngine::DebuggerX> m_Debugger;
 	std::unique_ptr<SessionModel> m_Session;
+	std::wstring m_EnginePath;
 };

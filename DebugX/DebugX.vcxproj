@@ -360,6 +360,13 @@
       <Project>{ef5c2f6b-5fcd-446c-be8d-1485407cd65a}</Project>
     </ProjectReference>
   </ItemGroup>
+  <!-- dbgeng.dll is delay-loaded: DebugManager::Init loads the one to use (the Windows Kits debugger's, else System32's) -->
+  <ItemDefinitionGroup>
+    <Link>
+      <DelayLoadDLLs>dbgeng.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
+      <AdditionalDependencies>delayimp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="..\packages\Microsoft.Debugging.DataModel.CppLib.1.0.1\build\native\Microsoft.Debugging.DataModel.CppLib.targets" Condition="Exists('..\packages\Microsoft.Debugging.DataModel.CppLib.1.0.1\build\native\Microsoft.Debugging.DataModel.CppLib.targets')" />

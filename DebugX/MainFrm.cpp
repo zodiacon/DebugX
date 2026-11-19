@@ -75,7 +75,8 @@ LRESULT CMainFrame::OnForward(WORD, WORD, HWND, BOOL&) {
 
 LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/) {
 	if (FAILED(DebugManager::Get().Init())) {
-		AtlMessageBox(nullptr, L"Failed to initialize the debugger engine", IDS_TITLE, MB_ICONERROR);
+		AtlMessageBox(nullptr, L"Failed to initialize the debugger engine (dbgeng.dll: neither the Windows Kits debugger's nor System32's could be loaded)",
+			IDS_TITLE, MB_ICONERROR);
 		return -1;
 	}
 
@@ -104,6 +105,8 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	UIAddToolBar(tb);
 	AddSimpleReBarBand(tb);
 	CreateSimpleStatusBar();
+	// (which engine it is matters: only the Windows Kits debugger's has symbol servers and the !-commands)
+	::SetWindowText(m_hWndStatusBar, (L"Debugger engine: " + DebugManager::EnginePath()).c_str());
 
 	m_hWndClient = m_Dock.Create(m_hWnd, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
 

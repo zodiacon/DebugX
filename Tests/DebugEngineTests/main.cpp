@@ -1,9 +1,10 @@
 //
-// DebugEngineTests [suite...] [--engine system|package]
+// DebugEngineTests [suite...] [--engine kits|system|package]
 //
-// Runs the DebugEngine tests (all suites, or the ones named) and returns the number of checks that failed. The engine
-// is either System32's dbgeng.dll -- the one DebugX.exe loads -- or the newer one of the NuGet package (DebugEngine\amd64):
-// they differ, so both are to be tested. Without --engine, the runner runs itself once with each and adds up.
+// Runs the DebugEngine tests (all suites, or the ones named) and returns the number of checks that failed. The engine is
+// the Windows Kits debugger's dbgeng.dll (what DebugX.exe loads when it is installed: it has symsrv.dll and the extension
+// DLLs), System32's (what it loads when not) or the NuGet package's (DebugEngine\amd64): they differ, so all are tested.
+// Without --engine, the runner runs itself once with each (the kits one if installed) and adds up.
 //
 #include "Harness.h"
 #include <map>
@@ -52,22 +53,19 @@ namespace {
 
 	// dbgeng.dll is delay-loaded: whichever is loaded first is the one the engine uses
 	bool LoadEngine(const std::wstring& which) {
-		HMODULE engine = nullptr;
+		std::wstring path;
 		if (which == L"system")
-			engine = ::LoadLibraryExW(L"dbgeng.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-		else if (which == L"package") {
+			path = DebugEngine::LoadEngine(EngineSource::System32);
+		else if (which == L"kits")
+			path = DebugEngine::LoadEngine(EngineSource::WindowsKits);
+		else if (which == L"package")
 			// (x64\<configuration>\ is two folders down from the solution's)
-			auto path = ExeDir() + L"..\\..\\DebugEngine\\amd64\\dbgeng.dll";
-			// (its dbghelp.dll and the others next to it, not System32's)
-			engine = ::LoadLibraryExW(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
-		}
-		if (!engine) {
+			path = DebugEngine::LoadEngine(EngineSource::Folder, (ExeDir() + L"..\\..\\DebugEngine\\amd64").c_str());
+		if (path.empty()) {
 			printf("cannot load the '%ls' dbgeng.dll (error %u)\n", which.c_str(), ::GetLastError());
 			return false;
 		}
-		wchar_t path[MAX_PATH];
-		::GetModuleFileNameW(engine, path, _countof(path));
-		printf("engine: %ls\n", path);
+		printf("engine: %ls\n", path.c_str());
 		return true;
 	}
 
@@ -152,7 +150,7 @@ int wmain(int argc, wchar_t* argv[]) {
 		if (arg == L"--engine" && i + 1 < argc)
 			engine = argv[++i];
 		else if (arg == L"--help" || arg == L"-?" || arg == L"/?") {
-			printf("DebugEngineTests [suite...] [--engine system|package]\nsuites:");
+			printf("DebugEngineTests [suite...] [--engine kits|system|package]\nsuites:");
 			for (auto& s : Suites)
 				printf(" %s", s.Name);
 			printf("\nWithout --engine: once with each engine. The exit code is the number of failed checks.\n");
@@ -170,7 +168,11 @@ int wmain(int argc, wchar_t* argv[]) {
 
 	if (engine.empty()) {
 		int failures = 0;
-		for (auto which : { L"system", L"package" }) {
+		// (the Windows Kits debugger's -- what DebugX.exe loads when it is installed -- if it is)
+		std::vector<PCWSTR> engines{ L"system", L"package" };
+		if (!WindowsKitsDebuggersFolder().empty())
+			engines.insert(engines.begin(), L"kits");
+		for (auto which : engines) {
 			printf("######## engine: %ls\n", which);
 			failures += RunChild(which, names);
 		}

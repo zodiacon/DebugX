@@ -267,6 +267,24 @@ namespace DebugEngine {
 		ULONG Pid;
 	};
 
+	// Which dbgeng.dll the process uses (EngineLoader.cpp). An executable that delay-loads dbgeng.dll calls LoadEngine before
+	// the first DebuggerX::Create: the dbgeng.dll then loaded is the one every DebuggerX uses.
+	enum class EngineSource {
+		// the Windows Kits debugger's, if it is installed (it has symsrv.dll, for symbol servers, and the extension DLLs
+		// for the !-commands), else System32's
+		Automatic,
+		WindowsKits,
+		System32,
+		Folder,			// the one in the folder given
+	};
+
+	// the Windows Kits debugger's folder for this process's architecture (...\Debuggers\x64\), if it has a dbgeng.dll;
+	// empty if not
+	std::wstring WindowsKitsDebuggersFolder();
+	// Loads the dbgeng.dll (with dbghelp.dll and the rest from its folder) and returns its full path; empty if it cannot be
+	// loaded. 'folder': for EngineSource::Folder.
+	std::wstring LoadEngine(EngineSource source, PCWSTR folder = nullptr);
+
 	//
 	// Wraps a DbgEng client. The engine is bound to a thread of its own; everything that talks to it runs there and
 	// the calling thread is never blocked: the calls below return a Task that is co_await'ed (or dropped, see
