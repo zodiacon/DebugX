@@ -355,6 +355,9 @@ namespace DebugEngine {
 		// The first place at or after 'start' where the bytes are: in user mode, in the committed memory of the current
 		// process up to its end; in kernel mode, in the next 'kernelRange' bytes. HRESULT_FROM_WIN32(ERROR_NOT_FOUND): none
 		Task<HRESULT> SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange = 0x10000000);
+		// What !analyze -v says about the target (a dump, or why it stopped): the Windows Kits debugger's ext.dll; E_NOTIMPL
+		// with an engine that has no extensions. It can take a while (symbols are loaded, and downloaded).
+		Task<HRESULT> Analyze(std::wstring& text);
 
 		// about the current thread of the target; the registers are as they were in the current scope frame
 		// (only the nonvolatile ones are reliable in a frame other than 0)

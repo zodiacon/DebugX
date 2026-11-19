@@ -7,6 +7,7 @@
 #include "Debugger.h"
 #include "Lifetime.h"
 #include "PaneBase.h"
+#include "ScintillaCtrl.h"
 #include "resource.h"
 
 // A live view of target memory: an address/expression box ("Go", or Enter) reads a fixed-size chunk
@@ -16,13 +17,15 @@
 // While a live target is stopped the bytes can be edited (overwrite only: the Insert key is kept from the control):
 // each change is written to the target as it is made (TargetMemoryBuffer), and shows in red until the next refresh.
 // Right-click: the display format, and Search / Search Next (bytes, a string; in all of the process's memory from the caret).
+// The display format is hex (in the hex control: bytes, words, double or quad words, editable) or, read-only in a text view,
+// signed decimal integers, floats, doubles, ASCII or UTF-16 text -- as dd, df, dD, da, du show them.
 class CMemoryView :
 	public CFrameWindowImpl<CMemoryView, CWindow, CControlWinTraits>,
 	public CPaneBase<CMemoryView> {
 public:
 	using BaseFrame = CFrameWindowImpl<CMemoryView, CWindow, CControlWinTraits>;
 
-	CMemoryView() : m_AddressEdit(this, 1) {
+	CMemoryView() : m_AddressEdit(this, 1), m_Formatted(this, 2) {
 	}
 
 	enum { AddressId = 200, GoId };
@@ -32,6 +35,7 @@ public:
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
+		MESSAGE_HANDLER(WTLHelper::ThemeChangedMessage, OnThemeChanged)
 		COMMAND_HANDLER(GoId, BN_CLICKED, OnGo)
 		COMMAND_ID_HANDLER(ID_EDIT_GOTO, OnGoTo)
 		NOTIFY_CODE_HANDLER(NM_RCLICK, OnHexRightClick)
@@ -39,6 +43,8 @@ public:
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(1)
 		MESSAGE_HANDLER(WM_CHAR, OnAddressChar)
+	ALT_MSG_MAP(2)
+		MESSAGE_HANDLER(WM_CONTEXTMENU, OnFormattedContextMenu)
 	END_MSG_MAP()
 
 	HWND Create(HWND hParent) override {
@@ -85,6 +91,23 @@ private:
 		return 0;
 	}
 	LRESULT OnAddressChar(UINT, WPARAM wParam, LPARAM, BOOL& handled);
+	LRESULT OnFormattedContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&);
+	// the right-click menu, at a point on the screen
+	void ShowMenu(POINT pt);
+
+	enum class Format { Hex, Int32, Float, Double, Ascii, Unicode };
+	// shows the hex control or the text view, as the format is
+	void SetFormat(Format format);
+	// the buffer in the text view, in the format
+	void RenderFormatted();
+	void ApplyFormattedColors();
+	LRESULT OnThemeChanged(UINT, WPARAM, LPARAM, BOOL& handled) {
+		ApplyFormattedColors();
+		if (m_Format != Format::Hex)
+			RenderFormatted();
+		handled = FALSE;
+		return 0;
+	}
 
 	void Go();
 	// Search: the bytes asked for (hex bytes, "text" or L"text"), from the caret on; Search Next: from past it
@@ -102,6 +125,9 @@ private:
 	CContainedWindowT<CEdit> m_AddressEdit;
 	CButton m_Go;
 	CHexControl m_Hex;
+	CContainedWindowT<CScintillaCtrl> m_Formatted;
+	Format m_Format{ Format::Hex };
+	ULONG64 m_FormattedAddress{ 0 };
 	std::unique_ptr<TargetMemoryBuffer> m_Buffer;
 	int m_PendingWrites{ 0 };
 	CString m_Expression;		// what is loaded: re-evaluated on every refresh, so a register expression follows it

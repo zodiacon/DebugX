@@ -35,6 +35,13 @@ Task<void> ExceptionSuite(DebuggerX& dbg) {
 	co_await dbg.ExecuteCommand(L"g");
 	Check(co_await Stage(dbg) == 2, "defaults: stops at the access violation (stage 2), not at the C++ exception");
 	Check(Reported(0xE06D7363) && Reported(0xC0000005), "both exceptions reported (Exception notification)");
+
+	// !analyze: the Windows Kits debugger has it (ext.dll); the others have no extensions
+	std::wstring analysis;
+	auto start = ::GetTickCount64();
+	hr = co_await dbg.Analyze(analysis);
+	printf("  Analyze: 0x%08X, %zu characters in %llu ms\n", static_cast<unsigned>(hr), analysis.size(), ::GetTickCount64() - start);
+	Check(hr == E_NOTIMPL || (SUCCEEDED(hr) && analysis.find(L"c0000005") != std::wstring::npos), "Analyze: the access violation (or E_NOTIMPL without ext.dll)");
 	co_await dbg.Stop();
 
 	// C++ exceptions break, access violations are ignored, a custom code breaks

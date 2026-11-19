@@ -7,6 +7,7 @@
 #include "DriversView.h"
 #include "ObjectsView.h"
 #include "IrpsView.h"
+#include "AnalysisView.h"
 #include "KernelProcessesView.h"
 #include "KernelThreadsView.h"
 #include "ModulesView.h"
@@ -32,6 +33,7 @@ namespace {
 	const PaneInfo s_Panes[] = {
 		{ L"command", L"Command", IDI_COMMAND, ID_VIEW_COMMAND, PaneKind::Document, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, nullptr, Make<CCommandView> },
 		{ L"output", L"Output", IDI_EVENT, ID_VIEW_OUTPUT, PaneKind::Tool, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, nullptr, Make<COutputView> },
+		{ L"analysis", L"Analysis", IDI_FIND, ID_VIEW_ANALYSIS, PaneKind::Tool, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, L"output", Make<CAnalysisView> },
 		{ L"callstack", L"Call Stack", IDI_CALLSTACK, ID_VIEW_CALLSTACK, PaneKind::Tool, DockSide::Left, { 560, 300 }, TargetType::Unknown, true, nullptr, Make<CCallStackView> },
 		{ L"registers", L"Registers", IDI_REGISTRY, ID_VIEW_REGISTERS, PaneKind::Tool, DockSide::Right, { 440, 300 }, TargetType::Unknown, true, nullptr, Make<CRegistersView> },
 		{ L"threads", L"Threads", IDI_THREADS, ID_VIEW_THREADS, PaneKind::Tool, DockSide::Right, { 420, 300 }, TargetType::User, true, L"registers", Make<CUserThreadsView> },

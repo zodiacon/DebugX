@@ -24,6 +24,16 @@ LRESULT CMemoryView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Hex.SetFont(L"Consolas", 90);
 	::SetWindowSubclass(m_Hex, HexSubclassProc, 0, 0);
 
+	// (the other formats: text)
+	m_Formatted.Create(*this, nullptr, nullptr, WS_CHILD | WS_VSCROLL | WS_HSCROLL | WS_CLIPSIBLINGS);
+	m_Formatted.InitCall();
+	m_Formatted->SetUndoCollection(false);
+	m_Formatted->SetWrapMode(Scintilla::Wrap::None);
+	m_Formatted->SetMarginWidthN(1, 0);
+	m_Formatted->StyleSetFont(static_cast<int>(Scintilla::StylesCommon::Default), "Consolas");
+	m_Formatted->StyleSetSizeFractional(static_cast<int>(Scintilla::StylesCommon::Default), 900);
+	ApplyFormattedColors();
+
 	InitPane();
 	return 0;
 }
@@ -52,6 +62,7 @@ LRESULT CMemoryView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	m_AddressEdit.MoveWindow(labelWidth, 2, cx - labelWidth - buttonWidth - 4, barHeight - 4);
 	m_Go.MoveWindow(cx - buttonWidth, 2, buttonWidth, barHeight - 4);
 	m_Hex.MoveWindow(0, barHeight, cx, cy - barHeight);
+	m_Formatted.MoveWindow(0, barHeight, cx, cy - barHeight);
 	return 0;
 }
 
@@ -89,7 +100,26 @@ LRESULT CMemoryView::OnHexRightClick(int, LPNMHDR hdr, BOOL& handled) {
 		return 0;
 	}
 
-	enum { CmdSize1 = 1, CmdSize2, CmdSize4, CmdSize8, CmdLine16, CmdLine32, CmdSearch, CmdSearchNext };
+	CPoint pt;
+	::GetCursorPos(&pt);
+	ShowMenu(pt);
+	return 0;
+}
+
+LRESULT CMemoryView::OnFormattedContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
+	CPoint pt(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+	if (pt.x == -1) {
+		pt = { 0, 0 };
+		m_Formatted.ClientToScreen(&pt);
+	}
+	ShowMenu(pt);
+	return 0;
+}
+
+void CMemoryView::ShowMenu(POINT pt) {
+	enum { CmdSize1 = 1, CmdSize2, CmdSize4, CmdSize8, CmdLine16, CmdLine32, CmdSearch, CmdSearchNext,
+		CmdInt32, CmdFloat, CmdDouble, CmdAscii, CmdUnicode };
+	const bool hex = m_Format == Format::Hex;
 	const auto size = m_Hex.GetDataSize();
 	const auto perLine = m_Hex.GetBytesPerLine();
 	CMenu menu;
@@ -97,10 +127,15 @@ LRESULT CMemoryView::OnHexRightClick(int, LPNMHDR hdr, BOOL& handled) {
 	auto radio = [&](UINT id, bool checked, PCWSTR text) {
 		menu.AppendMenu(MF_STRING | (checked ? MF_CHECKED : 0), id, text);
 	};
-	radio(CmdSize1, size == 1, L"&Bytes");
-	radio(CmdSize2, size == 2, L"&Words (2 bytes)");
-	radio(CmdSize4, size == 4, L"&Double Words (4 bytes)");
-	radio(CmdSize8, size == 8, L"&Quad Words (8 bytes)");
+	radio(CmdSize1, hex && size == 1, L"&Bytes");
+	radio(CmdSize2, hex && size == 2, L"&Words (2 bytes)");
+	radio(CmdSize4, hex && size == 4, L"&Double Words (4 bytes)");
+	radio(CmdSize8, hex && size == 8, L"&Quad Words (8 bytes)");
+	radio(CmdInt32, m_Format == Format::Int32, L"Signed Decimal (&4 bytes)");
+	radio(CmdFloat, m_Format == Format::Float, L"&Float (4 bytes)");
+	radio(CmdDouble, m_Format == Format::Double, L"D&ouble (8 bytes)");
+	radio(CmdAscii, m_Format == Format::Ascii, L"&ASCII Text");
+	radio(CmdUnicode, m_Format == Format::Unicode, L"&Unicode Text (UTF-16)");
 	menu.AppendMenu(MF_SEPARATOR);
 	radio(CmdLine16, perLine == 16, L"&16 Bytes a Line");
 	radio(CmdLine32, perLine == 32, L"&32 Bytes a Line");
@@ -109,22 +144,25 @@ LRESULT CMemoryView::OnHexRightClick(int, LPNMHDR hdr, BOOL& handled) {
 	menu.AppendMenu(canSearch ? MF_STRING : MF_STRING | MF_GRAYED, CmdSearch, L"&Search...");
 	menu.AppendMenu(canSearch && !m_SearchPattern.empty() ? MF_STRING : MF_STRING | MF_GRAYED, CmdSearchNext, L"Search &Next");
 
-	CPoint pt;
-	::GetCursorPos(&pt);
 	switch (auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
 		case CmdSize1: case CmdSize2: case CmdSize4: case CmdSize8:
 			m_Hex.SetDataSize(1 << (cmd - CmdSize1));
+			SetFormat(Format::Hex);
 			break;
 		case CmdLine16: m_Hex.SetBytesPerLine(16); break;
 		case CmdLine32: m_Hex.SetBytesPerLine(32); break;
 		case CmdSearch: Search(false); break;
 		case CmdSearchNext: Search(true); break;
+		case CmdInt32: SetFormat(Format::Int32); break;
+		case CmdFloat: SetFormat(Format::Float); break;
+		case CmdDouble: SetFormat(Format::Double); break;
+		case CmdAscii: SetFormat(Format::Ascii); break;
+		case CmdUnicode: SetFormat(Format::Unicode); break;
 	}
-	return 0;
 }
 
 std::wstring CMemoryView::SaveState() const {
-	return std::format(L"d={};l={};e={}", m_Hex.GetDataSize(), m_Hex.GetBytesPerLine(), (PCWSTR)m_Expression);
+	return std::format(L"d={};l={};f={};e={}", m_Hex.GetDataSize(), m_Hex.GetBytesPerLine(), static_cast<int>(m_Format), (PCWSTR)m_Expression);
 }
 
 void CMemoryView::LoadState(PCWSTR state) {
@@ -146,6 +184,8 @@ void CMemoryView::LoadState(PCWSTR state) {
 			m_Hex.SetDataSize(value);
 		else if (item.starts_with(L"l=") && (value == 16 || value == 32))
 			m_Hex.SetBytesPerLine(value);
+		else if (item.starts_with(L"f=") && value >= 0 && value <= static_cast<int>(Format::Unicode))
+			SetFormat(static_cast<Format>(value));
 		if (end == std::wstring_view::npos)
 			break;
 		text.remove_prefix(end + 1);
@@ -219,6 +259,8 @@ Task<void> CMemoryView::Refresh() {
 		m_Hex.SetSelection(0, m_SelectAfterRefresh);
 	m_SelectAfterRefresh = 0;
 	m_Hex.Refresh();
+	if (m_Format != Format::Hex)
+		RenderFormatted();
 	UpdateWritable();
 	RefreshDone();
 }
@@ -288,4 +330,76 @@ Task<void> CMemoryView::Search(bool next) {
 	m_AddressEdit.SetWindowText(m_Expression);
 	m_SelectAfterRefresh = static_cast<int64_t>(m_SearchPattern.size());
 	RequestRefresh();
+}
+
+void CMemoryView::ApplyFormattedColors() {
+	using namespace Scintilla;
+	auto fore = static_cast<Colour>(::GetSysColor(COLOR_WINDOWTEXT));
+	auto back = static_cast<Colour>(::GetSysColor(COLOR_WINDOW));
+	m_Formatted->StyleSetFore(static_cast<int>(StylesCommon::Default), fore);
+	m_Formatted->StyleSetBack(static_cast<int>(StylesCommon::Default), back);
+	m_Formatted->StyleClearAll();
+	m_Formatted->SetCaretFore(fore);
+	m_Formatted->SetSelBack(true, static_cast<Colour>(::GetSysColor(COLOR_HIGHLIGHT)));
+	m_Formatted->SetSelFore(true, static_cast<Colour>(::GetSysColor(COLOR_HIGHLIGHTTEXT)));
+}
+
+void CMemoryView::SetFormat(Format format) {
+	m_Format = format;
+	const bool hex = format == Format::Hex;
+	m_Hex.ShowWindow(hex ? SW_SHOW : SW_HIDE);
+	m_Formatted.ShowWindow(hex ? SW_HIDE : SW_SHOW);
+	if (!hex)
+		RenderFormatted();
+}
+
+void CMemoryView::RenderFormatted() {
+	// a line: the address, then the values (as many as fit in 16 or 32 bytes; text: 64 or 32 characters)
+	std::wstring text;
+	if (m_Buffer) {
+		const auto size = m_Buffer->GetSize();
+		const auto data = m_Buffer->GetRawData(0);
+		const auto base = m_Buffer->GetAddress();
+		const int perLine = m_Format == Format::Ascii || m_Format == Format::Unicode ? 64 : m_Hex.GetBytesPerLine();
+		for (int64_t offset = 0; offset < size; offset += perLine) {
+			text += std::format(L"{:016X}  ", base + offset);
+			const auto end = std::min<int64_t>(offset + perLine, size);
+			switch (m_Format) {
+				case Format::Int32:
+					for (auto i = offset; i + 4 <= end; i += 4)
+						text += std::format(L"{:>12}", *reinterpret_cast<const int32_t*>(data + i));
+					break;
+				case Format::Float:
+					for (auto i = offset; i + 4 <= end; i += 4)
+						text += std::format(L"{:>16.8g}", *reinterpret_cast<const float*>(data + i));
+					break;
+				case Format::Double:
+					for (auto i = offset; i + 8 <= end; i += 8)
+						text += std::format(L"{:>26.17g}", *reinterpret_cast<const double*>(data + i));
+					break;
+				case Format::Ascii:
+					for (auto i = offset; i < end; i++)
+						text += data[i] >= 0x20 && data[i] < 0x7F ? static_cast<wchar_t>(data[i]) : L'.';
+					break;
+				case Format::Unicode:
+					for (auto i = offset; i + 2 <= end; i += 2) {
+						auto c = *reinterpret_cast<const wchar_t*>(data + i);
+						text += c >= 0x20 && !(c >= 0xD800 && c <= 0xDFFF) && c != 0x7F ? c : L'.';
+					}
+					break;
+				default:
+					break;
+			}
+			text += L'\n';
+		}
+	}
+	auto utf8 = ToUtf8(text);
+	// (the same place again: it stays scrolled where it was)
+	const auto address = m_Buffer ? m_Buffer->GetAddress() : 0;
+	auto first = address == m_FormattedAddress ? m_Formatted->FirstVisibleLine() : 0;
+	m_FormattedAddress = address;
+	m_Formatted->SetReadOnly(false);
+	m_Formatted->SetText(utf8.c_str());
+	m_Formatted->SetReadOnly(true);
+	m_Formatted->SetFirstVisibleLine(first);
 }

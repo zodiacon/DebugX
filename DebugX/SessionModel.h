@@ -41,6 +41,8 @@ struct ISessionObserver {
 
 	// a line was added to the log of what happens in the target (SessionModel::Log)
 	virtual void OnLogLine(const std::wstring& line) {}
+	// an exception the target raised (whether the debugger stops for it is the event filters' decision)
+	virtual void OnException(const DebugEngine::ExceptionData& data) {}
 };
 
 //

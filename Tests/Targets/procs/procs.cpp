@@ -36,9 +36,12 @@ int wmain(int argc, wchar_t* argv[]) {
 	wchar_t path[MAX_PATH];
 	::GetModuleFileNameW(nullptr, path, _countof(path));
 	std::wstring commandLine = L"\"" + std::wstring(path) + L"\" child";
+	// (a console of its own, not shown: the system starts a console host for it, which the debugger lets go of)
 	STARTUPINFOW si{ sizeof(si) };
+	si.dwFlags = STARTF_USESHOWWINDOW;
+	si.wShowWindow = SW_HIDE;
 	PROCESS_INFORMATION pi;
-	if (!::CreateProcessW(nullptr, &commandLine[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi))
+	if (!::CreateProcessW(nullptr, &commandLine[0], nullptr, nullptr, FALSE, CREATE_NEW_CONSOLE, nullptr, nullptr, &si, &pi))
 		return 1;
 	::WaitForSingleObject(pi.hProcess, INFINITE);
 	DWORD code = 0;

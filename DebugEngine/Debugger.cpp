@@ -166,6 +166,7 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> SetDebugChildProcesses(bool debug);
 	Task<HRESULT> EnumHandles(std::vector<HandleInfo>& handles);
 	Task<HRESULT> SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange);
+	Task<HRESULT> Analyze(std::wstring& text);
 	Task<HRESULT> SetScopeFrame(ULONG frameIndex);
 	Task<HRESULT> GetScope(ULONG64& instructionOffset, ULONG& frameIndex);
 	Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
@@ -256,6 +257,8 @@ private:
 	void UpdateStatus();
 	bool DoPostCommand();
 	HRESULT EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads, ULONG currentThread);
+	// WaitForEvent, and then letting go of the processes in m_Detach; if the wait stopped only for them, it waits on (debug thread)
+	HRESULT Wait(ULONG flags);
 	// runs a command and returns what it output, as text (debug thread)
 	std::wstring ExecuteCaptured(const std::wstring& command);
 	void PostContextChanged();
@@ -309,6 +312,9 @@ private:
 	std::wstring* m_Capture{ nullptr };
 	// SetDebugChildProcesses
 	bool m_DebugChildren{ false };
+	// processes to let go of when the engine stops waiting (the system's ids), and whether it stopped only for that
+	std::vector<ULONG> m_Detach;
+	bool m_BreakForDetach{ false };
 
 	// What DebugX keeps of a breakpoint that the engine does not (debug thread only). By the breakpoint's GUID: its id
 	// is reused by the engine once it is removed, also by bc in the Command window, which DebugX is not told about.
@@ -482,6 +488,18 @@ private:
 	}
 	virtual HRESULT __stdcall CreateProcessW(ULONG64 ImageFileHandle, ULONG64 Handle, ULONG64 BaseOffset, ULONG ModuleSize, PCSTR ModuleName, PCSTR ImageName,
 		ULONG CheckSum, ULONG TimeDateStamp, ULONG64 InitialThreadHandle, ULONG64 ThreadDataOffset, ULONG64 StartOffset) override {
+		// The console host the system starts for a console program (one that has none to share) is one of its children,
+		// but not the program's own code: it is let go, unless it is what is being debugged. Not here -- the engine does not
+		// detach while it waits for events --: the wait stops now, and Wait detaches it and carries on.
+		ULONG processes = 0, pid = 0;
+		if (m_DebugChildren && ModuleName && _stricmp(ModuleName, "conhost") == 0
+			&& SUCCEEDED(m_spSystem->GetNumberProcesses(&processes)) && processes > 1
+			&& SUCCEEDED(m_spSystem->GetCurrentProcessSystemId(&pid))) {
+			m_Detach.push_back(pid);
+			m_BreakForDetach = true;
+			return DEBUG_STATUS_BREAK;
+		}
+
 		auto data = new CreateProcessData;
 		data->BaseAddress = reinterpret_cast<void*>(BaseOffset);
 		data->hFile = reinterpret_cast<HANDLE>(ImageFileHandle);
@@ -577,6 +595,10 @@ bool DebuggerX::Impl::Shutdown() {
 				if (live)
 					m_spClient->DetachProcesses();
 				m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
+				// (and no more callbacks: something else can keep the client alive -- !analyze's ext.dll does -- and the engine
+				// would call them on an object whose interfaces are released)
+				m_spClient->SetEventCallbacks(nullptr);
+				m_spClient->SetOutputCallbacksWide(nullptr);
 			}
 			m_spClient.Release();
 			m_spAdvanced.Release();
@@ -821,7 +843,7 @@ Task<HRESULT> DebuggerX::Impl::SetEventFilters(std::vector<EventFilter> filters)
 
 void DebuggerX::Impl::UpdateStatus() {
 	ULONG status;
-	if (FAILED(m_spControl->GetExecutionStatus(&status)))
+	if (!m_spControl || FAILED(m_spControl->GetExecutionStatus(&status)))
 		return;
 
 	if (m_Status.exchange(status) != status) {
@@ -865,6 +887,35 @@ void DebuggerX::Impl::PostScopeChanged() {
 		PostNotification(DebuggerNotificationType::ScopeChanged, new ScopeData{ frame });
 }
 
+HRESULT DebuggerX::Impl::Wait(ULONG flags) {
+	while (true) {
+		auto hr = m_spControl->WaitForEvent(flags, INFINITE);
+		if (FAILED(hr) || m_Detach.empty())
+			return hr;
+
+		const bool onlyForThem = std::exchange(m_BreakForDetach, false);
+		ULONG current = 0;
+		m_spSystem->GetCurrentProcessId(&current);
+		ULONG currentSystemId = 0;
+		m_spSystem->GetCurrentProcessSystemId(&currentSystemId);
+		for (auto pid : std::exchange(m_Detach, {})) {
+			ULONG id;
+			if (SUCCEEDED(m_spSystem->GetProcessIdBySystemId(pid, &id)) && SUCCEEDED(m_spSystem->SetCurrentProcessId(id)))
+				m_spClient->DetachCurrentProcess();
+		}
+		// (back to the process that was current, unless it was one of them)
+		ULONG id;
+		if (SUCCEEDED(m_spSystem->GetProcessIdBySystemId(currentSystemId, &id)))
+			m_spSystem->SetCurrentProcessId(id);
+		else if (SUCCEEDED(m_spSystem->GetProcessIdsByIndex(0, 1, &id, nullptr)))
+			m_spSystem->SetCurrentProcessId(id);
+		if (!onlyForThem)
+			return hr;
+		// as if it had never stopped
+		HR(m_spControl->SetExecutionStatus(DEBUG_STATUS_GO));
+	}
+}
+
 bool DebuggerX::Impl::DoPostCommand() {
 	UpdateStatus();
 	m_spControl->OutputPromptWide(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
@@ -875,7 +926,7 @@ bool DebuggerX::Impl::DoPostCommand() {
 	}
 
 	if (IsExecuting(m_Status)) {
-		auto hr = m_spControl->WaitForEvent(DEBUG_WAIT_DEFAULT, INFINITE);
+		auto hr = Wait(DEBUG_WAIT_DEFAULT);
 		UpdateStatus();
 		if (FAILED(hr)) {
 			if (m_Status == DEBUG_STATUS_NO_DEBUGGEE)
@@ -916,7 +967,7 @@ Task<HRESULT> DebuggerX::Impl::AttachToProcess(DWORD pid, AttachType attach) {
 	auto hr = co_await Run([this, pid, attach] {
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 		HR(m_spClient->AttachProcess(0, pid, static_cast<ULONG>(attach)));
-		HR(m_spControl->WaitForEvent(0, INFINITE));
+		HR(Wait(0));
 		if (m_DebugChildren)
 			ExecuteCaptured(L".childdbg 1");
 		LoadExecutableSymbols();
@@ -943,7 +994,7 @@ Task<HRESULT> DebuggerX::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLin
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 		HR(m_spClient->CreateProcessAndAttach2Wide(0, cmd.data(), &options, sizeof(options),
 			initialDir.empty() ? nullptr : initialDir.c_str(), nullptr, 0, static_cast<ULONG>(attach)));
-		HR(m_spControl->WaitForEvent(0, INFINITE));
+		HR(Wait(0));
 		LoadExecutableSymbols();
 		DoPostCommand();
 		return S_OK;
@@ -1197,6 +1248,14 @@ Task<HRESULT> DebuggerX::Impl::EnumHandles(std::vector<HandleInfo>& handles) {
 			handles.push_back(std::move(hi));
 		}
 		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::Analyze(std::wstring& text) {
+	co_return co_await Run([this, &text]() -> HRESULT {
+		text = ExecuteCaptured(L"!analyze -v");
+		// ("No export analyze found": no ext.dll)
+		return text.find(L"No export analyze") != std::wstring::npos ? E_NOTIMPL : S_OK;
 		});
 }
 
@@ -2101,6 +2160,10 @@ Task<HRESULT> DebuggerX::EnumHandles(std::vector<HandleInfo>& handles) {
 
 Task<HRESULT> DebuggerX::SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange) {
 	return m_Impl->SearchMemory(start, std::move(pattern), found, kernelRange);
+}
+
+Task<HRESULT> DebuggerX::Analyze(std::wstring& text) {
+	return m_Impl->Analyze(text);
 }
 
 Task<HRESULT> DebuggerX::SetScopeFrame(ULONG frameIndex) {

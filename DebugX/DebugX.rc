@@ -83,6 +83,7 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "&Command",                    ID_VIEW_COMMAND
         MENUITEM "&Output",                     ID_VIEW_OUTPUT
+        MENUITEM "Anal&ysis",                   ID_VIEW_ANALYSIS
         MENUITEM "&Threads",                    ID_VIEW_THREADS
         MENUITEM "&Processes",                  ID_VIEW_USERPROCESSES
         MENUITEM "&Handles",                    ID_VIEW_HANDLES
@@ -118,6 +119,7 @@ BEGIN
         MENUITEM "R&estart\tCtrl+Shift+F5",     ID_DEBUG_RESTART
         MENUITEM "&Detach",                     ID_DEBUG_DETACH
         MENUITEM "Save D&ump...",               ID_DEBUG_SAVEDUMP
+        MENUITEM "Anal&yze (!analyze -v)",      ID_DEBUG_ANALYZE
         MENUITEM SEPARATOR
         MENUITEM "&Step Over\tF10",             ID_DEBUG_STEPOVER
         MENUITEM "Ste&p Into\tF11",             ID_DEBUG_STEPINTO

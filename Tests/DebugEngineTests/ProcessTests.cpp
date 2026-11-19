@@ -96,7 +96,8 @@ Task<void> ProcessSuite(DebuggerX& dbg) {
 	// the child: the debugger stops at its start
 	co_await dbg.ExecuteCommand(L"g");
 	s = co_await Take(dbg);
-	Check(s.Processes.size() == 2, "the child process is debugged too");
+	Check(s.Processes.size() == 2, "the child process is debugged too (not the console host started for it)");
+	Check(std::none_of(s.Processes.begin(), s.Processes.end(), [](auto& p) { return _wcsicmp(p.ImagePath.c_str(), L"conhost.exe") == 0; }), "no conhost.exe");
 	auto current = std::find_if(s.Processes.begin(), s.Processes.end(), [](auto& p) { return p.Current; });
 	auto other = std::find_if(s.Processes.begin(), s.Processes.end(), [](auto& p) { return !p.Current; });
 	if (s.Processes.size() == 2 && current != s.Processes.end() && other != s.Processes.end()) {

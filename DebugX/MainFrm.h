@@ -33,6 +33,9 @@ public:
 	void OnSessionChanged() override;
 	void OnBreakpointsChanged() override;
 	void OnTargetEnded() override;
+	// a second-chance exception is analyzed when the target has stopped for it
+	void OnException(const DebugEngine::ExceptionData& data) override;
+	void OnBroke() override;
 
 	BEGIN_MSG_MAP(CMainFrame)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
@@ -43,6 +46,8 @@ public:
 		COMMAND_RANGE_HANDLER(ID_FILE_RECENT1, ID_FILE_RECENT10, OnRecentTarget)
 		COMMAND_ID_HANDLER(ID_FILE_CLEARRECENT, OnClearRecent)
 		COMMAND_ID_HANDLER(ID_DEBUG_SAVEDUMP, OnSaveDump)
+		COMMAND_ID_HANDLER(ID_DEBUG_ANALYZE, OnDebugAnalyze)
+		COMMAND_ID_HANDLER(ID_VIEW_ANALYSIS, OnViewPane)
 		COMMAND_ID_HANDLER(ID_APP_EXIT, OnFileExit)
 		COMMAND_ID_HANDLER(ID_FILE_OPEN, OnOpenDumpFile)
 		COMMAND_ID_HANDLER(ID_DEBUG_ATTACHTOLOCALKERNEL, OnAttachLocalKernel)
@@ -186,6 +191,8 @@ private:
 	LRESULT OnRecentTarget(WORD, WORD id, HWND, BOOL&);
 	LRESULT OnClearRecent(WORD, WORD, HWND, BOOL&);
 	LRESULT OnSaveDump(WORD, WORD, HWND, BOOL&);
+	// shows the Analysis pane and has it run !analyze -v
+	LRESULT OnDebugAnalyze(WORD, WORD, HWND, BOOL&);
 	LRESULT OnToggleChildProcesses(WORD, WORD id, HWND, BOOL&);
 	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditFindAgain(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -202,5 +209,6 @@ private:
 	bool m_Restarting{ false };
 	// the program whose breakpoints are kept (SavedBreakpoints::KeyOf): one that was run or attached to; empty: none
 	std::wstring m_BreakpointsKey;
+	bool m_AnalyzeOnBreak{ false };
 	Lifetime m_Lifetime;
 };

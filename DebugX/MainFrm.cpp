@@ -461,6 +461,33 @@ void CMainFrame::OnBreakpointsChanged() {
 
 void CMainFrame::OnTargetEnded() {
 	m_BreakpointsKey.clear();
+	m_AnalyzeOnBreak = false;
+}
+
+void CMainFrame::OnException(const ExceptionData& data) {
+	if (!data.FirstChance)
+		m_AnalyzeOnBreak = true;
+}
+
+void CMainFrame::OnBroke() {
+	if (m_AnalyzeOnBreak) {
+		m_AnalyzeOnBreak = false;
+		PostMessage(WM_COMMAND, ID_DEBUG_ANALYZE);
+	}
+}
+
+LRESULT CMainFrame::OnDebugAnalyze(WORD, WORD, HWND, BOOL&) {
+	auto& session = DebugManager::Session();
+	if (!session.HasTarget() || session.IsRunning()) {
+		::MessageBeep(MB_ICONWARNING);
+		return 0;
+	}
+	// the Analysis pane shown (made, the first time), then told
+	BOOL handled;
+	OnViewPane(0, ID_VIEW_ANALYSIS, nullptr, handled);
+	if (auto pane = m_Dock.Layout().FindPane(L"analysis"); pane && pane->hWnd)
+		::SendMessage(pane->hWnd, WM_COMMAND, ID_DEBUG_ANALYZE, 0);
+	return 0;
 }
 
 Task<void> CMainFrame::SaveBreakpoints() {
@@ -818,6 +845,9 @@ Task<void> CMainFrame::OpenDumpFile(CString path) {
 	}
 	RecentTargets::Add({ RecentTarget::Kind::Dump, (PCWSTR)path });
 	co_await dbg.OutputPrompt();
+	// (what a dump is about)
+	if (*alive)
+		PostMessage(WM_COMMAND, ID_DEBUG_ANALYZE);
 }
 
 LRESULT CMainFrame::OnInitMenuPopup(UINT, WPARAM wParam, LPARAM, BOOL& bHandled) {
@@ -994,6 +1024,7 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_VIEW_DRIVERS, IDI_DLL },
 		{ ID_VIEW_OBJECTS, IDI_STRUCT },
 		{ ID_VIEW_IRPS, IDI_EVENT },
+		{ ID_VIEW_ANALYSIS, IDI_FIND },
 		{ ID_VIEW_MEMORY2, IDI_MEMORY },
 		{ ID_VIEW_MEMORY3, IDI_MEMORY },
 		{ ID_VIEW_MEMORY4, IDI_MEMORY },
@@ -1105,6 +1136,7 @@ void CMainFrame::UpdateUI(bool force) {
 	UIEnable(ID_DEBUG_STOP, attached, force);
 	UIEnable(ID_DEBUG_DETACH, session.HasTarget() && !isDump, force);
 	UIEnable(ID_DEBUG_SAVEDUMP, (target & TargetType::Live) == TargetType::Live && session.IsBroken() && !session.IsBusy(), force);
+	UIEnable(ID_DEBUG_ANALYZE, session.HasTarget() && !session.IsRunning() && !session.IsBusy(), force);
 	// (Recent Targets is made when it opens, OnInitMenuPopup; its first item is in the menu resource, so it is CAutoUpdateUI's
 	// as well, which would otherwise enable it)
 	UIEnable(ID_FILE_RECENT1, canStart && !RecentTargets::Load().empty(), force);

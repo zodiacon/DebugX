@@ -24,6 +24,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AnalysisView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
     <ClCompile Include="IrpsView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -143,6 +146,9 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AnalysisView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
     <ClInclude Include="IrpsView.h">
       <Filter>Views</Filter>
     </ClInclude>
