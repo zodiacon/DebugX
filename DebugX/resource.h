@@ -44,6 +44,7 @@
 #define IDI_MEMORY                      241
 #define IDD_ATTACHKERNEL                242
 #define IDD_EXCEPTIONS                  243
+#define IDD_SYMBOLPATHS                 244
 #define IDI_WINDOW_CLOSE                238
 #define IDI_ICON3                       239
 #define IDI_WINDOW_CLOSEALL             239
@@ -78,6 +79,11 @@
 #define IDC_EXADD                       1029
 #define IDC_EXREMOVE                    1030
 #define IDC_EXRESET                     1031
+#define IDC_SYMPATH                     1032
+#define IDC_SRCPATH                     1033
+#define IDC_SYMSERVER                   1034
+#define IDC_SYMFOLDER                   1035
+#define IDC_SRCFOLDER                   1036
 #define ID_WINDOW_CLOSE                 32772
 #define ID_WINDOW_CLOSE_ALL             32773
 #define ID_FILE_DUMMY                   32775
@@ -113,6 +119,9 @@
 #define ID_VIEW_DISASSEMBLY             32805
 #define ID_DEBUG_RUNTOCURSOR            32806
 #define ID_DISASM_TOGGLEBREAKPOINT      32807
+#define ID_OPTIONS_SYMBOLPATHS          32812
+#define ID_DEBUG_RELOADSYMBOLS          32813
+#define ID_FILE_OPENSOURCE              32814
 #define ID_VIEW_LOCALS                  32808
 #define ID_VIEW_WATCH                   32809
 #define ID_BREAKPOINT_EDIT              32810
@@ -122,9 +131,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        244
-#define _APS_NEXT_COMMAND_VALUE         32812
-#define _APS_NEXT_CONTROL_VALUE         1032
+#define _APS_NEXT_RESOURCE_VALUE        245
+#define _APS_NEXT_COMMAND_VALUE         32815
+#define _APS_NEXT_CONTROL_VALUE         1037
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

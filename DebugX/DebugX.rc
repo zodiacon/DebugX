@@ -54,6 +54,7 @@ BEGIN
     POPUP "&File"
     BEGIN
         MENUITEM "&Open Dump File...\tCtrl+O",  ID_FILE_OPEN
+        MENUITEM "Open &Source File...\tCtrl+Shift+O", ID_FILE_OPENSOURCE
         MENUITEM SEPARATOR
         MENUITEM "E&xit",                       ID_APP_EXIT
     END
@@ -98,15 +99,19 @@ BEGIN
         MENUITEM "&Step Over\tF10",             ID_DEBUG_STEPOVER
         MENUITEM "Ste&p Into\tF11",             ID_DEBUG_STEPINTO
         MENUITEM "Step &Out\tShift+F11",        ID_DEBUG_STEPOUT
+        MENUITEM "Run to &Cursor\tCtrl+F10",     ID_DEBUG_RUNTOCURSOR
         MENUITEM SEPARATOR
         MENUITEM "Add &Breakpoint...\tF9",       ID_DEBUG_ADDBREAKPOINT
         MENUITEM "E&xception Settings...\tCtrl+Alt+E", ID_DEBUG_EXCEPTIONS
+        MENUITEM "&Reload Symbols",             ID_DEBUG_RELOADSYMBOLS
     END
     POPUP "&Options"
     BEGIN
         MENUITEM "&Always on Top",              ID_OPTIONS_ALWAYSONTOP
         MENUITEM "Dar&k Mode",                  ID_OPTIONS_DARKMODE
         MENUITEM "&Debugger Markup Language",   ID_OPTIONS_DEBUGGERMARKUPLANGUAGE
+        MENUITEM SEPARATOR
+        MENUITEM "&Symbol and Source Paths...", ID_OPTIONS_SYMBOLPATHS
     END
     POPUP "&Window"
     BEGIN
@@ -283,6 +288,22 @@ BEGIN
     PUSHBUTTON      "  Cancel",IDCANCEL,148,55,54,14,BS_FLAT
 END
 
+IDD_SYMBOLPATHS DIALOGEX 0, 0, 340, 214
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Symbol and Source Paths"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "&Symbol path (one entry per line: a folder, or srv*cache*server):",IDC_STATIC,7,7,326,8
+    EDITTEXT        IDC_SYMPATH,7,19,326,60,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL
+    PUSHBUTTON      "Add &Microsoft Symbol Server",IDC_SYMSERVER,7,83,120,14,BS_FLAT
+    PUSHBUTTON      "Add &Folder...",IDC_SYMFOLDER,133,83,70,14,BS_FLAT
+    LTEXT           "S&ource path (folders to look for source files in, one per line):",IDC_STATIC,7,107,326,8
+    EDITTEXT        IDC_SRCPATH,7,119,326,50,ES_MULTILINE | ES_AUTOVSCROLL | ES_AUTOHSCROLL | ES_WANTRETURN | WS_VSCROLL
+    PUSHBUTTON      "Add Fo&lder...",IDC_SRCFOLDER,7,173,70,14,BS_FLAT
+    DEFPUSHBUTTON   "  OK",IDOK,111,193,56,14,BS_CENTER | BS_FLAT
+    PUSHBUTTON      "  Cancel",IDCANCEL,173,193,54,14,BS_FLAT
+END
+
 IDD_EXCEPTIONS DIALOGEX 0, 0, 400, 280
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Exception Settings"
@@ -370,6 +391,8 @@ BEGIN
     VK_CANCEL,      ID_DEBUG_BREAK,         VIRTKEY, CONTROL
     VK_F6,          ID_DEBUG_ATTACHTOPROCESS, VIRTKEY
     VK_F9,          ID_DEBUG_ADDBREAKPOINT, VIRTKEY
+    VK_F10,         ID_DEBUG_RUNTOCURSOR,   VIRTKEY, CONTROL
+    "O",            ID_FILE_OPENSOURCE,     VIRTKEY, SHIFT, CONTROL
     "E",            ID_DEBUG_EXCEPTIONS,    VIRTKEY, CONTROL, ALT
     VK_F10,         ID_DEBUG_STEPOVER,      VIRTKEY
     VK_F11,         ID_DEBUG_STEPINTO,      VIRTKEY

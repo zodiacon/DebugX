@@ -175,6 +175,19 @@ namespace DebugEngine {
 		std::wstring Text;
 	};
 
+	// where an address is in the source (GetSourceLocations)
+	struct SourceLocation {
+		std::wstring File;		// the source file as the symbols name it (where it was compiled); empty: no line information
+		std::wstring Path;		// the file on this machine (found through the source path, or File itself); empty: not found
+		ULONG Line{ 0 };		// 1-based
+	};
+
+	enum class StepKind {
+		Into,	// t
+		Over,	// p
+		Out		// gu
+	};
+
 	struct StackFrameInfo {
 		ULONG Index;
 		ULONG64 InstructionOffset;
@@ -325,6 +338,22 @@ namespace DebugEngine {
 		// resyncs). 'buffer' is resized to however many were actually decoded, which can be less than 'count'
 		// (e.g. unreadable memory).
 		Task<HRESULT> Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines);
+		// the source file and line of each address, in the same order (an address without line information gets an empty one)
+		Task<HRESULT> GetSourceLocations(std::vector<ULONG64> offsets, std::vector<SourceLocation>& locations);
+		// Steps the current thread (and waits for the step to end): by a source line where the thread is in code that has
+		// line information and 'bySourceLine' is set, else by an instruction. The engine's own code level (l+t / l-t,
+		// which p and t typed in the Command view go by) is left as it was.
+		Task<HRESULT> Step(StepKind kind, bool bySourceLine);
+
+		// The engine's symbol and source paths, as .sympath and .srcpath have them ("srv*C:\Symbols*https://...;C:\src").
+		// They are the engine's, not a session's: they carry over from one target to the next.
+		Task<HRESULT> GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath);
+		Task<HRESULT> SetSymbolPath(PCWSTR path);
+		Task<HRESULT> SetSourcePath(PCWSTR path);
+		// .reload: the symbols of the modules are looked up again (each when it is next needed); ContextChanged follows
+		// for a stopped target, so that what shows symbols catches up
+		Task<HRESULT> ReloadSymbols();
+
 		// a debugger expression (register, symbol, C-like arithmetic, ...), as typed at the command prompt
 		Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);
 		// reads target memory; 'buffer' is resized to however many bytes were actually read (can be less than

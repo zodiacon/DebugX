@@ -54,6 +54,15 @@
     <ClCompile Include="EventFilterText.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="SymbolPathsDlg.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="SourceView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="SourceDocuments.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
     <ClCompile Include="WatchView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -141,6 +150,15 @@
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="EventFilterText.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="SymbolPathsDlg.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="SourceView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="SourceDocuments.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="WatchView.h">

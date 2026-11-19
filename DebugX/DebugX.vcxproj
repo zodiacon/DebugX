@@ -230,6 +230,9 @@
     <ClCompile Include="WatchView.cpp" />
     <ClCompile Include="ExceptionSettingsDlg.cpp" />
     <ClCompile Include="EventFilterText.cpp" />
+    <ClCompile Include="SymbolPathsDlg.cpp" />
+    <ClCompile Include="SourceView.cpp" />
+    <ClCompile Include="SourceDocuments.cpp" />
     <ClCompile Include="BreakpointsView.cpp" />
     <ClCompile Include="CallStackView.cpp" />
     <ClCompile Include="ModulesView.cpp" />
@@ -267,6 +270,9 @@
     <ClInclude Include="WatchView.h" />
     <ClInclude Include="ExceptionSettingsDlg.h" />
     <ClInclude Include="EventFilterText.h" />
+    <ClInclude Include="SymbolPathsDlg.h" />
+    <ClInclude Include="SourceView.h" />
+    <ClInclude Include="SourceDocuments.h" />
     <ClInclude Include="BreakpointsView.h" />
     <ClInclude Include="CallStackView.h" />
     <ClInclude Include="ListPane.h" />

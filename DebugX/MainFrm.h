@@ -6,6 +6,7 @@
 
 #include "DebugManager.h"
 #include "Lifetime.h"
+#include "SourceDocuments.h"
 
 class CMainFrame :
 	public CFrameWindowImpl<CMainFrame>,
@@ -47,6 +48,9 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOUT, OnDebugStepOut)
 		COMMAND_ID_HANDLER(ID_DEBUG_ADDBREAKPOINT, OnDebugAddBreakpoint)
 		COMMAND_ID_HANDLER(ID_DEBUG_EXCEPTIONS, OnDebugExceptions)
+		COMMAND_ID_HANDLER(ID_DEBUG_RELOADSYMBOLS, OnReloadSymbols)
+		COMMAND_ID_HANDLER(ID_FILE_OPENSOURCE, OnOpenSourceFile)
+		COMMAND_ID_HANDLER(ID_OPTIONS_SYMBOLPATHS, OnSymbolPaths)
 		COMMAND_ID_HANDLER(ID_VIEW_COMMAND, OnViewPane)
 		COMMAND_ID_HANDLER(ID_VIEW_THREADS, OnViewPane)
 		COMMAND_ID_HANDLER(ID_VIEW_PROCESSES, OnViewPane)
@@ -97,6 +101,13 @@ private:
 	DebugEngine::Task<void> ApplySavedEventFilters();
 	// nothing is being debugged, and nothing is on its way to being
 	bool CanStartSession() const;
+	DebugEngine::Task<void> EditSymbolPaths();
+	// the symbol and source paths the user saved, given to the engine (at startup)
+	void ApplySavedSymbolPaths();
+	// F10 / F11 / Shift+F11: by source line, unless the Disassembly window is the one in use
+	void Step(DebugEngine::StepKind kind);
+	// the id of the pane that has (or last had) the focus; empty if none
+	std::wstring ActivePaneId() const;
 
 private:
 	LRESULT OnForward(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -129,8 +140,12 @@ private:
 	LRESULT OnDebugStepOut(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugAddBreakpoint(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugExceptions(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnReloadSymbols(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnOpenSourceFile(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnSymbolPaths(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
 private:
 	WTLDock::CDockHost m_Dock;
+	SourceDocuments m_Sources;
 	Lifetime m_Lifetime;
 };

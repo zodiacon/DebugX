@@ -19,6 +19,8 @@
 #include "AttachKernelDlg.h"
 #include "ExceptionSettingsDlg.h"
 #include "EventFilterText.h"
+#include "SymbolPathsDlg.h"
+#include "SourceView.h"
 
 using namespace DebugEngine;
 using namespace WTLDock;
@@ -117,6 +119,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 		DebugManager::DebuggerX().SetDmlEnabled(false);
 	UISetCheck(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, AppSettings::Get().Dml() != 0);
 	ApplySavedEventFilters();
+	ApplySavedSymbolPaths();
 
 	ApplyTheme();
 	// (the panes and the saved layout come after WM_CREATE: see InitDock)
@@ -127,6 +130,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 
 LRESULT CMainFrame::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled) {
 	DebugManager::Session().RemoveObserver(this);
+	m_Sources.Term();
 	AppSettings::Get().Save();
 
 	// unregister message filtering and idle updates
@@ -349,21 +353,107 @@ LRESULT CMainFrame::OnDebugStop(WORD, WORD, HWND, BOOL&) {
 }
 
 LRESULT CMainFrame::OnDebugStepOver(WORD, WORD, HWND, BOOL&) {
-	if (DebugManager::Session().CanRun())
-		DebugManager::DebuggerX().ExecuteCommand(L"p");
+	Step(StepKind::Over);
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStepInto(WORD, WORD, HWND, BOOL&) {
-	if (DebugManager::Session().CanRun())
-		DebugManager::DebuggerX().ExecuteCommand(L"t");
+	Step(StepKind::Into);
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStepOut(WORD, WORD, HWND, BOOL&) {
-	if (DebugManager::Session().CanRun())
-		DebugManager::DebuggerX().ExecuteCommand(L"gu");
+	Step(StepKind::Out);
 	return 0;
+}
+
+std::wstring CMainFrame::ActivePaneId() const {
+	auto pane = m_Dock.ActivePane();
+	return pane ? pane->Id() : std::wstring();
+}
+
+void CMainFrame::Step(StepKind kind) {
+	if (DebugManager::Session().CanRun())
+		DebugManager::DebuggerX().Step(kind, ActivePaneId() != L"disassembly");
+}
+
+LRESULT CMainFrame::OnReloadSymbols(WORD, WORD, HWND, BOOL&) {
+	auto& session = DebugManager::Session();
+	if (session.HasTarget() && !session.IsRunning())
+		DebugManager::DebuggerX().ReloadSymbols();
+	return 0;
+}
+
+LRESULT CMainFrame::OnOpenSourceFile(WORD, WORD, HWND, BOOL&) {
+	CFileDialog dlg(TRUE, nullptr, nullptr, OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_ENABLESIZING,
+		L"C/C++ Files (*.c;*.cpp;*.cxx;*.cc;*.h;*.hpp;*.inl)\0*.c;*.cpp;*.cxx;*.cc;*.h;*.hpp;*.inl\0All Files\0*.*\0", *this);
+	// the system's file picker does not take the dark mode hook
+	WTLHelper::SuspendHook();
+	auto ok = dlg.DoModal() == IDOK;
+	WTLHelper::ResumeHook();
+	if (ok && !m_Sources.Open(dlg.m_szFileName, 0, true))
+		AtlMessageBox(*this, L"Failed to open the file", IDS_TITLE, MB_ICONERROR);
+	return 0;
+}
+
+LRESULT CMainFrame::OnSymbolPaths(WORD, WORD, HWND, BOOL&) {
+	// (the engine's thread is in WaitForEvent while the target runs: the paths could not be read until it stops)
+	if (DebugManager::Session().IsRunning()) {
+		::MessageBeep(MB_ICONWARNING);
+		return 0;
+	}
+	EditSymbolPaths();
+	return 0;
+}
+
+Task<void> CMainFrame::EditSymbolPaths() {
+	auto alive = m_Lifetime.Watch();
+	auto& dbg = DebugManager::DebuggerX();
+
+	std::wstring symbolPath, sourcePath;
+	auto hr = co_await dbg.GetSymbolPaths(symbolPath, sourcePath);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		AtlMessageBox(*this, L"Failed to read the symbol and source paths from the engine", IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+
+	CSymbolPathsDlg dlg(symbolPath, sourcePath);
+	if (dlg.DoModal(m_hWnd) != IDOK)
+		co_return;
+
+	auto newSymbolPath = dlg.GetSymbolPath(), newSourcePath = dlg.GetSourcePath();
+	if (newSymbolPath != symbolPath)
+		hr = co_await dbg.SetSymbolPath(newSymbolPath.c_str());
+	if (SUCCEEDED(hr) && newSourcePath != sourcePath)
+		hr = co_await dbg.SetSourcePath(newSourcePath.c_str());
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"Failed to change the paths (0x%08X)", static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+	AppSettings::Get().SymbolPath(newSymbolPath);
+	AppSettings::Get().SourcePath(newSourcePath);
+
+	// symbols that were looked for (and not found) with the old path are looked for again; with them, what the panes
+	// show (ReloadSymbols says the context has changed); a new source path may find files that were not found
+	auto& session = DebugManager::Session();
+	if (newSymbolPath != symbolPath && session.HasTarget() && !session.IsRunning())
+		co_await dbg.ReloadSymbols();
+	else if (newSourcePath != sourcePath && session.HasTarget() && session.IsBroken())
+		m_Sources.OnContextChanged();
+}
+
+void CMainFrame::ApplySavedSymbolPaths() {
+	auto& settings = AppSettings::Get();
+	if (!settings.SymbolPath().empty())
+		DebugManager::DebuggerX().SetSymbolPath(settings.SymbolPath().c_str());
+	if (!settings.SourcePath().empty())
+		DebugManager::DebuggerX().SetSourcePath(settings.SourcePath().c_str());
 }
 
 bool CMainFrame::CanStartSession() const {
@@ -430,6 +520,13 @@ Task<void> CMainFrame::ApplySavedEventFilters() {
 LRESULT CMainFrame::OnDebugAddBreakpoint(WORD, WORD, HWND, BOOL&) {
 	if (!DebugManager::Session().HasTarget())
 		return 0;
+
+	// F9 in a source file is on the line with the caret, as in other debuggers
+	if (SourceDocuments::IsSourceId(ActivePaneId())) {
+		if (auto pane = m_Dock.ActivePane(); pane->hWnd)
+			::SendMessage(pane->hWnd, WM_COMMAND, ID_DISASM_TOGGLEBREAKPOINT, 0);
+		return 0;
+	}
 
 	CBreakpointDlg dlg;
 	if (dlg.DoModal(m_hWnd) == IDOK)
@@ -550,6 +647,7 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_VIEW_DISASSEMBLY, IDI_STRUCT },
 		{ ID_VIEW_LOCALS, IDI_TOOL },
 		{ ID_VIEW_WATCH, IDI_FIND },
+		{ ID_FILE_OPENSOURCE, IDI_OPEN },
 		{ ID_DEBUG_ATTACHTOPROCESS, IDI_PROCESS_ADD },
 		{ ID_DEBUG_RUNEXECUTABLE, IDI_PROCESS_NEW },
 		{ ID_DEBUG_ATTACHTOLOCALKERNEL, IDI_LOCAL_KERNEL },
@@ -575,10 +673,20 @@ void CMainFrame::ApplyTheme() {
 }
 
 void CMainFrame::InitDock() {
-	m_Dock.SetContentFactory([](DockPane& pane, HWND parent) -> HWND {
+	m_Sources.Init(m_Dock, m_hWndStatusBar);
+	m_Dock.SetContentFactory([this](DockPane& pane, HWND parent) -> HWND {
+		if (SourceDocuments::IsSourceId(pane.Id()))
+			return m_Sources.CreateView(pane, parent);
 		auto info = PaneRegistry::Get().Find(pane.Id());
 		return info ? PaneRegistry::Get().CreatePane(*info, parent) : nullptr;
 		});
+	// the source files that were open last time (the layout names them; their panes are made as it is loaded)
+	m_Dock.SetPaneFactory([this](DockLayout& layout, const std::wstring& id) {
+		return m_Sources.MakePane(layout, id);
+		});
+	m_Dock.OnPaneClosed = [this](DockPane* pane) {
+		m_Sources.OnPaneClosed(pane);
+		};
 
 	auto& registry = PaneRegistry::Get();
 	registry.LoadStates(AppSettings::Get().PaneStates());
@@ -637,6 +745,9 @@ void CMainFrame::UpdateUI(bool force) {
 	UIEnable(ID_DEBUG_STEPOVER, canRun, force);
 	UIEnable(ID_DEBUG_STEPINTO, canRun, force);
 	UIEnable(ID_DEBUG_STEPOUT, canRun, force);
+	UIEnable(ID_DEBUG_RUNTOCURSOR, canRun, force);
+	UIEnable(ID_DEBUG_RELOADSYMBOLS, session.HasTarget() && !session.IsRunning(), force);
+	UIEnable(ID_OPTIONS_SYMBOLPATHS, !session.IsRunning(), force);
 
 	// a pane of a target that is not there is not for showing
 	for (auto& info : PaneRegistry::Get().Panes())

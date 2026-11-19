@@ -144,6 +144,12 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> SetBreakpointEnabled(ULONG id, bool enabled);
 	Task<HRESULT> GetInstructionOffset(ULONG64& offset);
 	Task<HRESULT> Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines);
+	Task<HRESULT> GetSourceLocations(std::vector<ULONG64> offsets, std::vector<SourceLocation>& locations);
+	Task<HRESULT> Step(StepKind kind, bool bySourceLine);
+	Task<HRESULT> GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath);
+	Task<HRESULT> SetSymbolPath(PCWSTR path);
+	Task<HRESULT> SetSourcePath(PCWSTR path);
+	Task<HRESULT> ReloadSymbols();
 	Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);
 	Task<HRESULT> ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size);
 	Task<HRESULT> WriteMemory(ULONG64 address, std::vector<BYTE> data);
@@ -213,6 +219,16 @@ private:
 	HRESULT EnumThreads(const ProcessInfo& pi, std::vector<ThreadInfo>& threads, ULONG currentThread);
 	void PostContextChanged();
 	void PostScopeChanged();
+	// the index of the current scope frame (debug thread)
+	HRESULT GetScopeFrameIndex(ULONG& index);
+	// (debug thread) Step's helpers: whether the current thread is on a source line / at a jmp; one step command at a code level
+	bool HasLineAtIp(ULONG* line = nullptr, std::wstring* file = nullptr, ULONG64* displacement = nullptr);
+	bool IsJumpAtIp();
+	// whether the instruction before the current thread's is a call that ends where the thread is
+	bool IsAfterCall();
+	// the mnemonic of the instruction at 'offset' ("jmp"), and where it ends; empty if it does not disassemble
+	std::wstring MnemonicAt(ULONG64 offset, ULONG64& end);
+	HRESULT StepOnce(PCWSTR command, ULONG level);
 	// flattens the group into rows, expanding the entries whose path is in 'expanded' (debug thread)
 	HRESULT WalkSymbolGroup(IDebugSymbolGroup2* group, const std::set<std::wstring>& expanded, std::vector<SymbolEntry>& entries);
 
@@ -239,6 +255,8 @@ private:
 	// the debug thread only
 	bool m_StateChanged{ false };
 	bool m_BreakpointHit{ false };
+	// breakpoints (the user's) that broke, and exceptions: Step can tell a stop of its own from one of these
+	ULONG m_StopEvents{ 0 };
 	// while the engine's current thread is switched by the debugger itself (looking at the threads), nobody is told
 	int m_InternalSwitch{ 0 };
 	// while WriteMemory writes: it tells of the change itself
@@ -312,6 +330,11 @@ private:
 		}
 		m_BreakpointHit = true;
 		m_StateChanged = true;
+		// (the engine's own breakpoints -- the one gu or "g <address>" runs to -- come here too; they are not in its list)
+		ULONG id;
+		CComPtr<IDebugBreakpoint> listed;
+		if (SUCCEEDED(Bp->GetId(&id)) && SUCCEEDED(m_spControl->GetBreakpointById(id, &listed)) && listed.p == Bp)
+			m_StopEvents++;
 
 		auto data = new BreakpointData;
 		data->Breakpoint = Bp;
@@ -321,6 +344,7 @@ private:
 	}
 	virtual HRESULT __stdcall Exception(PEXCEPTION_RECORD64 Exception, ULONG FirstChance) override {
 		m_StateChanged = true;
+		m_StopEvents++;
 
 		auto data = new ExceptionData{ Exception->ExceptionCode, Exception->ExceptionAddress, FirstChance != 0 };
 		m_spSystem->GetCurrentThreadSystemId(&data->ThreadId);
@@ -641,6 +665,10 @@ HRESULT DebuggerX::Impl::CreateInternal() {
 	HR(m_spClient->SetEventCallbacks(this));
 	HR(m_spClient->SetOutputCallbacksWide(this));
 	m_spControl->AddEngineOptions(DEBUG_ENGOPT_PREFER_DML);
+	// source lines (.lines): the Source view, stepping by line, `file:line` expressions -- which work without it, but
+	// with "Line information loading disabled" each time
+	constexpr ULONG SymOptLoadLines = 0x10;		// SYMOPT_LOAD_LINES (DbgHelp.h; not in DbgEng.h)
+	m_spSymbols->AddSymbolOptions(SymOptLoadLines);
 	// (what Exception Settings' Reset goes back to; and the names of the exceptions the engine knows)
 	ReadEventFilters(m_DefaultFilters);
 	return S_OK;
@@ -757,9 +785,20 @@ void DebuggerX::Impl::PostContextChanged() {
 		PostNotification(DebuggerNotificationType::ContextChanged, new ContextData{ id });
 }
 
+HRESULT DebuggerX::Impl::GetScopeFrameIndex(ULONG& index) {
+	if (SUCCEEDED(m_spSymbols->GetCurrentScopeFrameIndex(&index)))
+		return S_OK;
+	// (the dbgeng.dll that comes with Windows fails GetCurrentScopeFrameIndex -- E_OUTOFMEMORY -- for any frame; the
+	// scope's own stack frame has the number)
+	DEBUG_STACK_FRAME frame{};
+	HR(m_spSymbols->GetScope(nullptr, &frame, nullptr, 0));
+	index = frame.FrameNumber;
+	return S_OK;
+}
+
 void DebuggerX::Impl::PostScopeChanged() {
 	ULONG frame = 0;
-	if (m_spSymbols && SUCCEEDED(m_spSymbols->GetCurrentScopeFrameIndex(&frame)))
+	if (m_spSymbols && SUCCEEDED(GetScopeFrameIndex(frame)))
 		PostNotification(DebuggerNotificationType::ScopeChanged, new ScopeData{ frame });
 }
 
@@ -976,7 +1015,7 @@ Task<HRESULT> DebuggerX::Impl::EnumProcesses(std::vector<ProcessInfo>& processes
 		struct Switching {
 			Switching(Impl* self) : Self(self) {
 				++Self->m_InternalSwitch;
-				if (FAILED(Self->m_spSymbols->GetCurrentScopeFrameIndex(&Frame)))
+				if (FAILED(Self->GetScopeFrameIndex(Frame)))
 					Frame = 0;
 			}
 			~Switching() {
@@ -1070,7 +1109,7 @@ Task<HRESULT> DebuggerX::Impl::SetScopeFrame(ULONG frameIndex) {
 Task<HRESULT> DebuggerX::Impl::GetScope(ULONG64& instructionOffset, ULONG& frameIndex) {
 	co_return co_await Run([this, &instructionOffset, &frameIndex] {
 		HR(m_spSymbols->GetScope(&instructionOffset, nullptr, nullptr, 0));
-		return m_spSymbols->GetCurrentScopeFrameIndex(&frameIndex);
+		return GetScopeFrameIndex(frameIndex);
 		});
 }
 
@@ -1293,6 +1332,180 @@ Task<HRESULT> DebuggerX::Impl::Evaluate(PCWSTR expression, ULONG64& value) {
 		DEBUG_VALUE dv{};
 		HR(m_spControl->EvaluateWide(expression.c_str(), DEBUG_VALUE_INT64, &dv, nullptr));
 		value = dv.I64;
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::GetSourceLocations(std::vector<ULONG64> offsets, std::vector<SourceLocation>& locations) {
+	co_return co_await Run([this, offsets = std::move(offsets), &locations] {
+		locations.clear();
+		locations.resize(offsets.size());
+		// (several addresses are usually in the same few files: each is looked for once)
+		std::map<std::wstring, std::wstring> found;
+		WCHAR file[1024], path[1024];
+		for (size_t i = 0; i < offsets.size(); i++) {
+			ULONG line = 0;
+			if (FAILED(m_spSymbols->GetLineByOffsetWide(offsets[i], &line, file, _countof(file), nullptr, nullptr)) || !file[0])
+				continue;
+
+			auto& location = locations[i];
+			location.File = file;
+			location.Line = line;
+			auto it = found.find(location.File);
+			if (it == found.end()) {
+				std::wstring where;
+				// the source path first; then where it was compiled, which is where it is when it was built here
+				if (SUCCEEDED(m_spSymbols->FindSourceFileWide(0, file, DEBUG_FIND_SOURCE_BEST_MATCH | DEBUG_FIND_SOURCE_FULL_PATH,
+					nullptr, path, _countof(path), nullptr)))
+					where = path;
+				else if (auto attributes = ::GetFileAttributesW(file); attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+					where = file;
+				it = found.emplace(location.File, std::move(where)).first;
+			}
+			location.Path = it->second;
+		}
+		return S_OK;
+		});
+}
+
+bool DebuggerX::Impl::HasLineAtIp(ULONG* line, std::wstring* file, ULONG64* displacement) {
+	ULONG64 ip;
+	ULONG l;
+	WCHAR name[1024];
+	if (FAILED(m_spRegisters->GetInstructionOffset(&ip)) ||
+		FAILED(m_spSymbols->GetLineByOffsetWide(ip, line ? line : &l, name, _countof(name), nullptr, displacement)))
+		return false;
+	if (file)
+		*file = name;
+	return true;
+}
+
+std::wstring DebuggerX::Impl::MnemonicAt(ULONG64 offset, ULONG64& end) {
+	WCHAR text[256];
+	if (FAILED(m_spControl->DisassembleWide(offset, 0, text, _countof(text), nullptr, &end)))
+		return {};
+	// "00007ff7`2d27211c e96f540000      jmp     loop!Work (...)": the third word is the mnemonic
+	std::wstring_view rest(text);
+	for (int word = 0; word < 2; word++) {
+		auto next = rest.find_first_of(L" \t");
+		next = next == std::wstring_view::npos ? next : rest.find_first_not_of(L" \t", next);
+		if (next == std::wstring_view::npos)
+			return {};
+		rest.remove_prefix(next);
+	}
+	return std::wstring(rest.substr(0, rest.find_first_of(L" \t\r\n")));
+}
+
+bool DebuggerX::Impl::IsJumpAtIp() {
+	ULONG64 ip, end;
+	return SUCCEEDED(m_spRegisters->GetInstructionOffset(&ip)) && MnemonicAt(ip, end) == L"jmp";
+}
+
+bool DebuggerX::Impl::IsAfterCall() {
+	ULONG64 ip, end;
+	if (FAILED(m_spRegisters->GetInstructionOffset(&ip)))
+		return false;
+	// (x86/x64: a call is 2 to 7 bytes; one that ends right here is the one the thread came back from)
+	for (ULONG64 length = 2; length <= 7; length++) {
+		if (MnemonicAt(ip - length, end) == L"call" && end == ip)
+			return true;
+	}
+	return false;
+}
+
+HRESULT DebuggerX::Impl::StepOnce(PCWSTR command, ULONG level) {
+	m_spControl->SetCodeLevel(level);
+	HR(m_spControl->ExecuteWide(DEBUG_OUTCTL_ALL_CLIENTS, command, DEBUG_EXECUTE_DEFAULT));
+	// (the step is over when this returns: it waits for the target to stop)
+	DoPostCommand();
+	return S_OK;
+}
+
+Task<HRESULT> DebuggerX::Impl::Step(StepKind kind, bool bySourceLine) {
+	co_return co_await Run([this, kind, bySourceLine]() -> HRESULT {
+		ULONG previous = DEBUG_LEVEL_ASSEMBLY;
+		m_spControl->GetCodeLevel(&previous);
+		auto restore = wil::scope_exit([&] { m_spControl->SetCodeLevel(previous); });
+
+		// by source line only where there are lines: in code without them the engine would run on until it found some
+		if (kind == StepKind::Out || !bySourceLine || !HasLineAtIp())
+			return StepOnce(kind == StepKind::Into ? L"t" : kind == StepKind::Over ? L"p" : L"gu", DEBUG_LEVEL_ASSEMBLY);
+		if (kind == StepKind::Over)
+			return StepOnce(L"p", DEBUG_LEVEL_SOURCE);
+
+		// Into. What the engine does at a call depends on what is called: it may stop at a jump thunk (incremental linking,
+		// an import), at the first instruction of a function without lines, or step over such a function and stop
+		// right after the call, in the middle of the line. A thunk is followed to the function, a function without lines
+		// is stepped out of again, and the rest of the line is carried on with -- the way a source-level debugger steps
+		// into what has source and over what has not. A stop for anything else (a breakpoint, an exception) ends it there.
+		ULONG startLine = 0;
+		std::wstring startFile;
+		HasLineAtIp(&startLine, &startFile);
+		for (int round = 0; round < 8; round++) {
+			auto events = m_StopEvents;
+			HR(StepOnce(L"t", DEBUG_LEVEL_SOURCE));
+			for (int jump = 0; jump < 4 && m_Status == DEBUG_STATUS_BREAK && events == m_StopEvents && !HasLineAtIp() && IsJumpAtIp(); jump++)
+				HR(StepOnce(L"t", DEBUG_LEVEL_ASSEMBLY));
+			if (m_Status != DEBUG_STATUS_BREAK || events != m_StopEvents)
+				return S_OK;
+			ULONG line;
+			std::wstring file;
+			if (HasLineAtIp(&line, &file)) {
+				// still in the line it started from, right after a call: on with the line
+				if (line == startLine && _wcsicmp(file.c_str(), startFile.c_str()) == 0 && IsAfterCall())
+					continue;
+				return S_OK;
+			}
+
+			// where it gets back to (the thread is at the function's first instruction: the return address is on top of the
+			// stack -- the engine's GetReturnOffset unwinds, and not always well in code without symbols); if it stops
+			// anywhere else, something else stopped it
+			ULONG64 sp, returnAddress;
+			if (FAILED(m_spRegisters->GetStackOffset(&sp)) || FAILED(m_spData->ReadPointersVirtual(1, sp, &returnAddress)))
+				return S_OK;
+			HR(StepOnce(L"gu", DEBUG_LEVEL_ASSEMBLY));
+			ULONG64 ip;
+			if (m_Status != DEBUG_STATUS_BREAK || events != m_StopEvents || FAILED(m_spRegisters->GetInstructionOffset(&ip)) ||
+				ip != returnAddress || !HasLineAtIp())
+				return S_OK;
+		}
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath) {
+	co_return co_await Run([this, &symbolPath, &sourcePath] {
+		auto get = [](auto getter, std::wstring& text) -> HRESULT {
+			ULONG size = 0;
+			HR(getter(nullptr, 0, &size));
+			text.resize(size + 1);
+			HR(getter(text.data(), size + 1, &size));
+			text.resize(::wcslen(text.c_str()));
+			return S_OK;
+		};
+		HR(get([this](PWSTR buffer, ULONG size, ULONG* needed) { return m_spSymbols->GetSymbolPathWide(buffer, size, needed); }, symbolPath));
+		return get([this](PWSTR buffer, ULONG size, ULONG* needed) { return m_spSymbols->GetSourcePathWide(buffer, size, needed); }, sourcePath);
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetSymbolPath(PCWSTR path) {
+	co_return co_await Run([this, path = std::wstring(path)] {
+		return m_spSymbols->SetSymbolPathWide(path.c_str());
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::SetSourcePath(PCWSTR path) {
+	co_return co_await Run([this, path = std::wstring(path)] {
+		return m_spSymbols->SetSourcePathWide(path.c_str());
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::ReloadSymbols() {
+	co_return co_await Run([this] {
+		HR(m_spSymbols->ReloadWide(L""));
+		// (what the panes show of the current thread -- its stack, its locals, the source -- comes from the symbols)
+		if (m_Status == DEBUG_STATUS_BREAK)
+			PostContextChanged();
 		return S_OK;
 		});
 }
@@ -1529,6 +1742,30 @@ Task<HRESULT> DebuggerX::Disassemble(ULONG64 address, ULONG count, std::vector<D
 
 Task<HRESULT> DebuggerX::Evaluate(PCWSTR expression, ULONG64& value) {
 	return m_Impl->Evaluate(expression, value);
+}
+
+Task<HRESULT> DebuggerX::GetSourceLocations(std::vector<ULONG64> offsets, std::vector<SourceLocation>& locations) {
+	return m_Impl->GetSourceLocations(std::move(offsets), locations);
+}
+
+Task<HRESULT> DebuggerX::Step(StepKind kind, bool bySourceLine) {
+	return m_Impl->Step(kind, bySourceLine);
+}
+
+Task<HRESULT> DebuggerX::GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath) {
+	return m_Impl->GetSymbolPaths(symbolPath, sourcePath);
+}
+
+Task<HRESULT> DebuggerX::SetSymbolPath(PCWSTR path) {
+	return m_Impl->SetSymbolPath(path);
+}
+
+Task<HRESULT> DebuggerX::SetSourcePath(PCWSTR path) {
+	return m_Impl->SetSourcePath(path);
+}
+
+Task<HRESULT> DebuggerX::ReloadSymbols() {
+	return m_Impl->ReloadSymbols();
 }
 
 Task<HRESULT> DebuggerX::ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size) {
