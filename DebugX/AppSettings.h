@@ -17,6 +17,7 @@ struct AppSettings : Settings {
 		// (_NT_SYMBOL_PATH, _NT_SOURCE_PATH) stand
 		SETTING_STRING(SymbolPath, L"");
 		SETTING_STRING(SourcePath, L"");
+		SETTING_STRING(RecentTargets, L"");		// File > Recent Targets (RecentTargets.h), a line for each
 	END_SETTINGS
 
 	DEF_SETTING(DarkMode, int)
@@ -26,4 +27,5 @@ struct AppSettings : Settings {
 	DEF_SETTING_STRING(EventFilters)
 	DEF_SETTING_STRING(SymbolPath)
 	DEF_SETTING_STRING(SourcePath)
+	DEF_SETTING_STRING(RecentTargets)
 };

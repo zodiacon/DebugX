@@ -3,6 +3,7 @@
 #include "DebugManager.h"
 #include "BreakpointDlg.h"
 #include "InputDlg.h"
+#include "AppMessages.h"
 #include <format>
 #include <scintilla/ILexer.h>
 #include <lexilla/Lexilla.h>
@@ -372,6 +373,27 @@ LRESULT CSourceView::OnGoTo(WORD, WORD, HWND, BOOL&) {
 	return 0;
 }
 
+std::wstring CSourceView::WatchExpression() {
+	auto start = m_Text->SelectionStart(), end = m_Text->SelectionEnd();
+	if (start == end) {
+		// the word at the caret (letters, digits, _)
+		auto pos = m_Text->CurrentPos();
+		start = m_Text->WordStartPosition(pos, true);
+		end = m_Text->WordEndPosition(pos, true);
+	}
+	if (start == end || end - start > 200 || m_Text->LineFromPosition(start) != m_Text->LineFromPosition(end))
+		return {};
+	auto text = FromUtf8(m_Text->StringOfRange({ start, end }));
+	auto first = text.find_first_not_of(L" \t"), last = text.find_last_not_of(L" \t");
+	if (first == std::wstring::npos)
+		return {};
+	text = text.substr(first, last - first + 1);
+	// (a number or a keyword is not a watch)
+	if (iswdigit(text[0]))
+		return {};
+	return text;
+}
+
 LRESULT CSourceView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	CPoint pt(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 	if (pt.x == -1) {
@@ -398,12 +420,18 @@ LRESULT CSourceView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING, ID_EDIT_COPY, L"&Copy\tCtrl+C");
 	menu.AppendMenu(MF_STRING, ID_EDIT_GOTO, L"&Go to Line...\tCtrl+G");
+	enum { CmdAddWatch = 1 };
+	auto watch = WatchExpression();
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(watch.empty() ? (MF_STRING | MF_GRAYED) : MF_STRING, CmdAddWatch,
+		watch.empty() ? L"Add to &Watch" : std::format(L"Add to &Watch: {}", watch.size() > 40 ? watch.substr(0, 40) + L"..." : watch).c_str());
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
 		case ID_DISASM_TOGGLEBREAKPOINT: ToggleBreakpointAt(CaretLine()); break;
 		case ID_DEBUG_RUNTOCURSOR: RunToLine(CaretLine()); break;
 		case ID_DEBUG_SETNEXTSTATEMENT: SetNextStatement(CaretLine()); break;
 		case ID_EDIT_COPY: m_Text->Copy(); break;
 		case ID_EDIT_GOTO: PostMessage(WM_COMMAND, ID_EDIT_GOTO); break;
+		case CmdAddWatch: AddToWatch(m_hWnd, watch.c_str()); break;
 	}
 	return 0;
 }

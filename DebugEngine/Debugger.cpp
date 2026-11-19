@@ -150,7 +150,8 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath);
 	Task<HRESULT> SetSymbolPath(PCWSTR path);
 	Task<HRESULT> SetSourcePath(PCWSTR path);
-	Task<HRESULT> ReloadSymbols();
+	Task<HRESULT> ReloadSymbols(PCWSTR module);
+	Task<HRESULT> WriteDump(PCWSTR path, bool full);
 	Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);
 	Task<HRESULT> ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size);
 	Task<HRESULT> WriteMemory(ULONG64 address, std::vector<BYTE> data);
@@ -1517,13 +1518,35 @@ Task<HRESULT> DebuggerX::Impl::SetSourcePath(PCWSTR path) {
 		});
 }
 
-Task<HRESULT> DebuggerX::Impl::ReloadSymbols() {
-	co_return co_await Run([this] {
-		HR(m_spSymbols->ReloadWide(L""));
+Task<HRESULT> DebuggerX::Impl::ReloadSymbols(PCWSTR module) {
+	co_return co_await Run([this, args = module && *module ? std::wstring(L"/f ") + module : std::wstring()] {
+		HR(m_spSymbols->ReloadWide(args.c_str()));
 		// (what the panes show of the current thread -- its stack, its locals, the source -- comes from the symbols)
 		if (m_Status == DEBUG_STATUS_BREAK)
 			PostContextChanged();
 		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::WriteDump(PCWSTR path, bool full) {
+	const auto type = m_TargetType;
+	co_return co_await Run([this, path = std::wstring(path), full, type] {
+		if ((type & TargetType::Live) != TargetType::Live)
+			return E_NOTIMPL;
+		if (m_Status != DEBUG_STATUS_BREAK)
+			return E_UNEXPECTED;
+
+		ULONG qualifier, format = DEBUG_FORMAT_DEFAULT;
+		if ((type & TargetType::Kernel) == TargetType::Kernel)
+			qualifier = full ? DEBUG_KERNEL_FULL_DUMP : DEBUG_KERNEL_SMALL_DUMP;
+		else {
+			// a minidump either way; "full" is .dump /ma's: all the memory, handles, threads, unloaded modules
+			qualifier = DEBUG_USER_WINDOWS_SMALL_DUMP;
+			if (full)
+				format = DEBUG_FORMAT_USER_SMALL_FULL_MEMORY | DEBUG_FORMAT_USER_SMALL_HANDLE_DATA | DEBUG_FORMAT_USER_SMALL_UNLOADED_MODULES |
+					DEBUG_FORMAT_USER_SMALL_FULL_MEMORY_INFO | DEBUG_FORMAT_USER_SMALL_THREAD_INFO;
+		}
+		return m_spClient->WriteDumpFileWide(path.c_str(), 0, qualifier, format, L"Written by DebugX");
 		});
 }
 
@@ -1831,8 +1854,12 @@ Task<HRESULT> DebuggerX::SetSourcePath(PCWSTR path) {
 	return m_Impl->SetSourcePath(path);
 }
 
-Task<HRESULT> DebuggerX::ReloadSymbols() {
-	return m_Impl->ReloadSymbols();
+Task<HRESULT> DebuggerX::ReloadSymbols(PCWSTR module) {
+	return m_Impl->ReloadSymbols(module);
+}
+
+Task<HRESULT> DebuggerX::WriteDump(PCWSTR path, bool full) {
+	return m_Impl->WriteDump(path, full);
 }
 
 Task<HRESULT> DebuggerX::ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size) {

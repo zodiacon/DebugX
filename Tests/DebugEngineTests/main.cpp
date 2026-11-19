@@ -46,6 +46,7 @@ namespace {
 		{ "exc", ExceptionSuite },
 		{ "src", SourceSuite },
 		{ "next", NextStatementSuite },
+		{ "dump", DumpSuite },
 	};
 
 	// dbgeng.dll is delay-loaded: whichever is loaded first is the one the engine uses

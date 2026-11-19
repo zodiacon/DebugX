@@ -9,6 +9,7 @@
 #include "Lifetime.h"
 #include "SourceDocuments.h"
 #include "FindDlg.h"
+#include "AppMessages.h"
 
 class CMainFrame :
 	public CFrameWindowImpl<CMainFrame>,
@@ -35,6 +36,11 @@ public:
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 		MESSAGE_HANDLER(WM_CLOSE, OnClose)
+		MESSAGE_HANDLER(WM_INITMENUPOPUP, OnInitMenuPopup)
+		MESSAGE_HANDLER(WM_ADDWATCH, OnAddWatch)
+		COMMAND_RANGE_HANDLER(ID_FILE_RECENT1, ID_FILE_RECENT10, OnRecentTarget)
+		COMMAND_ID_HANDLER(ID_FILE_CLEARRECENT, OnClearRecent)
+		COMMAND_ID_HANDLER(ID_DEBUG_SAVEDUMP, OnSaveDump)
 		COMMAND_ID_HANDLER(ID_APP_EXIT, OnFileExit)
 		COMMAND_ID_HANDLER(ID_FILE_OPEN, OnOpenDumpFile)
 		COMMAND_ID_HANDLER(ID_DEBUG_ATTACHTOLOCALKERNEL, OnAttachLocalKernel)
@@ -97,7 +103,9 @@ private:
 	void UpdateUI(bool force = false);
 
 	DebugEngine::Task<void> RunExecutable(CString exePath, CString arguments, CString workingDir);
-	DebugEngine::Task<void> AttachToProcess(DWORD pid);
+	// (by the process name too, if it is known: what Recent Targets keeps)
+	DebugEngine::Task<void> AttachToProcess(DWORD pid, CString name = {});
+	DebugEngine::Task<void> SaveDump();
 	DebugEngine::Task<void> AttachLocalKernel();
 	DebugEngine::Task<void> AttachKernel(CString connection);
 	DebugEngine::Task<void> OpenDumpFile(CString path);
@@ -155,6 +163,11 @@ private:
 	LRESULT OnReloadSymbols(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnOpenSourceFile(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnSymbolPaths(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnInitMenuPopup(UINT, WPARAM wParam, LPARAM, BOOL& bHandled);
+	LRESULT OnAddWatch(UINT, WPARAM, LPARAM lParam, BOOL&);
+	LRESULT OnRecentTarget(WORD, WORD id, HWND, BOOL&);
+	LRESULT OnClearRecent(WORD, WORD, HWND, BOOL&);
+	LRESULT OnSaveDump(WORD, WORD, HWND, BOOL&);
 	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditFindAgain(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 

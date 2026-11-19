@@ -101,6 +101,19 @@ Task<void> SourceSuite(DebuggerX& dbg) {
 	co_await dbg.ReloadSymbols();
 	loc = co_await Where(dbg);
 	Check(loc.Line != 0, "lines back after restoring the symbol path");
+
+	// one module's symbols, now (Modules > Load Symbols)
+	auto symbolsOf = [&](PCWSTR name) -> Task<ULONG> {
+		std::vector<ModuleInfo> modules;
+		co_await dbg.EnumModules(modules);
+		auto it = std::find_if(modules.begin(), modules.end(), [=](auto& m) { return _wcsicmp(m.Name.c_str(), name) == 0; });
+		co_return it == modules.end() ? 99u : it->Symbols;
+	};
+	auto kernel32 = co_await symbolsOf(L"kernel32");
+	hr = co_await dbg.ReloadSymbols(L"kernel32.dll");
+	auto loaded = co_await symbolsOf(L"kernel32");
+	printf("  kernel32 symbols: %u -> %u\n", kernel32, loaded);
+	Check(SUCCEEDED(hr) && loaded != 99 && loaded != DEBUG_SYMTYPE_DEFERRED, "ReloadSymbols(kernel32.dll): kernel32's symbols are loaded");
 	co_await dbg.Stop();
 
 	// stepping into code without lines (an import) steps over it

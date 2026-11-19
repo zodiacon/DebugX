@@ -56,6 +56,11 @@ BEGIN
         MENUITEM "&Open Dump File...\tCtrl+O",  ID_FILE_OPEN
         MENUITEM "Open &Source File...\tCtrl+Shift+O", ID_FILE_OPENSOURCE
         MENUITEM SEPARATOR
+        POPUP "Recent &Targets"
+        BEGIN
+            MENUITEM "(none)",                      ID_FILE_RECENT1, GRAYED
+        END
+        MENUITEM SEPARATOR
         MENUITEM "E&xit",                       ID_APP_EXIT
     END
     POPUP "&Edit"
@@ -101,6 +106,7 @@ BEGIN
         MENUITEM "&Stop\tShift+F5",             ID_DEBUG_STOP
         MENUITEM "R&estart\tCtrl+Shift+F5",     ID_DEBUG_RESTART
         MENUITEM "&Detach",                     ID_DEBUG_DETACH
+        MENUITEM "Save D&ump...",               ID_DEBUG_SAVEDUMP
         MENUITEM SEPARATOR
         MENUITEM "&Step Over\tF10",             ID_DEBUG_STEPOVER
         MENUITEM "Ste&p Into\tF11",             ID_DEBUG_STEPINTO

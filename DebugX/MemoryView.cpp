@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "MemoryView.h"
 #include "DebugManager.h"
+#include <format>
 
 using namespace DebugEngine;
 
@@ -78,6 +79,69 @@ void CMemoryView::Go() {
 
 	m_Expression = expr;
 	RequestRefresh();
+}
+
+LRESULT CMemoryView::OnHexRightClick(int, LPNMHDR hdr, BOOL& handled) {
+	if (hdr->hwndFrom != m_Hex.GetHwnd()) {
+		handled = FALSE;
+		return 0;
+	}
+
+	enum { CmdSize1 = 1, CmdSize2, CmdSize4, CmdSize8, CmdLine16, CmdLine32 };
+	const auto size = m_Hex.GetDataSize();
+	const auto perLine = m_Hex.GetBytesPerLine();
+	CMenu menu;
+	menu.CreatePopupMenu();
+	auto radio = [&](UINT id, bool checked, PCWSTR text) {
+		menu.AppendMenu(MF_STRING | (checked ? MF_CHECKED : 0), id, text);
+	};
+	radio(CmdSize1, size == 1, L"&Bytes");
+	radio(CmdSize2, size == 2, L"&Words (2 bytes)");
+	radio(CmdSize4, size == 4, L"&Double Words (4 bytes)");
+	radio(CmdSize8, size == 8, L"&Quad Words (8 bytes)");
+	menu.AppendMenu(MF_SEPARATOR);
+	radio(CmdLine16, perLine == 16, L"&16 Bytes a Line");
+	radio(CmdLine32, perLine == 32, L"&32 Bytes a Line");
+
+	CPoint pt;
+	::GetCursorPos(&pt);
+	switch (auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+		case CmdSize1: case CmdSize2: case CmdSize4: case CmdSize8:
+			m_Hex.SetDataSize(1 << (cmd - CmdSize1));
+			break;
+		case CmdLine16: m_Hex.SetBytesPerLine(16); break;
+		case CmdLine32: m_Hex.SetBytesPerLine(32); break;
+	}
+	return 0;
+}
+
+std::wstring CMemoryView::SaveState() const {
+	return std::format(L"d={};l={};e={}", m_Hex.GetDataSize(), m_Hex.GetBytesPerLine(), (PCWSTR)m_Expression);
+}
+
+void CMemoryView::LoadState(PCWSTR state) {
+	// d=<data size>;l=<bytes a line>;e=<expression> (last: it could have a ';' in it)
+	std::wstring_view text(state ? state : L"");
+	while (!text.empty()) {
+		if (text.starts_with(L"e=")) {
+			CString expr(std::wstring(text.substr(2)).c_str());
+			if (!expr.IsEmpty()) {
+				m_Expression = expr;
+				m_AddressEdit.SetWindowText(m_Expression);
+			}
+			break;
+		}
+		auto end = text.find(L';');
+		auto item = text.substr(0, end);
+		auto value = _wtoi(std::wstring(item.substr(std::min<size_t>(2, item.size()))).c_str());
+		if (item.starts_with(L"d=") && (value == 1 || value == 2 || value == 4 || value == 8))
+			m_Hex.SetDataSize(value);
+		else if (item.starts_with(L"l=") && (value == 16 || value == 32))
+			m_Hex.SetBytesPerLine(value);
+		if (end == std::wstring_view::npos)
+			break;
+		text.remove_prefix(end + 1);
+	}
 }
 
 void CMemoryView::OnTargetEnded() {

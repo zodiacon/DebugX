@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SymbolPane.h"
+#include "AppMessages.h"
 #include "resource.h"
 
 // Expressions the user wants to see the value of, evaluated in the scope frame whenever the target stops. The last
@@ -11,6 +12,7 @@ public:
 	BEGIN_MSG_MAP(CWatchView)
 		NOTIFY_CODE_HANDLER(LVN_BEGINLABELEDIT, OnBeginLabelEdit)
 		NOTIFY_CODE_HANDLER(LVN_ENDLABELEDIT, OnEndLabelEdit)
+		MESSAGE_HANDLER(WM_ADDWATCH, OnAddWatch)
 		CHAIN_MSG_MAP(CSymbolPane<CWatchView>)
 	END_MSG_MAP()
 
@@ -39,6 +41,8 @@ public:
 private:
 	LRESULT OnBeginLabelEdit(int, LPNMHDR hdr, BOOL&);
 	LRESULT OnEndLabelEdit(int, LPNMHDR hdr, BOOL&);
+	// Add to Watch, from another pane (through the frame): lParam is the expression
+	LRESULT OnAddWatch(UINT, WPARAM, LPARAM lParam, BOOL&);
 
 	// the expression a row is the value of (its tree's root), or -1: a member of one, or the row for a new one
 	int ExpressionIndex(int row) const;

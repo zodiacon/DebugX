@@ -151,6 +151,21 @@ LRESULT CWatchView::OnEndLabelEdit(int, LPNMHDR hdr, BOOL& handled) {
 	return FALSE;
 }
 
+LRESULT CWatchView::OnAddWatch(UINT, WPARAM, LPARAM lParam, BOOL&) {
+	CString text(reinterpret_cast<PCWSTR>(lParam));
+	text.Trim();
+	text.Remove(Separator);
+	if (text.IsEmpty())
+		return 0;
+
+	m_Expressions.push_back((PCWSTR)text);
+	ExpressionsChanged();
+	// (its row: the last before the one for a new expression, once it is evaluated -- shown now, unevaluated or not)
+	m_List.SetItemState(-1, 0, LVIS_SELECTED);
+	m_List.EnsureVisible(m_List.GetItemCount() - 1, FALSE);
+	return 0;
+}
+
 void CWatchView::ExpressionsChanged() {
 	if (CanRefresh())
 		RequestRefresh();

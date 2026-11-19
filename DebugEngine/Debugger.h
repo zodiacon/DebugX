@@ -357,9 +357,13 @@ namespace DebugEngine {
 		Task<HRESULT> GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath);
 		Task<HRESULT> SetSymbolPath(PCWSTR path);
 		Task<HRESULT> SetSourcePath(PCWSTR path);
-		// .reload: the symbols of the modules are looked up again (each when it is next needed); ContextChanged follows
-		// for a stopped target, so that what shows symbols catches up
-		Task<HRESULT> ReloadSymbols();
+		// .reload: the symbols of the modules are looked up again (each when it is next needed); with a module (its image
+		// name, kernel32.dll), .reload /f: that one's are loaded now. ContextChanged follows for a stopped target, so that
+		// what shows symbols catches up.
+		Task<HRESULT> ReloadSymbols(PCWSTR module = nullptr);
+		// A dump file of a live target that is stopped (E_NOTIMPL for a dump, E_UNEXPECTED while it runs). User mode: a
+		// minidump, with all of the memory (and handles, threads...: .dump /ma) if 'full'. Kernel: a small or full one.
+		Task<HRESULT> WriteDump(PCWSTR path, bool full);
 
 		// a debugger expression (register, symbol, C-like arithmetic, ...), as typed at the command prompt
 		Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);

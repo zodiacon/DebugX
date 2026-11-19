@@ -33,6 +33,7 @@ public:
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		COMMAND_HANDLER(GoId, BN_CLICKED, OnGo)
 		COMMAND_ID_HANDLER(ID_EDIT_GOTO, OnGoTo)
+		NOTIFY_CODE_HANDLER(NM_RCLICK, OnHexRightClick)
 		CHAIN_MSG_MAP(CPaneBase<CMemoryView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(1)
@@ -48,6 +49,11 @@ public:
 
 	// ISessionObserver
 	void OnTargetEnded() override;
+
+	// IPane: the display format ("d=4;l=16": data size, bytes a line) and the address expression
+	std::wstring SaveState() const override;
+	void LoadState(PCWSTR state) override;
+
 	void OnSessionChanged() override {
 		UpdateWritable();
 	}
@@ -69,6 +75,8 @@ private:
 	LRESULT OnSize(UINT, WPARAM, LPARAM lParam, BOOL&);
 	LRESULT OnSetFocus(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnGo(WORD, WORD, HWND, BOOL&);
+	// the display format: bytes, words, double or quad words; 16 or 32 bytes a line
+	LRESULT OnHexRightClick(int, LPNMHDR hdr, BOOL& handled);
 	// Ctrl+G: the address box, its text selected to be typed over
 	LRESULT OnGoTo(WORD, WORD, HWND, BOOL&) {
 		m_AddressEdit.SetFocus();

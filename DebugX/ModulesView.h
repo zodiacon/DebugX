@@ -12,6 +12,8 @@ public:
 		return 0;
 	}
 	void DoSort(const SortInfo* si);
+	// Load Symbols, Open Containing Folder, Copy Path
+	bool OnRightClickList(HWND, int row, int col, POINT const& pt);
 
 	// ISessionObserver: the list is up to date at the next stop
 	void OnModuleLoaded(const DebugEngine::ModuleEventData&) override {
@@ -26,5 +28,7 @@ public:
 	DebugEngine::Task<void> Refresh();
 
 private:
+	DebugEngine::Task<void> LoadSymbols(std::wstring image);
+
 	std::vector<DebugEngine::ModuleInfo> m_Items;
 };

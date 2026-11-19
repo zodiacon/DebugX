@@ -104,6 +104,8 @@ private:
 	DebugEngine::Task<void> ToggleBreakpointAt(ULONG line);
 	DebugEngine::Task<void> RunToLine(ULONG line);
 	DebugEngine::Task<void> SetNextStatement(ULONG line);
+	// what Add to Watch adds: the selection (on one line), or else the word at the caret; empty if neither is one
+	std::wstring WatchExpression();
 
 	struct LineBreakpoint {
 		ULONG Id;

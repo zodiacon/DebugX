@@ -93,6 +93,7 @@
     <ClCompile Include="ExceptionTests.cpp" />
     <ClCompile Include="SourceTests.cpp" />
     <ClCompile Include="NextStatementTests.cpp" />
+    <ClCompile Include="DumpTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\DebugEngine\DebugEngine.vcxproj">

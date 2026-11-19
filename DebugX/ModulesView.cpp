@@ -73,6 +73,65 @@ void CModulesView::DoSort(const SortInfo* si) {
 		});
 }
 
+bool CModulesView::OnRightClickList(HWND, int row, int, POINT const& pt) {
+	if (row < 0 || row >= static_cast<int>(m_Items.size()))
+		return false;
+	m_List.SelectItem(row);
+	auto& m = m_Items[row];
+	auto& session = DebugManager::Session();
+	const auto attributes = ::GetFileAttributesW(m.ImageName.c_str());
+	const bool onDisk = attributes != INVALID_FILE_ATTRIBUTES && !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+
+	enum { CmdLoadSymbols = 1, CmdOpenFolder, CmdCopyPath };
+	CMenu menu;
+	menu.CreatePopupMenu();
+	menu.AppendMenu(session.HasTarget() && !session.IsRunning() ? MF_STRING : (MF_STRING | MF_GRAYED), CmdLoadSymbols, L"&Load Symbols");
+	menu.AppendMenu(onDisk ? MF_STRING : (MF_STRING | MF_GRAYED), CmdOpenFolder, L"&Open Containing Folder");
+	menu.AppendMenu(m.ImageName.empty() ? (MF_STRING | MF_GRAYED) : MF_STRING, CmdCopyPath, L"&Copy Path");
+	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+		case CmdLoadSymbols: {
+			// .reload /f takes the image's name (kernel32.dll)
+			auto image = m.ImageName.substr(m.ImageName.find_last_of(L"\\/") + 1);
+			LoadSymbols(image.empty() ? m.Name : image);
+			break;
+		}
+		case CmdOpenFolder: {
+			// Explorer with the file selected
+			auto args = L"/select,\"" + m.ImageName + L"\"";
+			::ShellExecuteW(m_hWnd, nullptr, L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+			break;
+		}
+		case CmdCopyPath:
+			if (OpenClipboard()) {
+				::EmptyClipboard();
+				auto size = (m.ImageName.size() + 1) * sizeof(wchar_t);
+				if (auto hData = ::GlobalAlloc(GMEM_MOVEABLE, size)) {
+					memcpy(::GlobalLock(hData), m.ImageName.c_str(), size);
+					::GlobalUnlock(hData);
+					if (!::SetClipboardData(CF_UNICODETEXT, hData))
+						::GlobalFree(hData);
+				}
+				::CloseClipboard();
+			}
+			break;
+	}
+	return true;
+}
+
+DebugEngine::Task<void> CModulesView::LoadSymbols(std::wstring image) {
+	auto alive = m_Lifetime.Watch();
+	auto hr = co_await DebugManager::DebuggerX().ReloadSymbols(image.c_str());
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"Failed to load the symbols of %s (0x%08X)", image.c_str(), static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+	}
+	// (the Symbols column: deferred no more)
+	RequestRefresh();
+}
+
 void CModulesView::OnTargetEnded() {
 	m_Items.clear();
 	UpdateList(0);

@@ -21,6 +21,9 @@
 #include "EventFilterText.h"
 #include "SymbolPathsDlg.h"
 #include "SourceView.h"
+#include "RecentTargets.h"
+#include <TlHelp32.h>
+#include <format>
 
 using namespace DebugEngine;
 using namespace WTLDock;
@@ -309,7 +312,8 @@ LRESULT CMainFrame::OnAttachProcess(WORD, WORD, HWND, BOOL&) {
 	CProcessSelectDlg dlg;
 	if (dlg.DoModal() == IDOK) {
 		CString name;
-		AttachToProcess(dlg.GetSelectedProcess(name));
+		auto pid = dlg.GetSelectedProcess(name);
+		AttachToProcess(pid, name);
 	}
 	return 0;
 }
@@ -668,11 +672,12 @@ Task<void> CMainFrame::RunExecutable(CString exePath, CString arguments, CString
 		co_return;
 	}
 	m_Launch = Launch{ exePath, arguments, workingDir };
+	RecentTargets::Add({ RecentTarget::Kind::Run, (PCWSTR)exePath, (PCWSTR)arguments, (PCWSTR)workingDir });
 	UpdateUI();
 	co_await dbg.OutputPrompt();
 }
 
-Task<void> CMainFrame::AttachToProcess(DWORD pid) {
+Task<void> CMainFrame::AttachToProcess(DWORD pid, CString name) {
 	auto alive = m_Lifetime.Watch();
 	auto& dbg = DebugManager::DebuggerX();
 
@@ -687,6 +692,8 @@ Task<void> CMainFrame::AttachToProcess(DWORD pid) {
 		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
 		co_return;
 	}
+	if (!name.IsEmpty())
+		RecentTargets::Add({ RecentTarget::Kind::Attach, (PCWSTR)name });
 	co_await dbg.OutputPrompt();
 }
 
@@ -703,6 +710,7 @@ Task<void> CMainFrame::AttachLocalKernel() {
 		AtlMessageBox(*this, L"Failed to attach to the local kernel", IDS_TITLE, MB_ICONERROR);
 		co_return;
 	}
+	RecentTargets::Add({ RecentTarget::Kind::LocalKernel });
 	co_await dbg.OutputPrompt();
 }
 
@@ -721,6 +729,7 @@ Task<void> CMainFrame::AttachKernel(CString connection) {
 		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
 		co_return;
 	}
+	RecentTargets::Add({ RecentTarget::Kind::Kernel, (PCWSTR)connection });
 	co_await dbg.OutputPrompt();
 }
 
@@ -739,7 +748,155 @@ Task<void> CMainFrame::OpenDumpFile(CString path) {
 		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
 		co_return;
 	}
+	RecentTargets::Add({ RecentTarget::Kind::Dump, (PCWSTR)path });
 	co_await dbg.OutputPrompt();
+}
+
+LRESULT CMainFrame::OnInitMenuPopup(UINT, WPARAM wParam, LPARAM, BOOL& bHandled) {
+	// (the rest of the menus are CAutoUpdateUI's)
+	bHandled = FALSE;
+	CMenuHandle menu(reinterpret_cast<HMENU>(wParam));
+	auto first = menu.GetMenuItemID(0);
+	if (first != ID_FILE_RECENT1 && first != ID_FILE_CLEARRECENT)
+		return 0;
+
+	// Recent Targets: made again each time it opens
+	while (menu.GetMenuItemCount() > 0)
+		menu.DeleteMenu(0, MF_BYPOSITION);
+	auto targets = RecentTargets::Load();
+	const UINT enabled = CanStartSession() ? MF_ENABLED : MF_GRAYED;
+	for (size_t i = 0; i < targets.size(); i++) {
+		auto text = (i < 9 ? std::format(L"&{} ", i + 1) : std::wstring(L"1&0 ")) + targets[i].MenuText();
+		menu.AppendMenu(MF_STRING | enabled, ID_FILE_RECENT1 + static_cast<UINT>(i), text.c_str());
+	}
+	if (targets.empty())
+		menu.AppendMenu(MF_STRING | MF_GRAYED, ID_FILE_RECENT1, L"(none)");
+	else {
+		menu.AppendMenu(MF_SEPARATOR);
+		menu.AppendMenu(MF_STRING, ID_FILE_CLEARRECENT, L"&Clear List");
+	}
+	return 0;
+}
+
+LRESULT CMainFrame::OnClearRecent(WORD, WORD, HWND, BOOL&) {
+	RecentTargets::Clear();
+	UpdateUI();
+	return 0;
+}
+
+LRESULT CMainFrame::OnRecentTarget(WORD, WORD id, HWND, BOOL&) {
+	auto targets = RecentTargets::Load();
+	const size_t index = id - ID_FILE_RECENT1;
+	if (index >= targets.size() || !CanStartSession()) {
+		::MessageBeep(MB_ICONWARNING);
+		return 0;
+	}
+
+	auto& target = targets[index];
+	switch (target.Type) {
+		case RecentTarget::Kind::Run:
+			RunExecutable(target.Path.c_str(), target.Arguments.c_str(), target.WorkingDir.c_str());
+			break;
+
+		case RecentTarget::Kind::Dump:
+			OpenDumpFile(target.Path.c_str());
+			break;
+
+		case RecentTarget::Kind::Kernel:
+			AttachKernel(target.Path.c_str());
+			break;
+
+		case RecentTarget::Kind::LocalKernel:
+			// (elevation is asked for there)
+			PostMessage(WM_COMMAND, ID_DEBUG_ATTACHTOLOCALKERNEL);
+			break;
+
+		case RecentTarget::Kind::Attach: {
+			// the running process with that name, if there is just one
+			std::vector<DWORD> pids;
+			wil::unique_handle snapshot(::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
+			PROCESSENTRY32W pe{ sizeof(pe) };
+			if (snapshot && ::Process32FirstW(snapshot.get(), &pe)) {
+				do {
+					if (_wcsicmp(pe.szExeFile, target.Path.c_str()) == 0 && pe.th32ProcessID != ::GetCurrentProcessId())
+						pids.push_back(pe.th32ProcessID);
+				} while (::Process32NextW(snapshot.get(), &pe));
+			}
+			if (pids.size() == 1)
+				AttachToProcess(pids[0], target.Path.c_str());
+			else {
+				auto text = pids.empty() ? std::format(L"No process named {} is running.", target.Path)
+					: std::format(L"{} processes named {} are running: choose one with Attach to Process.", pids.size(), target.Path);
+				AtlMessageBox(*this, text.c_str(), IDS_TITLE, MB_ICONINFORMATION);
+			}
+			break;
+		}
+	}
+	return 0;
+}
+
+LRESULT CMainFrame::OnSaveDump(WORD, WORD, HWND, BOOL&) {
+	auto& session = DebugManager::Session();
+	if ((session.Target() & TargetType::Live) != TargetType::Live || !session.IsBroken() || session.IsBusy()) {
+		::MessageBeep(MB_ICONWARNING);
+		return 0;
+	}
+	SaveDump();
+	return 0;
+}
+
+Task<void> CMainFrame::SaveDump() {
+	auto alive = m_Lifetime.Watch();
+	auto& dbg = DebugManager::DebuggerX();
+	const bool kernel = (DebugManager::Session().Target() & TargetType::Kernel) == TargetType::Kernel;
+
+	// named after the process, and when
+	std::wstring name = L"kernel";
+	if (!kernel) {
+		std::vector<ProcessInfo> processes;
+		std::vector<ThreadInfo> threads;
+		co_await dbg.EnumProcesses(processes, threads);
+		if (!*alive)
+			co_return;
+		if (!processes.empty() && !processes[0].ImagePath.empty()) {
+			name = processes[0].ImagePath.substr(processes[0].ImagePath.find_last_of(L"\\/") + 1);
+			if (auto dot = name.find_last_of(L'.'); dot != std::wstring::npos)
+				name.erase(dot);
+		}
+	}
+	auto fileName = std::format(L"{}_{}.dmp", name, (PCWSTR)CTime::GetCurrentTime().Format(L"%Y%m%d_%H%M%S"));
+
+	// (which kind: the filter chosen)
+	CFileDialog dlg(FALSE, L"dmp", fileName.c_str(), OFN_EXPLORER | OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_ENABLESIZING,
+		kernel ? L"Full Kernel Dump (*.dmp)\0*.dmp\0Small Kernel Dump (*.dmp)\0*.dmp\0"
+			: L"Full Dump: all memory (*.dmp)\0*.dmp\0Minidump (*.dmp)\0*.dmp\0", *this);
+	WTLHelper::SuspendHook();
+	auto ok = dlg.DoModal() == IDOK;
+	WTLHelper::ResumeHook();
+	if (!ok)
+		co_return;
+	const bool full = dlg.m_ofn.nFilterIndex != 2;
+	std::wstring path(dlg.m_szFileName);
+
+	::SetWindowText(m_hWndStatusBar, std::format(L"Writing {}...", path).c_str());
+	auto hr = co_await dbg.WriteDump(path.c_str(), full);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		::SetWindowText(m_hWndStatusBar, L"Ready");
+		AtlMessageBox(*this, std::format(L"Failed to write {} (0x{:08X})", path, static_cast<unsigned>(hr)).c_str(), IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+	::SetWindowText(m_hWndStatusBar, std::format(L"Dump written: {}", path).c_str());
+}
+
+LRESULT CMainFrame::OnAddWatch(UINT, WPARAM, LPARAM lParam, BOOL&) {
+	// the Watch pane shown (made, the first time), then told
+	BOOL handled;
+	OnViewPane(0, ID_VIEW_WATCH, nullptr, handled);
+	if (auto pane = m_Dock.Layout().FindPane(L"watch"); pane && pane->hWnd)
+		::SendMessage(pane->hWnd, WM_ADDWATCH, 0, lParam);
+	return 0;
 }
 
 Task<void> CMainFrame::AddBreakpoint(BreakpointSettings settings) {
@@ -870,6 +1027,10 @@ void CMainFrame::UpdateUI(bool force) {
 	UIEnable(ID_DEBUG_BREAK, session.IsRunning() || session.IsBusy(), force);
 	UIEnable(ID_DEBUG_STOP, attached, force);
 	UIEnable(ID_DEBUG_DETACH, session.HasTarget() && !isDump, force);
+	UIEnable(ID_DEBUG_SAVEDUMP, (target & TargetType::Live) == TargetType::Live && session.IsBroken() && !session.IsBusy(), force);
+	// (Recent Targets is made when it opens, OnInitMenuPopup; its first item is in the menu resource, so it is CAutoUpdateUI's
+	// as well, which would otherwise enable it)
+	UIEnable(ID_FILE_RECENT1, canStart && !RecentTargets::Load().empty(), force);
 	UIEnable(ID_VIEW_REFRESH, session.HasTarget(), force);
 	UIEnable(ID_DEBUG_STEPOVER, canRun, force);
 	UIEnable(ID_DEBUG_STEPINTO, canRun, force);
