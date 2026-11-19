@@ -184,6 +184,24 @@ Task<void> CDisassemblyView::Refresh() {
 
 	std::vector<DisassemblyLine> lines;
 	auto goTo = m_GoToAddress;
+	// Nowhere to start: a local kernel has no instruction pointer (nothing stops there, nothing is "at" one) -- not
+	// address 0 and its ???s, but what there is to do
+	if (!goTo && !frameIp && !ip) {
+		m_LineAddresses.clear();
+		m_Breakpoints.clear();
+		m_ShownGoTo = 0;
+		auto text = ToUtf8(DebugManager::Session().Target() == TargetType::LocalKernel
+			? L"; A local kernel has no current instruction: the system goes on running.\n; Go to Address (Ctrl+G, or right-click) shows the code at an address or a symbol (nt!NtCreateFile, ...)."
+			: L"; The current thread has no instruction pointer here.\n; Go to Address (Ctrl+G, or right-click) shows the code at an address or a symbol.");
+		m_Text->SetReadOnly(false);
+		m_Text->SetText(text.c_str());
+		m_Text->SetReadOnly(true);
+		m_Text->MarkerDeleteAll(MarkerBreakpoint);
+		m_Text->MarkerDeleteAll(MarkerCurrent);
+		m_Text->MarkerDeleteAll(MarkerFrame);
+		RefreshDone();
+		co_return;
+	}
 	co_await DebugManager::DebuggerX().Disassemble(goTo ? goTo : frameIp ? frameIp : ip, LineCount, lines);
 	if (!*alive)
 		co_return;
