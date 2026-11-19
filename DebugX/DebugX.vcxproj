@@ -231,6 +231,8 @@
     <ClCompile Include="ExceptionSettingsDlg.cpp" />
     <ClCompile Include="EventFilterText.cpp" />
     <ClCompile Include="SymbolPathsDlg.cpp" />
+    <ClCompile Include="InputDlg.cpp" />
+    <ClCompile Include="FindDlg.cpp" />
     <ClCompile Include="SourceView.cpp" />
     <ClCompile Include="SourceDocuments.cpp" />
     <ClCompile Include="BreakpointsView.cpp" />
@@ -271,6 +273,8 @@
     <ClInclude Include="ExceptionSettingsDlg.h" />
     <ClInclude Include="EventFilterText.h" />
     <ClInclude Include="SymbolPathsDlg.h" />
+    <ClInclude Include="InputDlg.h" />
+    <ClInclude Include="FindDlg.h" />
     <ClInclude Include="SourceView.h" />
     <ClInclude Include="SourceDocuments.h" />
     <ClInclude Include="BreakpointsView.h" />

@@ -39,6 +39,7 @@ public:
 		COMMAND_ID_HANDLER(ID_DISASM_TOGGLEBREAKPOINT, OnToggleBreakpoint)
 		COMMAND_ID_HANDLER(ID_DEBUG_RUNTOCURSOR, OnRunToCursor)
 		COMMAND_ID_HANDLER(ID_DEBUG_SETNEXTSTATEMENT, OnSetNextStatement)
+		COMMAND_ID_HANDLER(ID_EDIT_GOTO, OnGoTo)
 		CHAIN_MSG_MAP(CPaneBase<CSourceView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(2)
@@ -91,6 +92,7 @@ private:
 	LRESULT OnToggleBreakpoint(WORD, WORD, HWND, BOOL&);
 	LRESULT OnRunToCursor(WORD, WORD, HWND, BOOL&);
 	LRESULT OnSetNextStatement(WORD, WORD, HWND, BOOL&);
+	LRESULT OnGoTo(WORD, WORD, HWND, BOOL&);
 
 	// reads the file into the control (UTF-8, UTF-16 or the ANSI code page); false if it cannot be read
 	bool LoadFile();

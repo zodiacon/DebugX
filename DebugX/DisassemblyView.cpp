@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "DisassemblyView.h"
 #include "DebugManager.h"
+#include "InputDlg.h"
 #include <format>
 #include <scintilla/ILexer.h>
 #include <lexilla/Lexilla.h>
@@ -181,7 +182,8 @@ Task<void> CDisassemblyView::Refresh() {
 		frameIp = 0;
 
 	std::vector<DisassemblyLine> lines;
-	co_await DebugManager::DebuggerX().Disassemble(frameIp ? frameIp : ip, LineCount, lines);
+	auto goTo = m_GoToAddress;
+	co_await DebugManager::DebuggerX().Disassemble(goTo ? goTo : frameIp ? frameIp : ip, LineCount, lines);
 	if (!*alive)
 		co_return;
 
@@ -199,6 +201,12 @@ Task<void> CDisassemblyView::Refresh() {
 		m_LineAddresses.push_back(line.Address);
 	}
 	m_Breakpoints = std::move(breakpoints);
+
+	// (the same place again -- a breakpoint toggled there -- stays scrolled where it was)
+	auto samePlace = goTo && goTo == m_ShownGoTo;
+	auto firstVisible = m_Text->FirstVisibleLine();
+	auto caret = m_Text->CurrentPos();
+	m_ShownGoTo = goTo;
 
 	auto utf8 = ToUtf8(text);
 	m_Text->SetReadOnly(false);
@@ -227,7 +235,13 @@ Task<void> CDisassemblyView::Refresh() {
 			}
 		}
 	}
-	if (currentLine >= 0) {
+	if (samePlace) {
+		m_Text->GotoPos(caret);
+		m_Text->SetFirstVisibleLine(firstVisible);
+	}
+	else if (goTo)
+		m_Text->GotoLine(0);
+	else if (currentLine >= 0) {
 		m_Text->GotoLine(currentLine);
 		m_Text->SetFirstVisibleLine(currentLine > 10 ? currentLine - 10 : 0);
 	}
@@ -293,8 +307,46 @@ LRESULT CDisassemblyView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) 
 	menu.AppendMenu(address ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DISASM_TOGGLEBREAKPOINT, L"Toggle &Breakpoint\tF9");
 	menu.AppendMenu(canRun ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DEBUG_RUNTOCURSOR, L"&Run to Cursor\tCtrl+F10");
 	menu.AppendMenu(canRun ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DEBUG_SETNEXTSTATEMENT, L"Set &Next Statement\tCtrl+Shift+F10");
-	RunCommand(menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd), address);
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(session.HasTarget() && !session.IsRunning() ? MF_STRING : (MF_STRING | MF_GRAYED), ID_EDIT_GOTO, L"&Go to Address...\tCtrl+G");
+	auto id = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (id == ID_EDIT_GOTO)
+		GoToAddress();
+	else
+		RunCommand(id, address);
 	return 0;
+}
+
+LRESULT CDisassemblyView::OnGoTo(WORD, WORD, HWND, BOOL&) {
+	GoToAddress();
+	return 0;
+}
+
+Task<void> CDisassemblyView::GoToAddress() {
+	auto alive = m_Lifetime.Watch();
+	auto& session = DebugManager::Session();
+	if (!session.HasTarget() || session.IsRunning()) {
+		::MessageBeep(MB_ICONWARNING);
+		co_return;
+	}
+	CInputDlg dlg(L"Go to Address", L"Address or expression (0x7ff6`1234, kernel32!CreateFileW, @rsp, ...):", m_GoToExpression.c_str());
+	if (dlg.DoModal(m_hWnd) != IDOK)
+		co_return;
+
+	std::wstring expression((PCWSTR)dlg.GetText());
+	ULONG64 address = 0;
+	auto hr = co_await DebugManager::DebuggerX().Evaluate(expression.c_str(), address);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr) || address == 0) {
+		AtlMessageBox(m_hWnd, std::format(L"\"{}\" is not an address (0x{:08X})", expression, static_cast<unsigned>(hr)).c_str(), IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+	m_GoToExpression = std::move(expression);
+	m_GoToAddress = address;
+	m_ShownGoTo = 0;
+	RequestRefresh();
+	m_Text.SetFocus();
 }
 
 LRESULT CDisassemblyView::OnCaretCommand(WORD, WORD id, HWND, BOOL&) {

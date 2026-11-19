@@ -36,6 +36,7 @@ public:
 		COMMAND_ID_HANDLER(ID_DISASM_TOGGLEBREAKPOINT, OnCaretCommand)
 		COMMAND_ID_HANDLER(ID_DEBUG_RUNTOCURSOR, OnCaretCommand)
 		COMMAND_ID_HANDLER(ID_DEBUG_SETNEXTSTATEMENT, OnCaretCommand)
+		COMMAND_ID_HANDLER(ID_EDIT_GOTO, OnGoTo)
 		CHAIN_MSG_MAP(CPaneBase<CDisassemblyView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(2)
@@ -50,10 +51,13 @@ public:
 	}
 
 	// ISessionObserver
+	// (a stop, a step, another thread or frame: back to where the code is running)
 	void OnContextChanged() override {
+		m_GoToAddress = 0;
 		RequestRefresh();
 	}
 	void OnScopeChanged() override {
+		m_GoToAddress = 0;
 		RequestRefresh();
 	}
 	// (code patched in place)
@@ -77,6 +81,8 @@ private:
 	LRESULT OnMarginClick(int, LPNMHDR, BOOL&);
 	LRESULT OnTextContextMenu(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnCaretCommand(WORD, WORD id, HWND, BOOL&);
+	LRESULT OnGoTo(WORD, WORD, HWND, BOOL&);
+	DebugEngine::Task<void> GoToAddress();
 
 	void ApplyColors();
 	// a command of the menu (ID_DISASM_TOGGLEBREAKPOINT, ID_DEBUG_RUNTOCURSOR, ID_DEBUG_SETNEXTSTATEMENT) on an instruction
@@ -91,5 +97,8 @@ private:
 	CContainedWindowT<CScintillaCtrl> m_Text;
 	std::vector<ULONG64> m_LineAddresses;		// parallel to the document's lines
 	std::vector<DebugEngine::BreakpointInfo> m_Breakpoints;
+	ULONG64 m_GoToAddress{ 0 };		// where Go to Address sent the view; 0: where the scope frame is
+	ULONG64 m_ShownGoTo{ 0 };		// the m_GoToAddress the text is for
+	std::wstring m_GoToExpression;	// what was typed for it last
 	Lifetime m_Lifetime;
 };

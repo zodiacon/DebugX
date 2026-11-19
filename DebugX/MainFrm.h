@@ -8,6 +8,7 @@
 #include "DebugManager.h"
 #include "Lifetime.h"
 #include "SourceDocuments.h"
+#include "FindDlg.h"
 
 class CMainFrame :
 	public CFrameWindowImpl<CMainFrame>,
@@ -53,6 +54,9 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_RELOADSYMBOLS, OnReloadSymbols)
 		COMMAND_ID_HANDLER(ID_FILE_OPENSOURCE, OnOpenSourceFile)
 		COMMAND_ID_HANDLER(ID_OPTIONS_SYMBOLPATHS, OnSymbolPaths)
+		COMMAND_ID_HANDLER(ID_EDIT_FIND, OnEditFind)
+		COMMAND_ID_HANDLER(ID_EDIT_FINDNEXT, OnEditFindAgain)
+		COMMAND_ID_HANDLER(ID_EDIT_FINDPREV, OnEditFindAgain)
 		COMMAND_ID_HANDLER(ID_VIEW_COMMAND, OnViewPane)
 		COMMAND_ID_HANDLER(ID_VIEW_THREADS, OnViewPane)
 		COMMAND_ID_HANDLER(ID_VIEW_PROCESSES, OnViewPane)
@@ -112,6 +116,9 @@ private:
 	void Step(DebugEngine::StepKind kind);
 	// the id of the pane that has (or last had) the focus; empty if none
 	std::wstring ActivePaneId() const;
+	// the text control (Scintilla) of the active pane, which Find searches; null if it has none
+	HWND ActiveTextControl() const;
+	void FindNext(bool up);
 
 private:
 	LRESULT OnForward(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -148,6 +155,8 @@ private:
 	LRESULT OnReloadSymbols(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnOpenSourceFile(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnSymbolPaths(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnEditFindAgain(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
 private:
 	WTLDock::CDockHost m_Dock;
@@ -157,6 +166,7 @@ private:
 		CString ExePath, Arguments, WorkingDir;
 	};
 	std::optional<Launch> m_Launch;
+	FindOptions m_Find;
 	bool m_Restarting{ false };
 	Lifetime m_Lifetime;
 };

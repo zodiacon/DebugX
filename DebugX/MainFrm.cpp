@@ -440,6 +440,62 @@ void CMainFrame::Step(StepKind kind) {
 		DebugManager::DebuggerX().Step(kind, ActivePaneId() != L"disassembly");
 }
 
+HWND CMainFrame::ActiveTextControl() const {
+	auto pane = m_Dock.ActivePane();
+	if (!pane || !pane->hWnd)
+		return nullptr;
+	HWND found = nullptr;
+	::EnumChildWindows(pane->hWnd, [](HWND hWnd, LPARAM param) -> BOOL {
+		WCHAR cls[64];
+		if (::IsWindowVisible(hWnd) && ::GetClassName(hWnd, cls, _countof(cls)) && ::wcsstr(cls, L"Scintilla")) {
+			*reinterpret_cast<HWND*>(param) = hWnd;
+			return FALSE;
+		}
+		return TRUE;
+		}, reinterpret_cast<LPARAM>(&found));
+	return found;
+}
+
+void CMainFrame::FindNext(bool up) {
+	auto text = ActiveTextControl();
+	if (!text || m_Find.Text.empty()) {
+		::MessageBeep(MB_ICONWARNING);
+		return;
+	}
+	bool wrapped;
+	std::wstring status;
+	if (!FindInScintilla(text, m_Find, up, &wrapped)) {
+		::MessageBeep(MB_ICONWARNING);
+		status = L"Not found: " + m_Find.Text;
+	}
+	else if (wrapped)
+		status = up ? L"Passed the start: continued from the end" : L"Passed the end: continued from the start";
+	::SetWindowText(m_hWndStatusBar, status.empty() ? L"Ready" : status.c_str());
+}
+
+LRESULT CMainFrame::OnEditFind(WORD, WORD, HWND, BOOL&) {
+	auto text = ActiveTextControl();
+	if (!text) {
+		::MessageBeep(MB_ICONWARNING);
+		return 0;
+	}
+	// (what is selected, if it is a word or so, is what is looked for)
+	auto options = m_Find;
+	if (auto word = SelectedWord(text); !word.empty())
+		options.Text = word;
+	CFindDlg dlg(options);
+	if (dlg.DoModal(m_hWnd) == IDOK) {
+		m_Find = dlg.GetOptions();
+		FindNext(m_Find.Up);
+	}
+	return 0;
+}
+
+LRESULT CMainFrame::OnEditFindAgain(WORD, WORD id, HWND, BOOL&) {
+	FindNext(id == ID_EDIT_FINDPREV);
+	return 0;
+}
+
 LRESULT CMainFrame::OnReloadSymbols(WORD, WORD, HWND, BOOL&) {
 	auto& session = DebugManager::Session();
 	if (session.HasTarget() && !session.IsRunning())
@@ -727,6 +783,7 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_DEBUG_STOP, IDI_STOP },
 		{ ID_DEBUG_RESTART, IDI_REFRESH },
 		{ ID_DEBUG_SETNEXTSTATEMENT, IDI_ICON9 },
+		{ ID_EDIT_FIND, IDI_FIND },
 		{ ID_DEBUG_STEPINTO, IDI_STEP_INTO },
 		{ ID_DEBUG_STEPOVER, IDI_DEBUG_STEP_OVER },
 		{ ID_DEBUG_STEPOUT, IDI_DEBUG_STEP_OUT },

@@ -54,6 +54,12 @@
     <ClCompile Include="EventFilterText.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="InputDlg.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="FindDlg.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
     <ClCompile Include="SymbolPathsDlg.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -150,6 +156,12 @@
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="EventFilterText.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="InputDlg.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="FindDlg.h">
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="SymbolPathsDlg.h">

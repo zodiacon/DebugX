@@ -32,6 +32,7 @@ public:
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		COMMAND_HANDLER(GoId, BN_CLICKED, OnGo)
+		COMMAND_ID_HANDLER(ID_EDIT_GOTO, OnGoTo)
 		CHAIN_MSG_MAP(CPaneBase<CMemoryView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(1)
@@ -68,6 +69,12 @@ private:
 	LRESULT OnSize(UINT, WPARAM, LPARAM lParam, BOOL&);
 	LRESULT OnSetFocus(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnGo(WORD, WORD, HWND, BOOL&);
+	// Ctrl+G: the address box, its text selected to be typed over
+	LRESULT OnGoTo(WORD, WORD, HWND, BOOL&) {
+		m_AddressEdit.SetFocus();
+		m_AddressEdit.SetSel(0, -1);
+		return 0;
+	}
 	LRESULT OnAddressChar(UINT, WPARAM wParam, LPARAM, BOOL& handled);
 
 	void Go();

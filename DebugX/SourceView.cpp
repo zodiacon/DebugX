@@ -2,6 +2,7 @@
 #include "SourceView.h"
 #include "DebugManager.h"
 #include "BreakpointDlg.h"
+#include "InputDlg.h"
 #include <format>
 #include <scintilla/ILexer.h>
 #include <lexilla/Lexilla.h>
@@ -355,6 +356,22 @@ LRESULT CSourceView::OnSetNextStatement(WORD, WORD, HWND, BOOL&) {
 	return 0;
 }
 
+LRESULT CSourceView::OnGoTo(WORD, WORD, HWND, BOOL&) {
+	auto count = static_cast<ULONG>(m_Text->LineCount());
+	CInputDlg dlg(L"Go to Line", std::format(L"Line number (1 - {}):", count).c_str(), std::to_wstring(CaretLine()).c_str());
+	if (dlg.DoModal(m_hWnd) != IDOK)
+		return 0;
+	wchar_t* end;
+	auto line = ::wcstoul(dlg.GetText(), &end, 10);
+	if (*end != L'\0' || line == 0) {
+		::MessageBeep(MB_ICONWARNING);
+		return 0;
+	}
+	GoToLine(std::min(line, count));
+	m_Text.SetFocus();
+	return 0;
+}
+
 LRESULT CSourceView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	CPoint pt(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 	if (pt.x == -1) {
@@ -380,11 +397,13 @@ LRESULT CSourceView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	menu.AppendMenu(session.CanRun() ? MF_STRING : (MF_STRING | MF_GRAYED), ID_DEBUG_SETNEXTSTATEMENT, L"Set &Next Statement\tCtrl+Shift+F10");
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING, ID_EDIT_COPY, L"&Copy\tCtrl+C");
+	menu.AppendMenu(MF_STRING, ID_EDIT_GOTO, L"&Go to Line...\tCtrl+G");
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
 		case ID_DISASM_TOGGLEBREAKPOINT: ToggleBreakpointAt(CaretLine()); break;
 		case ID_DEBUG_RUNTOCURSOR: RunToLine(CaretLine()); break;
 		case ID_DEBUG_SETNEXTSTATEMENT: SetNextStatement(CaretLine()); break;
 		case ID_EDIT_COPY: m_Text->Copy(); break;
+		case ID_EDIT_GOTO: PostMessage(WM_COMMAND, ID_EDIT_GOTO); break;
 	}
 	return 0;
 }
