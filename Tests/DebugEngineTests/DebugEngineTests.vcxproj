@@ -97,6 +97,8 @@
     <ClCompile Include="KernelTests.cpp" />
     <ClCompile Include="ValueTests.cpp" />
     <ClCompile Include="ProcessTests.cpp" />
+    <ClCompile Include="RemoteTests.cpp" />
+    <ClCompile Include="ScriptTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\DebugEngine\DebugEngine.vcxproj">

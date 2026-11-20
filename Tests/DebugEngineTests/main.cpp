@@ -51,6 +51,8 @@ namespace {
 		{ "kernel", KernelSuite },
 		{ "values", ValueSuite },
 		{ "procs", ProcessSuite },
+		{ "remote", RemoteSuite },
+		{ "script", ScriptSuite },
 	};
 
 	// dbgeng.dll is delay-loaded: whichever is loaded first is the one the engine uses

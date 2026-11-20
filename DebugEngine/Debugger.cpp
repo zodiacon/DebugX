@@ -167,6 +167,11 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> EnumHandles(std::vector<HandleInfo>& handles);
 	Task<HRESULT> SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange);
 	Task<HRESULT> Analyze(std::wstring& text);
+	Task<HRESULT> ConnectProcessServer(PCWSTR options);
+	Task<HRESULT> DisconnectProcessServer();
+	Task<HRESULT> EnumServerProcesses(std::vector<ServerProcess>& processes);
+	Task<HRESULT> Script(ScriptAction action, PCWSTR path, std::wstring& output);
+	Task<HRESULT> EnumScripts(std::vector<std::wstring>& paths);
 	Task<HRESULT> SetScopeFrame(ULONG frameIndex);
 	Task<HRESULT> GetScope(ULONG64& instructionOffset, ULONG& frameIndex);
 	Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
@@ -312,6 +317,8 @@ private:
 	std::wstring* m_Capture{ nullptr };
 	// SetDebugChildProcesses
 	bool m_DebugChildren{ false };
+	// the process server attached to and launched on (ConnectProcessServer); 0: this machine
+	ULONG64 m_Server{ 0 };
 	// processes to let go of when the engine stops waiting (the system's ids), and whether it stopped only for that
 	std::vector<ULONG> m_Detach;
 	bool m_BreakForDetach{ false };
@@ -592,6 +599,8 @@ bool DebuggerX::Impl::Shutdown() {
 			m_spDebugHost.Release();
 			m_spDataMgr.Release();
 			if (m_spClient) {
+				if (m_Server)
+					m_spClient->DisconnectProcessServer(std::exchange(m_Server, 0));
 				if (live)
 					m_spClient->DetachProcesses();
 				m_spClient->EndSession(DEBUG_END_ACTIVE_TERMINATE);
@@ -966,7 +975,7 @@ Task<HRESULT> DebuggerX::Impl::OpenDumpFile(PCWSTR filename) {
 Task<HRESULT> DebuggerX::Impl::AttachToProcess(DWORD pid, AttachType attach) {
 	auto hr = co_await Run([this, pid, attach] {
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
-		HR(m_spClient->AttachProcess(0, pid, static_cast<ULONG>(attach)));
+		HR(m_spClient->AttachProcess(m_Server, pid, static_cast<ULONG>(attach)));
 		HR(Wait(0));
 		if (m_DebugChildren)
 			ExecuteCaptured(L".childdbg 1");
@@ -992,7 +1001,7 @@ Task<HRESULT> DebuggerX::Impl::LaunchAndAttach(PCWSTR exeName, PCWSTR commandLin
 		// (DEBUG_PROCESS alone: the processes it starts are debugged too)
 		options.CreateFlags = m_DebugChildren ? DEBUG_PROCESS : DEBUG_PROCESS | DEBUG_ONLY_THIS_PROCESS;
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
-		HR(m_spClient->CreateProcessAndAttach2Wide(0, cmd.data(), &options, sizeof(options),
+		HR(m_spClient->CreateProcessAndAttach2Wide(m_Server, cmd.data(), &options, sizeof(options),
 			initialDir.empty() ? nullptr : initialDir.c_str(), nullptr, 0, static_cast<ULONG>(attach)));
 		HR(Wait(0));
 		LoadExecutableSymbols();
@@ -1197,8 +1206,8 @@ Task<HRESULT> DebuggerX::Impl::EnumHandles(std::vector<HandleInfo>& handles) {
 	co_return co_await Run([this, &handles]() -> HRESULT {
 		ULONG debuggeeClass = 0, qualifier = 0;
 		HR(m_spControl->GetDebuggeeType(&debuggeeClass, &qualifier));
-		if (debuggeeClass != DEBUG_CLASS_USER_WINDOWS || qualifier != DEBUG_USER_WINDOWS_PROCESS)
-			return E_NOTIMPL;
+		if (debuggeeClass != DEBUG_CLASS_USER_WINDOWS || qualifier != DEBUG_USER_WINDOWS_PROCESS || m_Server)
+			return E_NOTIMPL;		// (the handles are looked at on this machine: not a process server's)
 		ULONG pid = 0;
 		HR(m_spSystem->GetCurrentProcessSystemId(&pid));
 		ULONG64 processHandle = 0;
@@ -1246,6 +1255,87 @@ Task<HRESULT> DebuggerX::Impl::EnumHandles(std::vector<HandleInfo>& handles) {
 			if (askName && SUCCEEDED(m_spData->ReadHandleData(hi.Handle, DEBUG_HANDLE_DATA_TYPE_OBJECT_NAME_WIDE, text, sizeof(text), nullptr)))
 				hi.Name = text;
 			handles.push_back(std::move(hi));
+		}
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::Script(ScriptAction action, PCWSTR path, std::wstring& output) {
+	co_return co_await Run([this, action, path = std::wstring(path), &output]() -> HRESULT {
+		auto command = std::format(L"{} \"{}\"", action == ScriptAction::Run ? L".scriptrun" : action == ScriptAction::Load ? L".scriptload" : L".scriptunload", path);
+		output = ExecuteCaptured(command);
+		// (and for whoever watches the output: the Command view)
+		m_spControl->ControlledOutputWide(DEBUG_OUTCTL_ALL_CLIENTS, DEBUG_OUTPUT_NORMAL, L"%ws", (command + L"\n" + output).c_str());
+		if (output.find(L"No script provider") != std::wstring::npos || output.find(L"Unable to find a script provider") != std::wstring::npos)
+			return E_NOTIMPL;
+		return output.find(L"Error") != std::wstring::npos || output.find(L"failed") != std::wstring::npos ? E_FAIL : S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::EnumScripts(std::vector<std::wstring>& paths) {
+	co_return co_await Run([this, &paths]() -> HRESULT {
+		// ".scriptlist": a line each -- "    JavaScript script from 'C:\x.js'"; and the engine's own visualizers' ("NatVis
+		// script from '...\Visualizers\stl.natvis'"), which are not anybody's scripts
+		auto text = ExecuteCaptured(L".scriptlist");
+		size_t pos = 0;
+		while (pos < text.size()) {
+			auto end = text.find(L'\n', pos);
+			if (end == std::wstring::npos)
+				end = text.size();
+			std::wstring_view line(text.data() + pos, end - pos);
+			pos = end + 1;
+			auto from = line.find(L" script from '");
+			if (from == std::wstring_view::npos || line.find(L"NatVis") != std::wstring_view::npos)
+				continue;
+			auto start = from + 14, close = line.find(L'\'', start);
+			if (close != std::wstring_view::npos)
+				paths.emplace_back(line.substr(start, close - start));
+		}
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::ConnectProcessServer(PCWSTR options) {
+	co_return co_await Run([this, options = std::wstring(options)]() -> HRESULT {
+		if (m_Status != DEBUG_STATUS_NO_DEBUGGEE)
+			return E_UNEXPECTED;
+		ULONG64 server = 0;
+		HR(m_spClient->ConnectProcessServerWide(options.c_str(), &server));
+		if (m_Server)
+			m_spClient->DisconnectProcessServer(m_Server);
+		m_Server = server;
+		return S_OK;
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::DisconnectProcessServer() {
+	co_return co_await Run([this]() -> HRESULT {
+		if (m_Status != DEBUG_STATUS_NO_DEBUGGEE)
+			return E_UNEXPECTED;
+		if (!m_Server)
+			return S_FALSE;
+		return m_spClient->DisconnectProcessServer(std::exchange(m_Server, 0));
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::EnumServerProcesses(std::vector<ServerProcess>& processes) {
+	co_return co_await Run([this, &processes]() -> HRESULT {
+		ULONG count = 0;
+		HR(m_spClient->GetRunningProcessSystemIds(m_Server, nullptr, 0, &count));
+		std::vector<ULONG> ids(count + 64);
+		HR(m_spClient->GetRunningProcessSystemIds(m_Server, ids.data(), static_cast<ULONG>(ids.size()), &count));
+		ids.resize((std::min<size_t>)(count, ids.size()));
+		// (the name only: services, MTS packages and command lines would each be asked for, process by process)
+		constexpr ULONG flags = DEBUG_PROC_DESC_NO_PATHS | DEBUG_PROC_DESC_NO_SERVICES | DEBUG_PROC_DESC_NO_MTS_PACKAGES | DEBUG_PROC_DESC_NO_COMMAND_LINE;
+		WCHAR name[MAX_PATH];
+		for (auto pid : ids) {
+			ServerProcess p{ pid };
+			if (SUCCEEDED(m_spClient->GetRunningProcessDescriptionWide(m_Server, pid, flags, name, _countof(name), nullptr, nullptr, 0, nullptr)))
+				p.Name = name;
+			// (the system's own processes come with their paths all the same)
+			if (auto slash = p.Name.find_last_of(L'\\'); slash != std::wstring::npos)
+				p.Name = p.Name.substr(slash + 1);
+			processes.push_back(std::move(p));
 		}
 		return S_OK;
 		});
@@ -2164,6 +2254,26 @@ Task<HRESULT> DebuggerX::SearchMemory(ULONG64 start, std::vector<BYTE> pattern, 
 
 Task<HRESULT> DebuggerX::Analyze(std::wstring& text) {
 	return m_Impl->Analyze(text);
+}
+
+Task<HRESULT> DebuggerX::Script(ScriptAction action, PCWSTR path, std::wstring& output) {
+	return m_Impl->Script(action, path, output);
+}
+
+Task<HRESULT> DebuggerX::EnumScripts(std::vector<std::wstring>& paths) {
+	return m_Impl->EnumScripts(paths);
+}
+
+Task<HRESULT> DebuggerX::ConnectProcessServer(PCWSTR options) {
+	return m_Impl->ConnectProcessServer(options);
+}
+
+Task<HRESULT> DebuggerX::DisconnectProcessServer() {
+	return m_Impl->DisconnectProcessServer();
+}
+
+Task<HRESULT> DebuggerX::EnumServerProcesses(std::vector<ServerProcess>& processes) {
+	return m_Impl->EnumServerProcesses(processes);
 }
 
 Task<HRESULT> DebuggerX::SetScopeFrame(ULONG frameIndex) {

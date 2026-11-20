@@ -108,6 +108,12 @@ namespace DebugEngine {
 		bool Current{ false };		// the process the engine's commands and the panes are about
 	};
 
+	// a process of the machine the debugger attaches to: this one, or the process server's (EnumServerProcesses)
+	struct ServerProcess {
+		ULONG Pid{ 0 };
+		std::wstring Name;
+	};
+
 	// a handle of the current process (EnumHandles)
 	struct HandleInfo {
 		ULONG64 Handle{ 0 };
@@ -358,6 +364,24 @@ namespace DebugEngine {
 		// What !analyze -v says about the target (a dump, or why it stopped): the Windows Kits debugger's ext.dll; E_NOTIMPL
 		// with an engine that has no extensions. It can take a while (symbols are loaded, and downloaded).
 		Task<HRESULT> Analyze(std::wstring& text);
+
+		// A process server on another machine (dbgsrv -t npipe:pipe=X, or tcp:port=N, there): from then on AttachToProcess and
+		// LaunchAndAttach are about its processes (a path on that machine), until DisconnectProcessServer -- this debugger
+		// does the rest, with its own symbols. The options are what windbg -premote takes: "npipe:server=host,pipe=X",
+		// "tcp:server=host,port=N". Not while there is a target.
+		Task<HRESULT> ConnectProcessServer(PCWSTR options);
+		Task<HRESULT> DisconnectProcessServer();
+		// the processes that can be attached to: the process server's, or this machine's
+		Task<HRESULT> EnumServerProcesses(std::vector<ServerProcess>& processes);
+
+		// Debugger scripts (JavaScript: the Windows Kits debugger's JsProvider; E_NOTIMPL with an engine that has no script
+		// provider). Run: .scriptrun (loaded, and its invokeScript run); Load: .scriptload (loaded only). Either way it stays
+		// -- its functions can be called: dx @$scriptContents.f() -- until Unload. 'output' is what the engine said, which goes to
+		// the Output notifications as well; a script that throws, or does not load, fails.
+		enum class ScriptAction { Run, Load, Unload };
+		Task<HRESULT> Script(ScriptAction action, PCWSTR path, std::wstring& output);
+		// the scripts that are loaded (their paths)
+		Task<HRESULT> EnumScripts(std::vector<std::wstring>& paths);
 
 		// about the current thread of the target; the registers are as they were in the current scope frame
 		// (only the nonvolatile ones are reliable in a frame other than 0)

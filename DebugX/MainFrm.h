@@ -47,6 +47,11 @@ public:
 		COMMAND_ID_HANDLER(ID_FILE_CLEARRECENT, OnClearRecent)
 		COMMAND_ID_HANDLER(ID_DEBUG_SAVEDUMP, OnSaveDump)
 		COMMAND_ID_HANDLER(ID_DEBUG_ANALYZE, OnDebugAnalyze)
+		COMMAND_ID_HANDLER(ID_DEBUG_CONNECTSERVER, OnConnectServer)
+		COMMAND_ID_HANDLER(ID_DEBUG_DISCONNECTSERVER, OnDisconnectServer)
+		COMMAND_ID_HANDLER(ID_DEBUG_RUNSCRIPT, OnScript)
+		COMMAND_ID_HANDLER(ID_DEBUG_LOADSCRIPT, OnScript)
+		COMMAND_ID_HANDLER(ID_DEBUG_UNLOADSCRIPT, OnScript)
 		COMMAND_ID_HANDLER(ID_VIEW_ANALYSIS, OnViewPane)
 		COMMAND_ID_HANDLER(ID_APP_EXIT, OnFileExit)
 		COMMAND_ID_HANDLER(ID_FILE_OPEN, OnOpenDumpFile)
@@ -193,6 +198,16 @@ private:
 	LRESULT OnSaveDump(WORD, WORD, HWND, BOOL&);
 	// shows the Analysis pane and has it run !analyze -v
 	LRESULT OnDebugAnalyze(WORD, WORD, HWND, BOOL&);
+	// a process server (dbgsrv) on another machine: Attach to Process and Run Executable are about its processes then
+	LRESULT OnConnectServer(WORD, WORD, HWND, BOOL&);
+	LRESULT OnDisconnectServer(WORD, WORD, HWND, BOOL&);
+	DebugEngine::Task<void> ConnectServer(CString options);
+	DebugEngine::Task<void> DisconnectServer();
+	DebugEngine::Task<void> AttachOnServer();
+	// debugger scripts (JavaScript): Run Script, Load Script (a file to pick), Unload Script (one of those loaded)
+	LRESULT OnScript(WORD, WORD id, HWND, BOOL&);
+	DebugEngine::Task<void> RunScript(DebugEngine::DebuggerX::ScriptAction action, std::wstring path);
+	DebugEngine::Task<void> UnloadScript();
 	LRESULT OnToggleChildProcesses(WORD, WORD id, HWND, BOOL&);
 	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditFindAgain(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -210,5 +225,7 @@ private:
 	// the program whose breakpoints are kept (SavedBreakpoints::KeyOf): one that was run or attached to; empty: none
 	std::wstring m_BreakpointsKey;
 	bool m_AnalyzeOnBreak{ false };
+	// the process server connected to (its options); empty: none
+	CString m_ProcessServer;
 	Lifetime m_Lifetime;
 };

@@ -112,6 +112,8 @@ BEGIN
         MENUITEM "&Run Executable...",          ID_DEBUG_RUNEXECUTABLE
         MENUITEM "Attach to &Local Kernel",     ID_DEBUG_ATTACHTOLOCALKERNEL
         MENUITEM "Attach to &Kernel...",        ID_DEBUG_ATTACHTOKERNEL
+        MENUITEM "Connect to Process Ser&ver...", ID_DEBUG_CONNECTSERVER
+        MENUITEM "Disconnect from Process Server", ID_DEBUG_DISCONNECTSERVER
         MENUITEM SEPARATOR
         MENUITEM "&Go\tF5",                     ID_DEBUG_GO
         MENUITEM "&Break\tCtrl+Break",          ID_DEBUG_BREAK
@@ -120,6 +122,10 @@ BEGIN
         MENUITEM "&Detach",                     ID_DEBUG_DETACH
         MENUITEM "Save D&ump...",               ID_DEBUG_SAVEDUMP
         MENUITEM "Anal&yze (!analyze -v)",      ID_DEBUG_ANALYZE
+        MENUITEM SEPARATOR
+        MENUITEM "Run Scr&ipt...",              ID_DEBUG_RUNSCRIPT
+        MENUITEM "Load Script...",              ID_DEBUG_LOADSCRIPT
+        MENUITEM "Unload Script...",            ID_DEBUG_UNLOADSCRIPT
         MENUITEM SEPARATOR
         MENUITEM "&Step Over\tF10",             ID_DEBUG_STEPOVER
         MENUITEM "Ste&p Into\tF11",             ID_DEBUG_STEPINTO

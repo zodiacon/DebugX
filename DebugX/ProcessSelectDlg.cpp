@@ -36,6 +36,11 @@ LRESULT CProcessSelectDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&) {
 	m_List.SetImageList(m_Images, LVSIL_SMALL);
 
 	((CButton)GetDlgItem(IDC_REFRESH)).SetIcon(AtlLoadIconImage(IDI_REFRESH, 0, 24, 24));
+	if (!m_Server.IsEmpty()) {
+		// (the list was asked for before: it is not asked for again from here)
+		GetDlgItem(IDC_REFRESH).EnableWindow(FALSE);
+		SetWindowText(L"Attach to a Process on " + m_Server);
+	}
 
 	InitProcessList();
 
@@ -106,6 +111,12 @@ void CProcessSelectDlg::InitProcessList() {
 }
 
 void CProcessSelectDlg::EnumProcesses() {
+	if (!m_Server.IsEmpty()) {
+		m_Items.clear();
+		for (auto& [pid, name] : m_RemoteProcesses)
+			m_Items.push_back({ name, CString(), pid, 0, 0 });
+		return;
+	}
 	auto hSnapshot = ::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
 	ATLASSERT(hSnapshot != INVALID_HANDLE_VALUE);
 	m_Items.clear();

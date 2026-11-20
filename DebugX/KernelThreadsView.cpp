@@ -174,8 +174,8 @@ Task<void> CKernelThreadsView::SwitchTo(ULONG64 thread) {
 	if (FAILED(hr)) {
 		CString text;
 		if (DebugManager::Session().Target() == TargetType::LocalKernel)
-			text.Format(L"The registers of thread 0x%llX cannot be read: a local kernel has only those of the thread the debugger "
-				L"itself runs in. Details (dt nt!_ETHREAD) shows what the kernel keeps of it.", thread);
+			text.Format(L"The registers of thread 0x%llX cannot be read now: on a local kernel they can be read only while a thread "
+				L"waits, not while it runs on a processor. Try again, or see Details (dt nt!_ETHREAD).", thread);
 		else
 			text.Format(L"Failed to switch to thread 0x%llX (0x%08X)", thread, static_cast<unsigned>(hr));
 		AtlMessageBox(m_hWnd, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);

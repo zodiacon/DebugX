@@ -23,6 +23,7 @@
 #include "SourceView.h"
 #include "RecentTargets.h"
 #include "SavedBreakpoints.h"
+#include "InputDlg.h"
 #include <TlHelp32.h>
 #include <format>
 
@@ -324,6 +325,10 @@ LRESULT CMainFrame::OnRunExe(WORD, WORD, HWND, BOOL&) {
 LRESULT CMainFrame::OnAttachProcess(WORD, WORD, HWND, BOOL&) {
 	if (!CanStartSession())
 		return 0;
+	if (!m_ProcessServer.IsEmpty()) {
+		AttachOnServer();
+		return 0;
+	}
 
 	CProcessSelectDlg dlg;
 	if (dlg.DoModal() == IDOK) {
@@ -473,6 +478,144 @@ void CMainFrame::OnBroke() {
 	if (m_AnalyzeOnBreak) {
 		m_AnalyzeOnBreak = false;
 		PostMessage(WM_COMMAND, ID_DEBUG_ANALYZE);
+	}
+}
+
+LRESULT CMainFrame::OnScript(WORD, WORD id, HWND, BOOL&) {
+	auto& session = DebugManager::Session();
+	if (session.IsRunning() || session.IsBusy()) {
+		::MessageBeep(MB_ICONWARNING);
+		return 0;
+	}
+	if (id == ID_DEBUG_UNLOADSCRIPT) {
+		UnloadScript();
+		return 0;
+	}
+	CFileDialog dlg(TRUE, L"js", nullptr, OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_ENABLESIZING,
+		L"JavaScript (*.js)\0*.js\0All Files\0*.*\0", *this);
+	// the system's file picker does not take the dark mode hook
+	WTLHelper::SuspendHook();
+	auto ok = dlg.DoModal() == IDOK;
+	WTLHelper::ResumeHook();
+	if (ok)
+		RunScript(id == ID_DEBUG_RUNSCRIPT ? DebuggerX::ScriptAction::Run : DebuggerX::ScriptAction::Load, dlg.m_szFileName);
+	return 0;
+}
+
+Task<void> CMainFrame::RunScript(DebuggerX::ScriptAction action, std::wstring path) {
+	auto alive = m_Lifetime.Watch();
+	// (what it says goes to the Command view too)
+	std::wstring output;
+	auto hr = co_await DebugManager::DebuggerX().Script(action, path.c_str(), output);
+	if (!*alive || SUCCEEDED(hr))
+		co_return;
+	std::wstring text = hr == E_NOTIMPL
+		? L"Scripts need the Windows Kits debugger's script providers (JsProvider.dll); the engine in use (" + DebugManager::EnginePath() + L") has none."
+		: L"The script failed:\n\n" + (output.size() > 2000 ? output.substr(0, 2000) + L"..." : output);
+	AtlMessageBox(*this, text.c_str(), IDS_TITLE, MB_ICONERROR);
+}
+
+Task<void> CMainFrame::UnloadScript() {
+	auto alive = m_Lifetime.Watch();
+	std::vector<std::wstring> scripts;
+	co_await DebugManager::DebuggerX().EnumScripts(scripts);
+	if (!*alive)
+		co_return;
+	if (scripts.empty()) {
+		AtlMessageBox(*this, L"No script is loaded.", IDS_TITLE, MB_ICONINFORMATION);
+		co_return;
+	}
+	// which one: a menu of them, at the mouse
+	CMenu menu;
+	menu.CreatePopupMenu();
+	for (size_t i = 0; i < scripts.size(); i++)
+		menu.AppendMenu(MF_STRING, static_cast<UINT>(i + 1), scripts[i].c_str());
+	if (scripts.size() > 1) {
+		menu.AppendMenu(MF_SEPARATOR);
+		menu.AppendMenu(MF_STRING, static_cast<UINT>(scripts.size() + 1), L"&All of Them");
+	}
+	CPoint pt;
+	::GetCursorPos(&pt);
+	auto cmd = static_cast<size_t>(menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd));
+	if (cmd == 0)
+		co_return;
+	std::wstring output;
+	for (size_t i = 0; i < scripts.size(); i++) {
+		if (cmd == i + 1 || cmd == scripts.size() + 1) {
+			co_await DebugManager::DebuggerX().Script(DebuggerX::ScriptAction::Unload, scripts[i].c_str(), output);
+			if (!*alive)
+				co_return;
+		}
+	}
+}
+
+LRESULT CMainFrame::OnConnectServer(WORD, WORD, HWND, BOOL&) {
+	if (!CanStartSession())
+		return 0;
+	CInputDlg dlg(L"Connect to Process Server",
+		L"How dbgsrv was started on the other machine (dbgsrv -t tcp:port=5005): tcp:server=host,port=5005, or npipe:server=host,pipe=name",
+		AppSettings::Get().ProcessServer().c_str());
+	if (dlg.DoModal(m_hWnd) == IDOK && !dlg.GetText().IsEmpty())
+		ConnectServer(dlg.GetText());
+	return 0;
+}
+
+Task<void> CMainFrame::ConnectServer(CString options) {
+	auto alive = m_Lifetime.Watch();
+	::SetWindowText(m_hWndStatusBar, (L"Connecting to " + options + L"...").GetString());
+	auto hr = co_await DebugManager::DebuggerX().ConnectProcessServer(options);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		::SetWindowText(m_hWndStatusBar, L"Ready");
+		CString text;
+		text.Format(L"Failed to connect to the process server \"%s\" (0x%08X)", (PCWSTR)options, static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+	m_ProcessServer = options;
+	AppSettings::Get().ProcessServer((PCWSTR)options);
+	::SetWindowText(m_hWndStatusBar, (L"Process server: " + options + L" (Attach to Process and Run Executable are on that machine)").GetString());
+	UpdateUI();
+}
+
+LRESULT CMainFrame::OnDisconnectServer(WORD, WORD, HWND, BOOL&) {
+	if (CanStartSession() && !m_ProcessServer.IsEmpty())
+		DisconnectServer();
+	return 0;
+}
+
+Task<void> CMainFrame::DisconnectServer() {
+	auto alive = m_Lifetime.Watch();
+	co_await DebugManager::DebuggerX().DisconnectProcessServer();
+	if (!*alive)
+		co_return;
+	m_ProcessServer.Empty();
+	::SetWindowText(m_hWndStatusBar, L"Ready");
+	UpdateUI();
+}
+
+Task<void> CMainFrame::AttachOnServer() {
+	auto alive = m_Lifetime.Watch();
+	std::vector<ServerProcess> processes;
+	auto hr = co_await DebugManager::DebuggerX().EnumServerProcesses(processes);
+	if (!*alive)
+		co_return;
+	if (FAILED(hr)) {
+		CString text;
+		text.Format(L"The processes of %s cannot be listed (0x%08X)", (PCWSTR)m_ProcessServer, static_cast<unsigned>(hr));
+		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
+		co_return;
+	}
+	std::vector<std::pair<DWORD, CString>> list;
+	for (auto& p : processes)
+		list.push_back({ p.Pid, p.Name.c_str() });
+	CProcessSelectDlg dlg;
+	dlg.SetRemoteProcesses(m_ProcessServer, std::move(list));
+	if (dlg.DoModal() == IDOK) {
+		CString name;
+		auto pid = dlg.GetSelectedProcess(name);
+		AttachToProcess(pid, name);
 	}
 }
 
@@ -755,9 +898,12 @@ Task<void> CMainFrame::RunExecutable(CString exePath, CString arguments, CString
 		co_return;
 	}
 	m_Launch = Launch{ exePath, arguments, workingDir };
-	RecentTargets::Add({ RecentTarget::Kind::Run, (PCWSTR)exePath, (PCWSTR)arguments, (PCWSTR)workingDir });
+	// (a path on a process server's machine is not one to run again here, nor to keep breakpoints by)
+	const bool remote = !m_ProcessServer.IsEmpty();
+	if (!remote)
+		RecentTargets::Add({ RecentTarget::Kind::Run, (PCWSTR)exePath, (PCWSTR)arguments, (PCWSTR)workingDir });
 	UpdateUI();
-	auto failed = co_await RestoreBreakpoints(SavedBreakpoints::KeyOf((PCWSTR)exePath));
+	auto failed = co_await RestoreBreakpoints(remote ? std::wstring() : SavedBreakpoints::KeyOf((PCWSTR)exePath));
 	if (!*alive)
 		co_return;
 	co_await dbg.OutputPrompt();
@@ -770,8 +916,9 @@ Task<void> CMainFrame::AttachToProcess(DWORD pid, CString name) {
 	auto& dbg = DebugManager::DebuggerX();
 
 	m_Launch.reset();		// (no Restart for it)
-	// (whose breakpoints: asked now, while the process is there)
-	auto key = SavedBreakpoints::KeyOf(SavedBreakpoints::ImagePathOf(pid));
+	// (whose breakpoints: asked now, while the process is there; a process server's are not kept)
+	const bool remote = !m_ProcessServer.IsEmpty();
+	auto key = remote ? std::wstring() : SavedBreakpoints::KeyOf(SavedBreakpoints::ImagePathOf(pid));
 	auto hr = co_await dbg.AttachToProcess(pid);
 	if (!*alive)
 		co_return;
@@ -782,7 +929,7 @@ Task<void> CMainFrame::AttachToProcess(DWORD pid, CString name) {
 		AtlMessageBox(*this, (PCWSTR)text, IDS_TITLE, MB_ICONERROR);
 		co_return;
 	}
-	if (!name.IsEmpty())
+	if (!name.IsEmpty() && !remote)
 		RecentTargets::Add({ RecentTarget::Kind::Attach, (PCWSTR)name });
 	auto failed = co_await RestoreBreakpoints(key);
 	if (!*alive)
@@ -1129,6 +1276,12 @@ void CMainFrame::UpdateUI(bool force) {
 	UIEnable(ID_DEBUG_ATTACHTOPROCESS, canStart, force);
 	UIEnable(ID_DEBUG_RUNEXECUTABLE, canStart, force);
 	UIEnable(ID_DEBUG_ATTACHTOLOCALKERNEL, canStart, force);
+	UIEnable(ID_DEBUG_CONNECTSERVER, canStart, force);
+	UIEnable(ID_DEBUG_DISCONNECTSERVER, canStart && !m_ProcessServer.IsEmpty(), force);
+	const bool canScript = !session.IsRunning() && !session.IsBusy();
+	UIEnable(ID_DEBUG_RUNSCRIPT, canScript, force);
+	UIEnable(ID_DEBUG_LOADSCRIPT, canScript, force);
+	UIEnable(ID_DEBUG_UNLOADSCRIPT, canScript, force);
 	UIEnable(ID_DEBUG_ATTACHTOKERNEL, canStart, force);
 
 	UIEnable(ID_DEBUG_GO, canRun, force);

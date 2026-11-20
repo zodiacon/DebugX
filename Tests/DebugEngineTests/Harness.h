@@ -53,3 +53,5 @@ DebugEngine::Task<void> DumpSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> KernelSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> ValueSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> ProcessSuite(DebugEngine::DebuggerX& dbg);
+DebugEngine::Task<void> RemoteSuite(DebugEngine::DebuggerX& dbg);
+DebugEngine::Task<void> ScriptSuite(DebugEngine::DebuggerX& dbg);

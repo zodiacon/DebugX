@@ -49,6 +49,16 @@ Task<void> KernelSuite(DebuggerX& dbg) {
 		co_return;
 	}
 
+	// a thread that waits for the whole suite: a local kernel can give the registers of a thread that waits, not of one
+	// that runs on a processor at the time (this one could: "Unable to get context for thread running on processor N")
+	auto parkedEvent = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	DWORD parkedTid = 0;
+	auto parked = ::CreateThread(nullptr, 0, [](void* e) -> DWORD {
+		::WaitForSingleObject(static_cast<HANDLE>(e), INFINITE);
+		return 0;
+		}, parkedEvent, 0, &parkedTid);
+	::Sleep(100);
+
 	// this process's EPROCESS, and its threads
 	ULONG64 self = 0;
 	std::vector<KernelThread> threads;
@@ -123,12 +133,13 @@ Task<void> KernelSuite(DebuggerX& dbg) {
 	hr = co_await dbg.SetKernelProcess(self, true);
 	Check(hr == E_NOTIMPL, "invasive (.process /i) is for a kernel over a connection only");
 
-	// .thread /p /r: the thread the debugger looks at
-	auto self_thread = std::find_if(threads.begin(), threads.end(), [](auto& t) { return t.Tid == ::GetCurrentThreadId(); });
-	if (self_thread != threads.end()) {
-		hr = co_await dbg.SetKernelThread(self_thread->Address);
-		Check(SUCCEEDED(hr), "SetKernelThread: this thread");
-		Check(co_await Eval(dbg, L"@$thread") == self_thread->Address, "@$thread is it");
+	// .thread /p /r: the thread the debugger looks at (one that waits: see above)
+	auto waiting = std::find_if(threads.begin(), threads.end(), [&](auto& t) { return t.Tid == parkedTid; });
+	Check(waiting != threads.end(), "the waiting thread is among them");
+	if (waiting != threads.end()) {
+		hr = co_await dbg.SetKernelThread(waiting->Address);
+		Check(SUCCEEDED(hr), "SetKernelThread: a thread that waits");
+		Check(co_await Eval(dbg, L"@$thread") == waiting->Address, "@$thread is it");
 	}
 
 	// the object manager's namespace, the drivers, and the IRP of a read that waits (a thread of this process, on a pipe)
@@ -183,6 +194,11 @@ Task<void> KernelSuite(DebuggerX& dbg) {
 	::CloseHandle(reader);
 	::CloseHandle(pipeRead);
 	::CloseHandle(pipeWrite);
+
+	::SetEvent(parkedEvent);
+	::WaitForSingleObject(parked, 5000);
+	::CloseHandle(parked);
+	::CloseHandle(parkedEvent);
 
 	co_await dbg.Detach();
 	::PostQuitMessage(0);

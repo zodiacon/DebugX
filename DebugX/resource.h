@@ -151,6 +151,11 @@
 #define ID_VIEW_IRPS                    32841
 #define ID_DEBUG_ANALYZE                32842
 #define ID_VIEW_ANALYSIS                32843
+#define ID_DEBUG_CONNECTSERVER          32844
+#define ID_DEBUG_DISCONNECTSERVER       32845
+#define ID_DEBUG_RUNSCRIPT              32846
+#define ID_DEBUG_LOADSCRIPT             32847
+#define ID_DEBUG_UNLOADSCRIPT           32848
 #define ID_VIEW_LOCALS                  32808
 #define ID_VIEW_WATCH                   32809
 #define ID_BREAKPOINT_EDIT              32810
@@ -161,7 +166,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        247
-#define _APS_NEXT_COMMAND_VALUE         32844
+#define _APS_NEXT_COMMAND_VALUE         32849
 #define _APS_NEXT_CONTROL_VALUE         1043
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

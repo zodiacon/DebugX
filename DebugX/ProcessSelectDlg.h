@@ -23,6 +23,11 @@ public:
 	enum { IDD = IDD_PROCSELECT };
 
 	int GetSelectedProcess(CString& name) const;
+	// a process server's processes (by name only), instead of this machine's
+	void SetRemoteProcesses(CString server, std::vector<std::pair<DWORD, CString>> processes) {
+		m_Server = server;
+		m_RemoteProcesses = std::move(processes);
+	}
 
 	BEGIN_MSG_MAP(CProcessSelectDlg)
 		MESSAGE_HANDLER(WM_INITDIALOG, OnInitDialog)
@@ -57,5 +62,7 @@ private:
 	CString m_Name;
 	CListViewCtrl m_List;
 	CImageList m_Images;
+	CString m_Server;		// empty: this machine
+	std::vector<std::pair<DWORD, CString>> m_RemoteProcesses;
 };
 
