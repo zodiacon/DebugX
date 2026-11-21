@@ -10,6 +10,7 @@
 #include "SourceDocuments.h"
 #include "FindDlg.h"
 #include "AppMessages.h"
+#include "DefaultLayouts.h"
 
 class CMainFrame :
 	public CFrameWindowImpl<CMainFrame>,
@@ -33,6 +34,8 @@ public:
 	void OnSessionChanged() override;
 	void OnBreakpointsChanged() override;
 	void OnTargetEnded() override;
+	// a target of the other kind (user / kernel mode) brings that mode's window layout
+	void OnTargetAttached() override;
 	// a second-chance exception is analyzed when the target has stopped for it
 	void OnException(const DebugEngine::ExceptionData& data) override;
 	void OnBroke() override;
@@ -102,6 +105,11 @@ public:
 		COMMAND_ID_HANDLER(ID_WINDOW_CLOSE, OnWindowClose)
 		COMMAND_ID_HANDLER(ID_WINDOW_CLOSE_ALL, OnWindowCloseAll)
 		COMMAND_ID_HANDLER(ID_WINDOW_RESETLAYOUT, OnWindowResetLayout)
+		COMMAND_ID_HANDLER(ID_WINDOW_LAYOUT_USERDEFAULT, OnWindowDefaultLayout)
+		COMMAND_ID_HANDLER(ID_WINDOW_LAYOUT_KERNELDEFAULT, OnWindowDefaultLayout)
+		COMMAND_ID_HANDLER(ID_WINDOW_SAVELAYOUT, OnWindowSaveLayout)
+		COMMAND_RANGE_HANDLER(ID_WINDOW_LAYOUT1, ID_WINDOW_LAYOUT20, OnWindowApplyLayout)
+		COMMAND_RANGE_HANDLER(ID_WINDOW_DELETELAYOUT1, ID_WINDOW_DELETELAYOUT20, OnWindowDeleteLayout)
 		COMMAND_ID_HANDLER(ID_OPTIONS_ALWAYSONTOP, OnAlwaysOnTop)
 		COMMAND_ID_HANDLER(ID_OPTIONS_DARKMODE, OnToggleDarkMode)
 		COMMAND_ID_HANDLER(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, OnToggleDml)
@@ -122,6 +130,15 @@ private:
 	void InitMenu(HMENU menu);
 	void ApplyTheme();
 	void SaveLayout();
+	// Window layouts. The one in use is the layout of m_LayoutMode; the other mode's waits in m_ModeLayouts.
+	bool ApplyDefaultLayout(LayoutMode mode, bool report);
+	void SwitchLayoutMode(LayoutMode mode);
+	void SaveNamedLayouts();
+	void FillLayoutsMenu(CMenuHandle menu);
+	LRESULT OnWindowDefaultLayout(WORD, WORD id, HWND, BOOL&);
+	LRESULT OnWindowSaveLayout(WORD, WORD, HWND, BOOL&);
+	LRESULT OnWindowApplyLayout(WORD, WORD id, HWND, BOOL&);
+	LRESULT OnWindowDeleteLayout(WORD, WORD id, HWND, BOOL&);
 	void UpdateUI(bool force = false);
 
 	DebugEngine::Task<void> RunExecutable(CString exePath, CString arguments, CString workingDir);
@@ -227,5 +244,8 @@ private:
 	bool m_AnalyzeOnBreak{ false };
 	// the process server connected to (its options); empty: none
 	CString m_ProcessServer;
+	// the kind of target the window layout in use is for, and the last layout of the other kind (by LayoutModeName)
+	LayoutMode m_LayoutMode{ LayoutMode::User };
+	WTLDock::DockLayoutStore m_ModeLayouts;
 	Lifetime m_Lifetime;
 };

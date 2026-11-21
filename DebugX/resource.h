@@ -47,6 +47,9 @@
 #define IDD_SYMBOLPATHS                 244
 #define IDD_INPUT                       245
 #define IDD_FIND                        246
+#define IDI_CPU                         247
+#define IDI_OUTPUT                      248
+#define IDI_LOCALS                      249
 #define IDI_WINDOW_CLOSE                238
 #define IDI_ICON3                       239
 #define IDI_WINDOW_CLOSEALL             239
@@ -156,6 +159,13 @@
 #define ID_DEBUG_RUNSCRIPT              32846
 #define ID_DEBUG_LOADSCRIPT             32847
 #define ID_DEBUG_UNLOADSCRIPT           32848
+#define ID_WINDOW_LAYOUT_USERDEFAULT    32849
+#define ID_WINDOW_LAYOUT_KERNELDEFAULT  32850
+#define ID_WINDOW_SAVELAYOUT            32851
+#define ID_WINDOW_LAYOUT1               32852
+#define ID_WINDOW_LAYOUT20              32871
+#define ID_WINDOW_DELETELAYOUT1         32872
+#define ID_WINDOW_DELETELAYOUT20        32891
 #define ID_VIEW_LOCALS                  32808
 #define ID_VIEW_WATCH                   32809
 #define ID_BREAKPOINT_EDIT              32810
@@ -165,8 +175,8 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        247
-#define _APS_NEXT_COMMAND_VALUE         32849
+#define _APS_NEXT_RESOURCE_VALUE        250
+#define _APS_NEXT_COMMAND_VALUE         32892
 #define _APS_NEXT_CONTROL_VALUE         1043
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

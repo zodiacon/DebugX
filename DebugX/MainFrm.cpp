@@ -31,8 +31,9 @@ using namespace DebugEngine;
 using namespace WTLDock;
 
 namespace {
-	// where the arrangement of the tool windows and the frame is kept between runs
-	std::wstring GetLayoutPath() {
+	// a file in %LOCALAPPDATA%\DebugX: layout.json is the arrangement of the panes and the frame the last run left,
+	// mode-layouts.json the last layout of each mode (user / kernel), layouts.json the ones saved by name
+	std::wstring GetDataPath(PCWSTR name) {
 		wil::unique_cotaskmem_string folder;
 		if (FAILED(::SHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_CREATE, nullptr, &folder)))
 			return {};
@@ -40,7 +41,18 @@ namespace {
 		std::wstring dir(folder.get());
 		dir += L"\\DebugX";
 		::CreateDirectory(dir.c_str(), nullptr);
-		return dir + L"\\layout.json";
+		return dir + L"\\" + name;
+	}
+
+	bool FileExists(const std::wstring& path) {
+		return !path.empty() && ::GetFileAttributes(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+	}
+
+	// layouts saved before there were default layouts are not restored
+	LoadOptions CurrentLayoutOptions() {
+		LoadOptions options;
+		options.MinAppVersion = LayoutVersion;
+		return options;
 	}
 }
 
@@ -304,11 +316,115 @@ LRESULT CMainFrame::OnWindowCloseAll(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*
 }
 
 LRESULT CMainFrame::OnWindowResetLayout(WORD, WORD, HWND, BOOL&) {
-	std::wstring error;
-	if (!m_Dock.ResetLayout(&error))
-		AtlMessageBox(*this, error.c_str(), IDS_TITLE, MB_ICONERROR);
-
+	ApplyDefaultLayout(m_LayoutMode, true);
 	return 0;
+}
+
+// (the other mode's default too: it becomes the layout of the mode in use, which does not change)
+LRESULT CMainFrame::OnWindowDefaultLayout(WORD, WORD id, HWND, BOOL&) {
+	ApplyDefaultLayout(id == ID_WINDOW_LAYOUT_KERNELDEFAULT ? LayoutMode::Kernel : LayoutMode::User, true);
+	return 0;
+}
+
+LRESULT CMainFrame::OnWindowSaveLayout(WORD, WORD, HWND, BOOL&) {
+	auto& store = m_Dock.Layouts();
+	CInputDlg dlg(L"Save Layout", L"Layout name:");
+	if (dlg.DoModal() != IDOK)
+		return 0;
+
+	std::wstring name(dlg.GetText());
+	if (store.Contains(name)) {
+		if (AtlMessageBox(*this, std::format(L"Replace the layout \"{}\"?", name).c_str(), IDS_TITLE, MB_YESNO | MB_ICONQUESTION) != IDYES)
+			return 0;
+	}
+	else if (store.Count() >= ID_WINDOW_LAYOUT20 - ID_WINDOW_LAYOUT1 + 1) {
+		AtlMessageBox(*this, L"There are as many saved layouts as there can be. Delete one first (Window > Layouts > Delete).", IDS_TITLE, MB_ICONWARNING);
+		return 0;
+	}
+	m_Dock.SaveLayoutAs(name);
+	SaveNamedLayouts();
+	return 0;
+}
+
+LRESULT CMainFrame::OnWindowApplyLayout(WORD, WORD id, HWND, BOOL&) {
+	auto names = m_Dock.Layouts().Names();
+	const size_t index = id - ID_WINDOW_LAYOUT1;
+	if (index >= names.size())
+		return 0;
+
+	std::wstring error;
+	if (!m_Dock.ApplyLayout(names[index], &error))
+		AtlMessageBox(*this, std::format(L"The layout \"{}\" could not be applied: {}", names[index], error).c_str(), IDS_TITLE, MB_ICONERROR);
+	return 0;
+}
+
+LRESULT CMainFrame::OnWindowDeleteLayout(WORD, WORD id, HWND, BOOL&) {
+	auto names = m_Dock.Layouts().Names();
+	const size_t index = id - ID_WINDOW_DELETELAYOUT1;
+	if (index >= names.size())
+		return 0;
+
+	if (AtlMessageBox(*this, std::format(L"Delete the layout \"{}\"?", names[index]).c_str(), IDS_TITLE, MB_YESNO | MB_ICONQUESTION) == IDYES) {
+		m_Dock.Layouts().Remove(names[index]);
+		SaveNamedLayouts();
+	}
+	return 0;
+}
+
+// Window > Layouts: the two defaults (in the menu resource), then the saved layouts and a submenu to delete them
+void CMainFrame::FillLayoutsMenu(CMenuHandle menu) {
+	while (menu.GetMenuItemCount() > 2)
+		menu.DeleteMenu(2, MF_BYPOSITION);
+
+	auto names = m_Dock.Layouts().Names();
+	if (names.empty())
+		return;
+
+	menu.AppendMenu(MF_SEPARATOR);
+	CMenuHandle remove;
+	remove.CreatePopupMenu();
+	for (size_t i = 0; i < names.size() && i <= ID_WINDOW_LAYOUT20 - ID_WINDOW_LAYOUT1; i++) {
+		// (a '&' in a name is not an accelerator)
+		std::wstring text;
+		for (auto ch : names[i])
+			text += ch == L'&' ? std::wstring(L"&&") : std::wstring(1, ch);
+		menu.AppendMenu(MF_STRING, ID_WINDOW_LAYOUT1 + static_cast<UINT>(i), text.c_str());
+		remove.AppendMenu(MF_STRING, ID_WINDOW_DELETELAYOUT1 + static_cast<UINT>(i), text.c_str());
+	}
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(MF_POPUP, remove, L"&Delete");
+}
+
+bool CMainFrame::ApplyDefaultLayout(LayoutMode mode, bool report) {
+	std::wstring error;
+	if (m_Dock.LoadState(BuildDefaultLayout(mode, m_Dock.Layout().Dpi()), {}, &error, false))
+		return true;
+
+	ATLTRACE(L"Default layout not applied: %ws\n", error.c_str());
+	if (report)
+		AtlMessageBox(*this, error.c_str(), IDS_TITLE, MB_ICONERROR);
+	return false;
+}
+
+// Each mode keeps its layout as the user left it: the one in use goes into m_ModeLayouts, and the other comes out
+// (or its default, the first time).
+void CMainFrame::SwitchLayoutMode(LayoutMode mode) {
+	if (mode == m_LayoutMode)
+		return;
+
+	m_ModeLayouts.Set(LayoutModeName(m_LayoutMode), m_Dock.Layout().Save());
+	m_LayoutMode = mode;
+	AppSettings::Get().LayoutMode(static_cast<int>(mode));
+
+	std::wstring error;
+	auto text = m_ModeLayouts.Find(LayoutModeName(mode));
+	if (!text || !m_Dock.LoadState(*text, CurrentLayoutOptions(), &error, false))
+		ApplyDefaultLayout(mode, false);
+}
+
+void CMainFrame::SaveNamedLayouts() {
+	if (auto path = GetDataPath(L"layouts.json"); !path.empty())
+		m_Dock.Layouts().SaveToFile(path);
 }
 
 LRESULT CMainFrame::OnRunExe(WORD, WORD, HWND, BOOL&) {
@@ -462,6 +578,12 @@ void CMainFrame::OnBreakpointsChanged() {
 	// Only while the target is stopped: when it ends, the engine removes them -- those changes are not the user's
 	if (!m_BreakpointsKey.empty() && DebugManager::Session().IsBroken())
 		SaveBreakpoints();
+}
+
+void CMainFrame::OnTargetAttached() {
+	const auto target = DebugManager::Session().Target();
+	if (target != TargetType::Unknown)
+		SwitchLayoutMode((target & TargetType::Kernel) == TargetType::Kernel ? LayoutMode::Kernel : LayoutMode::User);
 }
 
 void CMainFrame::OnTargetEnded() {
@@ -1002,6 +1124,10 @@ LRESULT CMainFrame::OnInitMenuPopup(UINT, WPARAM wParam, LPARAM, BOOL& bHandled)
 	bHandled = FALSE;
 	CMenuHandle menu(reinterpret_cast<HMENU>(wParam));
 	auto first = menu.GetMenuItemID(0);
+	if (first == ID_WINDOW_LAYOUT_USERDEFAULT) {
+		FillLayoutsMenu(menu);
+		return 0;
+	}
 	if (first != ID_FILE_RECENT1 && first != ID_FILE_CLEARRECENT)
 		return 0;
 
@@ -1175,15 +1301,15 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_VIEW_MEMORY2, IDI_MEMORY },
 		{ ID_VIEW_MEMORY3, IDI_MEMORY },
 		{ ID_VIEW_MEMORY4, IDI_MEMORY },
-		{ ID_VIEW_OUTPUT, IDI_EVENT },
+		{ ID_VIEW_OUTPUT, IDI_OUTPUT },
 		{ ID_VIEW_MODULES, IDI_DLL },
-		{ ID_VIEW_REGISTERS, IDI_REGISTRY },
+		{ ID_VIEW_REGISTERS, IDI_CPU },
 		{ ID_DEBUG_ADDBREAKPOINT, IDI_BREAKPOINT },
 		{ ID_VIEW_CALLSTACK, IDI_CALLSTACK },
 		{ ID_VIEW_BREAKPOINTS, IDI_BREAKPOINTS },
 		{ ID_VIEW_MEMORY, IDI_MEMORY },
 		{ ID_VIEW_DISASSEMBLY, IDI_STRUCT },
-		{ ID_VIEW_LOCALS, IDI_TOOL },
+		{ ID_VIEW_LOCALS, IDI_LOCALS },
 		{ ID_VIEW_WATCH, IDI_FIND },
 		{ ID_FILE_OPENSOURCE, IDI_OPEN },
 		{ ID_DEBUG_ATTACHTOPROCESS, IDI_PROCESS_ADD },
@@ -1244,23 +1370,32 @@ void CMainFrame::InitDock() {
 		layout.AddPane(desc);
 	}
 
-	// what the application starts with, and what Window > Reset Window Layout goes back to
-	layout.Show(layout.FindPane(L"command"));
-	m_Dock.CaptureDefaultLayout();
+	layout.SetAppVersion(LayoutVersion);
+	m_LayoutMode = AppSettings::Get().LayoutMode() == 1 ? LayoutMode::Kernel : LayoutMode::User;
+	if (auto path = GetDataPath(L"mode-layouts.json"); FileExists(path))
+		m_ModeLayouts.LoadFromFile(path);
+	if (auto path = GetDataPath(L"layouts.json"); FileExists(path))
+		m_Dock.Layouts().LoadFromFile(path);
 
-	// then whatever the last run left, if it did
-	auto path = GetLayoutPath();
-	if (!path.empty() && ::GetFileAttributes(path.c_str()) != INVALID_FILE_ATTRIBUTES) {
+	// whatever the last run left, if it did; else (the first run) the default layout of the mode
+	bool restored = false;
+	if (auto path = GetDataPath(L"layout.json"); FileExists(path)) {
 		std::wstring error;
-		if (!m_Dock.LoadStateFromFile(path, {}, &error))
+		restored = m_Dock.LoadStateFromFile(path, CurrentLayoutOptions(), &error);
+		if (!restored)
 			ATLTRACE(L"Layout not restored: %ws\n", error.c_str());
 	}
+	if (!restored && !ApplyDefaultLayout(m_LayoutMode, false))
+		layout.Show(layout.FindPane(L"command"));
 }
 
 void CMainFrame::SaveLayout() {
-	auto path = GetLayoutPath();
-	if (!path.empty())
+	if (auto path = GetDataPath(L"layout.json"); !path.empty())
 		m_Dock.SaveStateToFile(path);
+	// (the mode in use is kept there too)
+	m_ModeLayouts.Set(LayoutModeName(m_LayoutMode), m_Dock.Layout().Save());
+	if (auto path = GetDataPath(L"mode-layouts.json"); !path.empty())
+		m_ModeLayouts.SaveToFile(path);
 }
 
 void CMainFrame::UpdateUI(bool force) {

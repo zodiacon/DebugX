@@ -343,6 +343,7 @@
     <ClCompile Include="OutputView.cpp" />
     <ClCompile Include="RegistersView.cpp" />
     <ClCompile Include="PaneRegistry.cpp" />
+    <ClCompile Include="DefaultLayouts.cpp" />
     <ClCompile Include="SessionModel.cpp" />
     <ClCompile Include="ProcessSelectDlg.cpp" />
     <ClCompile Include="RunExeDlg.cpp" />
@@ -399,6 +400,7 @@
     <ClInclude Include="RegistersView.h" />
     <ClInclude Include="PaneBase.h" />
     <ClInclude Include="PaneRegistry.h" />
+    <ClInclude Include="DefaultLayouts.h" />
     <ClInclude Include="SessionModel.h" />
     <ClInclude Include="ProcessSelectDlg.h" />
     <ClInclude Include="resource.h" />

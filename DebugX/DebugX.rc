@@ -153,6 +153,12 @@ BEGIN
         MENUITEM "&Close\tCtrl+F4",             ID_WINDOW_CLOSE
         MENUITEM "Close &All Documents",        ID_WINDOW_CLOSE_ALL
         MENUITEM SEPARATOR
+        POPUP "&Layouts"
+        BEGIN
+            MENUITEM "&User Mode Default",      ID_WINDOW_LAYOUT_USERDEFAULT
+            MENUITEM "&Kernel Mode Default",    ID_WINDOW_LAYOUT_KERNELDEFAULT
+        END
+        MENUITEM "&Save Layout As...",          ID_WINDOW_SAVELAYOUT
         MENUITEM "&Reset Window Layout",        ID_WINDOW_RESETLAYOUT
     END
     POPUP "&Help"
@@ -240,6 +246,12 @@ IDI_WINDOW_CLOSE        ICON                    "res\\window-delete.ico"
 IDI_WINDOW_CLOSEALL     ICON                    "res\\windows-delete.ico"
 
 IDI_MEMORY              ICON                    "res\\memory.ico"
+
+IDI_CPU                 ICON                    "res\\cpu.ico"
+
+IDI_OUTPUT              ICON                    "res\\output.ico"
+
+IDI_LOCALS              ICON                    "res\\locals.ico"
 
 
 /////////////////////////////////////////////////////////////////////////////

@@ -32,10 +32,10 @@ namespace {
 
 	const PaneInfo s_Panes[] = {
 		{ L"command", L"Command", IDI_COMMAND, ID_VIEW_COMMAND, PaneKind::Document, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, nullptr, Make<CCommandView> },
-		{ L"output", L"Output", IDI_EVENT, ID_VIEW_OUTPUT, PaneKind::Tool, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, nullptr, Make<COutputView> },
+		{ L"output", L"Output", IDI_OUTPUT, ID_VIEW_OUTPUT, PaneKind::Tool, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, nullptr, Make<COutputView> },
 		{ L"analysis", L"Analysis", IDI_FIND, ID_VIEW_ANALYSIS, PaneKind::Tool, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, L"output", Make<CAnalysisView> },
 		{ L"callstack", L"Call Stack", IDI_CALLSTACK, ID_VIEW_CALLSTACK, PaneKind::Tool, DockSide::Left, { 560, 300 }, TargetType::Unknown, true, nullptr, Make<CCallStackView> },
-		{ L"registers", L"Registers", IDI_REGISTRY, ID_VIEW_REGISTERS, PaneKind::Tool, DockSide::Right, { 440, 300 }, TargetType::Unknown, true, nullptr, Make<CRegistersView> },
+		{ L"registers", L"Registers", IDI_CPU, ID_VIEW_REGISTERS, PaneKind::Tool, DockSide::Right, { 440, 300 }, TargetType::Unknown, true, nullptr, Make<CRegistersView> },
 		{ L"threads", L"Threads", IDI_THREADS, ID_VIEW_THREADS, PaneKind::Tool, DockSide::Right, { 420, 300 }, TargetType::User, true, L"registers", Make<CUserThreadsView> },
 		{ L"uprocesses", L"Processes", IDI_PROCESSES, ID_VIEW_USERPROCESSES, PaneKind::Tool, DockSide::Right, { 600, 300 }, TargetType::User, true, L"threads", Make<CUserProcessesView> },
 		{ L"handles", L"Handles", IDI_TOOL, ID_VIEW_HANDLES, PaneKind::Tool, DockSide::Right, { 700, 300 }, TargetType::LiveUser, true, L"threads", Make<CHandlesView> },
@@ -51,7 +51,7 @@ namespace {
 		{ L"memory3", L"Memory 3", IDI_MEMORY, ID_VIEW_MEMORY3, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"memory", Make<CMemoryView> },
 		{ L"memory4", L"Memory 4", IDI_MEMORY, ID_VIEW_MEMORY4, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"memory", Make<CMemoryView> },
 		{ L"disassembly", L"Disassembly", IDI_STRUCT, ID_VIEW_DISASSEMBLY, PaneKind::Tool, DockSide::Left, { 560, 300 }, TargetType::Unknown, true, L"callstack", Make<CDisassemblyView> },
-		{ L"locals", L"Locals", IDI_TOOL, ID_VIEW_LOCALS, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"output", Make<CLocalsView> },
+		{ L"locals", L"Locals", IDI_LOCALS, ID_VIEW_LOCALS, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"output", Make<CLocalsView> },
 		{ L"watch", L"Watch", IDI_FIND, ID_VIEW_WATCH, PaneKind::Tool, DockSide::Bottom, { 700, 240 }, TargetType::Unknown, true, L"locals", Make<CWatchView> },
 	};
 }

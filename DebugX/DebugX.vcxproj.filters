@@ -108,6 +108,9 @@
     <ClCompile Include="SessionModel.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="DefaultLayouts.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="PaneRegistry.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -240,6 +243,9 @@
       <Filter>Views</Filter>
     </ClInclude>
     <ClInclude Include="SessionModel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DefaultLayouts.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="PaneRegistry.h">

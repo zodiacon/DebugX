@@ -20,6 +20,7 @@ struct AppSettings : Settings {
 		SETTING_STRING(RecentTargets, L"");		// File > Recent Targets (RecentTargets.h), a line for each
 		SETTING(DebugChildProcesses, 0, SettingType::Int32);	// Options > Debug Child Processes
 		SETTING_STRING(ProcessServer, L"tcp:server=,port=5005");	// the last Connect to Process Server options
+		SETTING(LayoutMode, 0, SettingType::Int32);	// the window layout in use (layout.json) is the one for: 0 user mode, 1 kernel mode
 	END_SETTINGS
 
 	DEF_SETTING(DarkMode, int)
@@ -32,4 +33,5 @@ struct AppSettings : Settings {
 	DEF_SETTING_STRING(RecentTargets)
 	DEF_SETTING(DebugChildProcesses, int)
 	DEF_SETTING_STRING(ProcessServer)
+	DEF_SETTING(LayoutMode, int)
 };
