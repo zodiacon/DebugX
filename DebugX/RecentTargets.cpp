@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "RecentTargets.h"
 #include "AppSettings.h"
 #include <Shlwapi.h>

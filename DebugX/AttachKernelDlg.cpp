@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "AttachKernelDlg.h"
 
 LRESULT CAttachKernelDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&) {

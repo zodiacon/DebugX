@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "RunExeDlg.h"
 
 LRESULT CRunExeDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&) {

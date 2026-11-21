@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "AnalysisView.h"
 #include "DebugManager.h"
 

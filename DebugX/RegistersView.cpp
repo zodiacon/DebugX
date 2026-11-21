@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "RegistersView.h"
 #include "DebugManager.h"
 #include "SortHelper.h"

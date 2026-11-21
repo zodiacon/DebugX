@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "DisassemblyView.h"
 #include "DebugManager.h"
 #include "InputDlg.h"

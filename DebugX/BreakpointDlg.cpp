@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "BreakpointDlg.h"
 
 using namespace DebugEngine;

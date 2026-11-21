@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "ScintillaCtrl.h"
 
 // Scintilla's Win32 platform layer talks to the IME directly (ScintillaWin.cxx); not part of the

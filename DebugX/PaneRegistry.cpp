@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "PaneRegistry.h"
 #include "CommandView.h"
 #include "UserThreadsView.h"

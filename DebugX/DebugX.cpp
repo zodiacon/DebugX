@@ -1,7 +1,7 @@
 // DebugX.cpp : main source file for DebugX.exe
 //
 
-#include "stdafx.h"
+#include "pch.h"
 #include "resource.h"
 #include "aboutdlg.h"
 #include "MainFrm.h"

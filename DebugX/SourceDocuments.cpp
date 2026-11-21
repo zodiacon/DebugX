@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "SourceDocuments.h"
 #include "SourceView.h"
 #include "resource.h"

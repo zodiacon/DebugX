@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "SourceView.h"
 #include "DebugManager.h"
 #include "BreakpointDlg.h"

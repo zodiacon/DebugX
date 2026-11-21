@@ -1,4 +1,4 @@
-#include "stdafx.h"
+#include "pch.h"
 #include "CallStackView.h"
 #include "DebugManager.h"
 
