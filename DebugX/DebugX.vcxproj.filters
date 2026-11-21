@@ -164,7 +164,7 @@
     <ClInclude Include="UserProcessesView.h">
       <Filter>Views</Filter>
     </ClInclude>
-    <ClInclude Include="pch.h">
+    <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="MainFrm.h">
@@ -397,6 +397,9 @@
     <Image Include="res\windows-delete.ico">
       <Filter>Resource Files\Icons</Filter>
     </Image>
+    <Image Include="res\memory.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -405,5 +408,10 @@
     <ResourceCompile Include="DebugX.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="DebugX.manifest">
+      <Filter>Resource Files</Filter>
+    </Manifest>
   </ItemGroup>
 </Project>

@@ -130,10 +130,10 @@ BEGIN
         MENUITEM "&Step Over\tF10",             ID_DEBUG_STEPOVER
         MENUITEM "Ste&p Into\tF11",             ID_DEBUG_STEPINTO
         MENUITEM "Step &Out\tShift+F11",        ID_DEBUG_STEPOUT
-        MENUITEM "Run to &Cursor\tCtrl+F10",     ID_DEBUG_RUNTOCURSOR
+        MENUITEM "Run to &Cursor\tCtrl+F10",    ID_DEBUG_RUNTOCURSOR
         MENUITEM "Set &Next Statement\tCtrl+Shift+F10", ID_DEBUG_SETNEXTSTATEMENT
         MENUITEM SEPARATOR
-        MENUITEM "Add &Breakpoint...\tF9",       ID_DEBUG_ADDBREAKPOINT
+        MENUITEM "Add &Breakpoint...\tF9",      ID_DEBUG_ADDBREAKPOINT
         MENUITEM "E&xception Settings...\tCtrl+Alt+E", ID_DEBUG_EXCEPTIONS
         MENUITEM "&Reload Symbols",             ID_DEBUG_RELOADSYMBOLS
     END
@@ -253,8 +253,8 @@ CAPTION "About DebugX"
 FONT 9, "Segoe UI", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,68,81,50,14
-    CTEXT           "DebugX v0.1\n\n(C)2020 Pavel Yosifovich",IDC_STATIC,36,24,114,32
-    ICON            IDR_MAINFRAME,IDC_STATIC,6,6,18,17
+    CTEXT           "DebugX v1.0\n\n©2020-2026 Pavel Yosifovich",IDC_STATIC,36,24,114,32
+    ICON            IDR_MAINFRAME,IDC_STATIC,6,6,20,20
 END
 
 IDD_RUNEXE DIALOGEX 0, 0, 429, 122
@@ -304,7 +304,8 @@ BEGIN
     EDITTEXT        IDC_BPTHREAD,190,135,36,14,ES_NUMBER
     LTEXT           "(index; empty: any)",IDC_STATIC,230,137,73,8
     CONTROL         "&Enabled",IDC_BPENABLED,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,56,155,50,10
-    CONTROL         "&One-shot (removed when it is hit)",IDC_BPONESHOT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,112,155,150,10
+    CONTROL         "&One-shot (removed when it is hit)",IDC_BPONESHOT,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,112,155,150,10
     DEFPUSHBUTTON   "  OK",IDOK,94,177,56,14,BS_CENTER | BS_FLAT | WS_DISABLED
     PUSHBUTTON      "  Cancel",IDCANCEL,158,177,54,14,BS_FLAT
 END
@@ -445,21 +446,21 @@ BEGIN
     VK_INSERT,      ID_EDIT_COPY,           VIRTKEY, CONTROL
     VK_INSERT,      ID_EDIT_PASTE,          VIRTKEY, SHIFT
     "F",            ID_EDIT_FIND,           VIRTKEY, CONTROL
-    VK_F3,          ID_EDIT_FINDNEXT,       VIRTKEY
+    VK_F3,          ID_EDIT_FINDNEXT,       VIRTKEY 
     VK_F3,          ID_EDIT_FINDPREV,       VIRTKEY, SHIFT
     "G",            ID_EDIT_GOTO,           VIRTKEY, CONTROL
-    VK_F5,          ID_DEBUG_GO,            VIRTKEY
+    VK_F5,          ID_DEBUG_GO,            VIRTKEY 
     VK_F5,          ID_DEBUG_STOP,          VIRTKEY, SHIFT
     VK_F5,          ID_DEBUG_RESTART,       VIRTKEY, SHIFT, CONTROL
     VK_F10,         ID_DEBUG_SETNEXTSTATEMENT, VIRTKEY, SHIFT, CONTROL
     VK_CANCEL,      ID_DEBUG_BREAK,         VIRTKEY, CONTROL
-    VK_F6,          ID_DEBUG_ATTACHTOPROCESS, VIRTKEY
-    VK_F9,          ID_DEBUG_ADDBREAKPOINT, VIRTKEY
+    VK_F6,          ID_DEBUG_ATTACHTOPROCESS, VIRTKEY 
+    VK_F9,          ID_DEBUG_ADDBREAKPOINT, VIRTKEY 
     VK_F10,         ID_DEBUG_RUNTOCURSOR,   VIRTKEY, CONTROL
     "O",            ID_FILE_OPENSOURCE,     VIRTKEY, SHIFT, CONTROL
     "E",            ID_DEBUG_EXCEPTIONS,    VIRTKEY, CONTROL, ALT
-    VK_F10,         ID_DEBUG_STEPOVER,      VIRTKEY
-    VK_F11,         ID_DEBUG_STEPINTO,      VIRTKEY
+    VK_F10,         ID_DEBUG_STEPOVER,      VIRTKEY 
+    VK_F11,         ID_DEBUG_STEPINTO,      VIRTKEY 
     VK_F11,         ID_DEBUG_STEPOUT,       VIRTKEY, SHIFT
 END
 
@@ -484,15 +485,15 @@ VS_VERSION_INFO VERSIONINFO
 BEGIN
     BLOCK "StringFileInfo"
     BEGIN
-        BLOCK "040904B0"
+        BLOCK "040904b0"
         BEGIN
-            VALUE "FileDescription", "DebugX Module"
-            VALUE "FileVersion", "1, 0, 0, 1"
+            VALUE "FileDescription", "Debugger based on DbgEng"
+            VALUE "FileVersion", "1, 0, 0"
             VALUE "InternalName", "DebugX"
-            VALUE "LegalCopyright", "Copyright 2020"
+            VALUE "LegalCopyright", "©2020-2026 Pavel Yosifovich"
             VALUE "OriginalFilename", "DebugX.exe"
-            VALUE "ProductName", "DebugX Module"
-            VALUE "ProductVersion", "1, 0, 0, 1"
+            VALUE "ProductName", "DebugX"
+            VALUE "ProductVersion", "1, 0, 0"
         END
     END
     BLOCK "VarFileInfo"
@@ -530,7 +531,7 @@ END
 
 STRINGTABLE
 BEGIN
-    IDR_MAINFRAME           "DebugX v0.1 (C)2020 Pavel Yosifovich"
+    IDR_MAINFRAME           "DebugX v1.0"
     IDS_TITLE               "DebugX"
 END
 
