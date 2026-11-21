@@ -233,7 +233,7 @@ Task<void> CSourceView::Refresh() {
 	auto alive = m_Lifetime.Watch();
 
 	std::vector<BreakpointInfo> breakpoints;
-	co_await DebugManager::DebuggerX().EnumBreakpoints(breakpoints);
+	co_await DebugManager::Debugger().EnumBreakpoints(breakpoints);
 	if (!*alive)
 		co_return;
 
@@ -247,7 +247,7 @@ Task<void> CSourceView::Refresh() {
 	}
 	std::vector<SourceLocation> locations;
 	if (!offsets.empty())
-		co_await DebugManager::DebuggerX().GetSourceLocations(offsets, locations);
+		co_await DebugManager::Debugger().GetSourceLocations(offsets, locations);
 	if (!*alive)
 		co_return;
 
@@ -266,7 +266,7 @@ Task<void> CSourceView::Refresh() {
 }
 
 std::wstring CSourceView::LineExpression(ULONG line) const {
-	return std::format(L"`{}:{}`", m_SymbolFile.empty() ? m_Path : m_SymbolFile, line);
+	return DebugManager::Debugger().SourceLineLocation(m_SymbolFile.empty() ? m_Path : m_SymbolFile, line);
 }
 
 Task<void> CSourceView::ToggleBreakpointAt(ULONG line) {
@@ -285,13 +285,13 @@ Task<void> CSourceView::ToggleBreakpointAt(ULONG line) {
 	}
 	if (!ids.empty()) {
 		for (auto id : ids)
-			co_await DebugManager::DebuggerX().RemoveBreakpoint(id);
+			co_await DebugManager::Debugger().RemoveBreakpoint(id);
 		co_return;
 	}
 
 	BreakpointSettings settings;
 	settings.Expression = LineExpression(line);
-	auto hr = co_await DebugManager::DebuggerX().AddBreakpoint(settings);
+	auto hr = co_await DebugManager::Debugger().AddBreakpoint(settings);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr))
@@ -303,8 +303,7 @@ Task<void> CSourceView::RunToLine(ULONG line) {
 		::MessageBeep(MB_ICONWARNING);
 		co_return;
 	}
-	auto command = L"g " + LineExpression(line);
-	co_await DebugManager::DebuggerX().ExecuteCommand(command.c_str());
+	co_await DebugManager::Debugger().RunTo(LineExpression(line).c_str());
 }
 
 Task<void> CSourceView::SetNextStatement(ULONG line) {
@@ -314,7 +313,7 @@ Task<void> CSourceView::SetNextStatement(ULONG line) {
 		co_return;
 	}
 	ULONG64 address;
-	auto hr = co_await DebugManager::DebuggerX().Evaluate(LineExpression(line).c_str(), address);
+	auto hr = co_await DebugManager::Debugger().ResolveLocation(LineExpression(line).c_str(), address);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr)) {
@@ -440,7 +439,7 @@ LRESULT CSourceView::OnDwellEnd(int, LPNMHDR, BOOL&) {
 Task<void> CSourceView::ShowValue(Position pos, std::wstring expression, ULONG dwell) {
 	auto alive = m_Lifetime.Watch();
 	std::vector<SymbolEntry> entries;
-	auto hr = co_await DebugManager::DebuggerX().EvaluateWatches(entries, { expression }, {});
+	auto hr = co_await DebugManager::Debugger().EvaluateWatches(entries, { expression }, {});
 	// (nothing for what does not evaluate: a type, a function's name, a name out of scope...)
 	if (!*alive || dwell != m_Dwell || FAILED(hr) || entries.empty() || entries[0].Error)
 		co_return;

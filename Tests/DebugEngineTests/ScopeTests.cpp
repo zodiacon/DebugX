@@ -7,7 +7,7 @@ Task<void> ScopeSuite(DebuggerX& dbg) {
 	auto hr = co_await dbg.LaunchAndAttach(Target(L"scope").c_str(), L"first second");
 	Check(SUCCEEDED(hr), "launch scope.exe");
 	// (past wmain's prologue: locals are addressed from a frame register it sets up)
-	co_await dbg.ExecuteCommand(L"g `scope.cpp:11`");
+	co_await dbg.RunTo(dbg.SourceLineLocation(L"scope.cpp", 11).c_str());
 
 	std::vector<StackFrameInfo> frames;
 	co_await dbg.GetStackTrace(frames);

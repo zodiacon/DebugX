@@ -4,7 +4,7 @@
 
 using namespace DebugEngine;
 
-SessionModel::SessionModel(DebuggerX& debugger) : m_Debugger(debugger) {
+SessionModel::SessionModel(IDebugger& debugger) : m_Debugger(debugger) {
 }
 
 void SessionModel::AddObserver(ISessionObserver* observer) {
@@ -81,7 +81,7 @@ void SessionModel::OnNotification(DebuggerNotificationType type, void* data) {
 	switch (type) {
 		case DebuggerNotificationType::StatusChanged: {
 			auto old = m_Status;
-			m_Status = static_cast<ExecutionStatus>(*static_cast<ULONG*>(data));
+			m_Status = *static_cast<ExecutionStatus*>(data);
 			// (a stop is in frame 0, whatever was chosen before)
 			if (m_Status == ExecutionStatus::Break && old != ExecutionStatus::Break)
 				m_CurrentFrame = 0;

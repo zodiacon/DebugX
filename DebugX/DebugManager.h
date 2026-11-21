@@ -5,7 +5,7 @@
 #include "SessionModel.h"
 
 //
-// Owns the one DebuggerX of the application and the SessionModel that turns its notifications into events.
+// Owns the one debugger of the application (DbgEng's: DebuggerX) and the SessionModel that turns its notifications into events.
 // Everything here happens on the UI thread: the debugger delivers its notifications there.
 //
 class DebugManager final {
@@ -15,7 +15,11 @@ public:
 	HRESULT Init();
 	void Destroy();
 
-	static DebugEngine::DebuggerX& DebuggerX();
+	static DebugEngine::IDebugger& Debugger();
+	// the debugger as DbgEng's, for what only it can do (RunAsync); null if it is another engine
+	static DebugEngine::DebuggerX* DbgEng();
+	// DbgEng's RunAsync (the kernel analyzers); E_NOTIMPL with another engine
+	static DebugEngine::Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);
 	static SessionModel& Session();
 	// the dbgeng.dll in use (Init loads it)
 	static const std::wstring& EnginePath() {
@@ -31,7 +35,7 @@ private:
 	DebugManager(const DebugManager&) = delete;
 	DebugManager& operator=(const DebugManager&) = delete;
 
-	std::unique_ptr<DebugEngine::DebuggerX> m_Debugger;
+	std::unique_ptr<DebugEngine::IDebugger> m_Debugger;
 	std::unique_ptr<SessionModel> m_Session;
 	std::wstring m_EnginePath;
 };

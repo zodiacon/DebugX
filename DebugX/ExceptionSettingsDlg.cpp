@@ -107,7 +107,7 @@ LRESULT CExceptionSettingsDlg::OnBreakChanged(WORD, WORD, HWND, BOOL&) {
 	for (auto row : SelectedRows()) {
 		auto& f = m_Filters[row];
 		// (an event has no second chance: it just breaks)
-		f.ExecutionOption = !f.IsException && execution == DEBUG_FILTER_SECOND_CHANCE_BREAK ? DEBUG_FILTER_BREAK : execution;
+		f.ExecutionOption = !f.IsException && execution == FilterSecondChanceBreak ? FilterBreak : execution;
 		UpdateRow(row);
 	}
 	UpdateControls();
@@ -161,7 +161,7 @@ LRESULT CExceptionSettingsDlg::OnAdd(WORD, WORD, HWND, BOOL&) {
 		EventFilter f;
 		f.IsException = f.IsArbitrary = true;
 		f.Code = code;
-		f.ExecutionOption = DEBUG_FILTER_BREAK;
+		f.ExecutionOption = FilterBreak;
 		m_Filters.push_back(f);
 		row = static_cast<int>(m_Filters.size()) - 1;
 		m_List.InsertItem(row, L"");

@@ -178,7 +178,7 @@ void CCommandView::DoExecuteCommand(PCWSTR command) {
 
 Task<void> CCommandView::RunCommand(CString command) {
 	auto alive = m_Lifetime.Watch();
-	co_await DebugManager::DebuggerX().ExecuteCommand(command);
+	co_await DebugManager::Debugger().ExecuteCommand(command);
 	if (!*alive)
 		co_return;
 

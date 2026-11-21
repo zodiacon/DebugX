@@ -10,20 +10,22 @@ Task<void> NextStatementSuite(DebuggerX& dbg) {
 
 	// at the initial break of a first session, a file:line is resolved (the System32 engine has loaded no symbols there:
 	// LaunchAndAttach loads the executable's)
-	hr = co_await dbg.AddBreakpoint(L"`loop.cpp:9`");
+	hr = co_await dbg.AddBreakpoint(dbg.SourceLineLocation(L"loop.cpp", 9).c_str());
 	auto bps = co_await Breakpoints(dbg);
 	Check(SUCCEEDED(hr) && bps.size() == 1 && !bps[0].Deferred, "a file:line set at the initial break is not deferred");
-	co_await dbg.ExecuteCommand(L"g");
+	co_await dbg.Go();
 	auto loc = co_await Where(dbg);
 	Check(loc.Line == 9, "and it hits");
 	co_await dbg.ExecuteCommand(L"bc *");
 
-	co_await dbg.ExecuteCommand(L"g `loop.cpp:17`");
+	co_await dbg.RunTo(dbg.SourceLineLocation(L"loop.cpp", 17).c_str());
 	loc = co_await Where(dbg);
 	Check(loc.Line == 17, "at line 17");
 
 	// back to line 15 (the same function): the IP moves, ContextChanged comes
-	auto target = co_await Eval(dbg, (L"`" + loc.File + L":15`").c_str());
+	ULONG64 target = 0;
+	hr = co_await dbg.ResolveLocation(dbg.SourceLineLocation(loc.File, 15).c_str(), target);
+	Check(SUCCEEDED(hr) && target, "ResolveLocation of a source line");
 	auto contexts = g_Events.ContextChanged;
 	hr = co_await dbg.SetInstructionOffset(target);
 	Check(SUCCEEDED(hr), "SetInstructionOffset in the same function");

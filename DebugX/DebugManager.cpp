@@ -39,9 +39,20 @@ void DebugManager::Destroy() {
 	m_Session.reset();
 }
 
-DebugEngine::DebuggerX& DebugManager::DebuggerX() {
+DebugEngine::IDebugger& DebugManager::Debugger() {
 	ATLASSERT(Get().m_Debugger);
 	return *Get().m_Debugger;
+}
+
+DebugEngine::DebuggerX* DebugManager::DbgEng() {
+	return dynamic_cast<DebugEngine::DebuggerX*>(Get().m_Debugger.get());
+}
+
+Task<HRESULT> DebugManager::RunAsync(std::function<HRESULT(IDebugClient*)> func) {
+	auto dbg = DbgEng();
+	if (!dbg)
+		co_return E_NOTIMPL;
+	co_return co_await dbg->RunAsync(std::move(func));
 }
 
 SessionModel& DebugManager::Session() {
@@ -54,7 +65,7 @@ Task<void> DebugManager::SetNextStatement(HWND owner, ULONG64 address) {
 		::MessageBeep(MB_ICONWARNING);
 		co_return;
 	}
-	auto& dbg = DebuggerX();
+	auto& dbg = Debugger();
 	auto hr = co_await dbg.SetInstructionOffset(address);
 	if (hr == SetNextOtherFunction) {
 		// (the window may be gone by now)

@@ -137,10 +137,10 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 
 	// (the engine starts out preferring DML)
 	if (!AppSettings::Get().Dml())
-		DebugManager::DebuggerX().SetDmlEnabled(false);
+		DebugManager::Debugger().SetDmlEnabled(false);
 	UISetCheck(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, AppSettings::Get().Dml() != 0);
 	if (AppSettings::Get().DebugChildProcesses())
-		DebugManager::DebuggerX().SetDebugChildProcesses(true);
+		DebugManager::Debugger().SetDebugChildProcesses(true);
 	UISetCheck(ID_OPTIONS_DEBUGCHILDPROCESSES, AppSettings::Get().DebugChildProcesses() != 0);
 	ApplySavedEventFilters();
 	ApplySavedSymbolPaths();
@@ -213,7 +213,7 @@ LRESULT CMainFrame::OnAttachKernel(WORD, WORD, HWND, BOOL&) {
 
 LRESULT CMainFrame::OnDebugDetach(WORD, WORD, HWND, BOOL&) {
 	if (DebugManager::Session().HasTarget())
-		DebugManager::DebuggerX().Detach();
+		DebugManager::Debugger().Detach();
 
 	return 0;
 }
@@ -221,7 +221,7 @@ LRESULT CMainFrame::OnDebugDetach(WORD, WORD, HWND, BOOL&) {
 LRESULT CMainFrame::OnToggleDml(WORD, WORD id, HWND, BOOL&) {
 	auto enable = !AppSettings::Get().Dml();
 	AppSettings::Get().Dml(enable ? 1 : 0);
-	DebugManager::DebuggerX().SetDmlEnabled(enable);
+	DebugManager::Debugger().SetDmlEnabled(enable);
 	UISetCheck(id, enable);
 
 	return 0;
@@ -231,7 +231,7 @@ LRESULT CMainFrame::OnToggleChildProcesses(WORD, WORD id, HWND, BOOL&) {
 	// (from the next launch on; the session there is too)
 	auto debug = !AppSettings::Get().DebugChildProcesses();
 	AppSettings::Get().DebugChildProcesses(debug ? 1 : 0);
-	DebugManager::DebuggerX().SetDebugChildProcesses(debug);
+	DebugManager::Debugger().SetDebugChildProcesses(debug);
 	UISetCheck(id, debug);
 	return 0;
 }
@@ -475,21 +475,21 @@ LRESULT CMainFrame::OnToggleDarkMode(WORD, WORD, HWND, BOOL&) {
 LRESULT CMainFrame::OnDebugBreak(WORD, WORD, HWND, BOOL&) {
 	auto& session = DebugManager::Session();
 	if (session.IsRunning() || session.IsBusy())
-		DebugManager::DebuggerX().Break();
+		DebugManager::Debugger().Break();
 
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugGo(WORD, WORD, HWND, BOOL&) {
 	if (DebugManager::Session().CanRun())
-		DebugManager::DebuggerX().ExecuteCommand(L"g");
+		DebugManager::Debugger().Go();
 
 	return 0;
 }
 
 LRESULT CMainFrame::OnDebugStop(WORD, WORD, HWND, BOOL&) {
 	if (DebugManager::Session().HasTarget())
-		DebugManager::DebuggerX().Stop();
+		DebugManager::Debugger().Stop();
 
 	return 0;
 }
@@ -506,7 +506,7 @@ LRESULT CMainFrame::OnDebugRestart(WORD, WORD, HWND, BOOL&) {
 Task<void> CMainFrame::Restart() {
 	auto alive = m_Lifetime.Watch();
 	auto& session = DebugManager::Session();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 	auto launch = *m_Launch;
 	m_Restarting = true;
 	UpdateUI();
@@ -555,7 +555,7 @@ Task<int> CMainFrame::RestoreBreakpoints(std::wstring key) {
 	m_BreakpointsKey.clear();
 	int failed = 0;
 	for (auto& bp : SavedBreakpoints::Load(key)) {
-		if (FAILED(co_await DebugManager::DebuggerX().AddBreakpoint(bp)))
+		if (FAILED(co_await DebugManager::Debugger().AddBreakpoint(bp)))
 			failed++;
 		if (!*alive)
 			co_return failed;
@@ -620,15 +620,15 @@ LRESULT CMainFrame::OnScript(WORD, WORD id, HWND, BOOL&) {
 	auto ok = dlg.DoModal() == IDOK;
 	WTLHelper::ResumeHook();
 	if (ok)
-		RunScript(id == ID_DEBUG_RUNSCRIPT ? DebuggerX::ScriptAction::Run : DebuggerX::ScriptAction::Load, dlg.m_szFileName);
+		RunScript(id == ID_DEBUG_RUNSCRIPT ? IDebugger::ScriptAction::Run : IDebugger::ScriptAction::Load, dlg.m_szFileName);
 	return 0;
 }
 
-Task<void> CMainFrame::RunScript(DebuggerX::ScriptAction action, std::wstring path) {
+Task<void> CMainFrame::RunScript(IDebugger::ScriptAction action, std::wstring path) {
 	auto alive = m_Lifetime.Watch();
 	// (what it says goes to the Command view too)
 	std::wstring output;
-	auto hr = co_await DebugManager::DebuggerX().Script(action, path.c_str(), output);
+	auto hr = co_await DebugManager::Debugger().Script(action, path.c_str(), output);
 	if (!*alive || SUCCEEDED(hr))
 		co_return;
 	std::wstring text = hr == E_NOTIMPL
@@ -640,7 +640,7 @@ Task<void> CMainFrame::RunScript(DebuggerX::ScriptAction action, std::wstring pa
 Task<void> CMainFrame::UnloadScript() {
 	auto alive = m_Lifetime.Watch();
 	std::vector<std::wstring> scripts;
-	co_await DebugManager::DebuggerX().EnumScripts(scripts);
+	co_await DebugManager::Debugger().EnumScripts(scripts);
 	if (!*alive)
 		co_return;
 	if (scripts.empty()) {
@@ -664,7 +664,7 @@ Task<void> CMainFrame::UnloadScript() {
 	std::wstring output;
 	for (size_t i = 0; i < scripts.size(); i++) {
 		if (cmd == i + 1 || cmd == scripts.size() + 1) {
-			co_await DebugManager::DebuggerX().Script(DebuggerX::ScriptAction::Unload, scripts[i].c_str(), output);
+			co_await DebugManager::Debugger().Script(IDebugger::ScriptAction::Unload, scripts[i].c_str(), output);
 			if (!*alive)
 				co_return;
 		}
@@ -685,7 +685,7 @@ LRESULT CMainFrame::OnConnectServer(WORD, WORD, HWND, BOOL&) {
 Task<void> CMainFrame::ConnectServer(CString options) {
 	auto alive = m_Lifetime.Watch();
 	::SetWindowText(m_hWndStatusBar, (L"Connecting to " + options + L"...").GetString());
-	auto hr = co_await DebugManager::DebuggerX().ConnectProcessServer(options);
+	auto hr = co_await DebugManager::Debugger().ConnectProcessServer(options);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr)) {
@@ -709,7 +709,7 @@ LRESULT CMainFrame::OnDisconnectServer(WORD, WORD, HWND, BOOL&) {
 
 Task<void> CMainFrame::DisconnectServer() {
 	auto alive = m_Lifetime.Watch();
-	co_await DebugManager::DebuggerX().DisconnectProcessServer();
+	co_await DebugManager::Debugger().DisconnectProcessServer();
 	if (!*alive)
 		co_return;
 	m_ProcessServer.Empty();
@@ -720,7 +720,7 @@ Task<void> CMainFrame::DisconnectServer() {
 Task<void> CMainFrame::AttachOnServer() {
 	auto alive = m_Lifetime.Watch();
 	std::vector<ServerProcess> processes;
-	auto hr = co_await DebugManager::DebuggerX().EnumServerProcesses(processes);
+	auto hr = co_await DebugManager::Debugger().EnumServerProcesses(processes);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr)) {
@@ -759,7 +759,7 @@ Task<void> CMainFrame::SaveBreakpoints() {
 	auto alive = m_Lifetime.Watch();
 	auto key = m_BreakpointsKey;
 	std::vector<BreakpointInfo> breakpoints;
-	auto hr = co_await DebugManager::DebuggerX().EnumBreakpoints(breakpoints);
+	auto hr = co_await DebugManager::Debugger().EnumBreakpoints(breakpoints);
 	// (the session can have ended meanwhile: the engine's notice of it comes before this, and then there are none)
 	auto& session = DebugManager::Session();
 	if (!*alive || FAILED(hr) || key != m_BreakpointsKey || !session.HasTarget() || !session.IsBroken())
@@ -789,7 +789,7 @@ std::wstring CMainFrame::ActivePaneId() const {
 
 void CMainFrame::Step(StepKind kind) {
 	if (DebugManager::Session().CanRun())
-		DebugManager::DebuggerX().Step(kind, ActivePaneId() != L"disassembly");
+		DebugManager::Debugger().Step(kind, ActivePaneId() != L"disassembly");
 }
 
 HWND CMainFrame::ActiveTextControl() const {
@@ -851,7 +851,7 @@ LRESULT CMainFrame::OnEditFindAgain(WORD, WORD id, HWND, BOOL&) {
 LRESULT CMainFrame::OnReloadSymbols(WORD, WORD, HWND, BOOL&) {
 	auto& session = DebugManager::Session();
 	if (session.HasTarget() && !session.IsRunning())
-		DebugManager::DebuggerX().ReloadSymbols();
+		DebugManager::Debugger().ReloadSymbols();
 	return 0;
 }
 
@@ -879,7 +879,7 @@ LRESULT CMainFrame::OnSymbolPaths(WORD, WORD, HWND, BOOL&) {
 
 Task<void> CMainFrame::EditSymbolPaths() {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 
 	std::wstring symbolPath, sourcePath;
 	auto hr = co_await dbg.GetSymbolPaths(symbolPath, sourcePath);
@@ -922,9 +922,9 @@ Task<void> CMainFrame::EditSymbolPaths() {
 void CMainFrame::ApplySavedSymbolPaths() {
 	auto& settings = AppSettings::Get();
 	if (!settings.SymbolPath().empty())
-		DebugManager::DebuggerX().SetSymbolPath(settings.SymbolPath().c_str());
+		DebugManager::Debugger().SetSymbolPath(settings.SymbolPath().c_str());
 	if (!settings.SourcePath().empty())
-		DebugManager::DebuggerX().SetSourcePath(settings.SourcePath().c_str());
+		DebugManager::Debugger().SetSourcePath(settings.SourcePath().c_str());
 }
 
 bool CMainFrame::CanStartSession() const {
@@ -944,7 +944,7 @@ LRESULT CMainFrame::OnDebugExceptions(WORD, WORD, HWND, BOOL&) {
 
 Task<void> CMainFrame::EditExceptionSettings() {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 
 	std::vector<EventFilter> filters, defaults;
 	auto hr = co_await dbg.GetEventFilters(filters);
@@ -981,7 +981,7 @@ Task<void> CMainFrame::ApplySavedEventFilters() {
 	if (text.empty())
 		co_return;
 
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 	std::vector<EventFilter> defaults;
 	co_await dbg.GetEventFilters(defaults, true);
 	// (nothing of the window's is used after this: no need to watch its lifetime)
@@ -1009,7 +1009,7 @@ LRESULT CMainFrame::OnDebugAddBreakpoint(WORD, WORD, HWND, BOOL&) {
 
 Task<void> CMainFrame::RunExecutable(CString exePath, CString arguments, CString workingDir) {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 
 	auto hr = co_await dbg.LaunchAndAttach(exePath, arguments, workingDir);
 	if (!*alive)
@@ -1035,7 +1035,7 @@ Task<void> CMainFrame::RunExecutable(CString exePath, CString arguments, CString
 
 Task<void> CMainFrame::AttachToProcess(DWORD pid, CString name) {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 
 	m_Launch.reset();		// (no Restart for it)
 	// (whose breakpoints: asked now, while the process is there; a process server's are not kept)
@@ -1063,7 +1063,7 @@ Task<void> CMainFrame::AttachToProcess(DWORD pid, CString name) {
 
 Task<void> CMainFrame::AttachLocalKernel() {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 
 	m_Launch.reset();		// (no Restart for it)
 	auto hr = co_await dbg.AttachLocalKernel();
@@ -1080,7 +1080,7 @@ Task<void> CMainFrame::AttachLocalKernel() {
 
 Task<void> CMainFrame::AttachKernel(CString connection) {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 
 	m_Launch.reset();		// (no Restart for it)
 	auto hr = co_await dbg.AttachKernel(connection);
@@ -1099,7 +1099,7 @@ Task<void> CMainFrame::AttachKernel(CString connection) {
 
 Task<void> CMainFrame::OpenDumpFile(CString path) {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 
 	m_Launch.reset();		// (no Restart for it)
 	auto hr = co_await dbg.OpenDumpFile(path);
@@ -1218,7 +1218,7 @@ LRESULT CMainFrame::OnSaveDump(WORD, WORD, HWND, BOOL&) {
 
 Task<void> CMainFrame::SaveDump() {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 	const bool kernel = (DebugManager::Session().Target() & TargetType::Kernel) == TargetType::Kernel;
 
 	// named after the process, and when
@@ -1273,7 +1273,7 @@ LRESULT CMainFrame::OnAddWatch(UINT, WPARAM, LPARAM lParam, BOOL&) {
 Task<void> CMainFrame::AddBreakpoint(BreakpointSettings settings) {
 	auto alive = m_Lifetime.Watch();
 
-	auto hr = co_await DebugManager::DebuggerX().AddBreakpoint(settings);
+	auto hr = co_await DebugManager::Debugger().AddBreakpoint(settings);
 	if (!*alive)
 		co_return;
 

@@ -7,7 +7,7 @@
 #include "resource.h"
 
 //
-// What !analyze -v says about the target (DebuggerX::Analyze): Debug > Analyze, and by itself when a dump is opened or
+// What !analyze -v says about the target (IDebugger::Analyze): Debug > Analyze, and by itself when a dump is opened or
 // the target stops on a second-chance exception (CMainFrame sends ID_DEBUG_ANALYZE). A read-only Scintilla; the text
 // stays until the next analysis. Only the Windows Kits debugger's engine has the extension it needs.
 //

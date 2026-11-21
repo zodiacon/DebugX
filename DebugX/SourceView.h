@@ -14,7 +14,7 @@
 // breakpoints (click the margin, or F9 / right-click for the menu) and arrows on the line the current thread is at and
 // on the line of the scope frame chosen in the call stack. The breakpoints refresh like any live pane (CPaneBase); the
 // arrows are SetLocation's.
-// When the target is stopped, the mouse resting on a name shows its value (as the Watch pane would: DebuggerX::EvaluateWatches).
+// When the target is stopped, the mouse resting on a name shows its value (as the Watch pane would: IDebugger::EvaluateWatches).
 //
 class CSourceView :
 	public CFrameWindowImpl<CSourceView, CWindow, CControlWinTraits>,

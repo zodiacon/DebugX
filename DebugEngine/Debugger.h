@@ -1,301 +1,10 @@
 #pragma once
 
-#include <string>
-#include <vector>
-#include <functional>
-#include "AsyncTask.h"
+#include "IDebugger.h"
 
 struct IDebugClient;
 
 namespace DebugEngine {
-	enum class AttachType {
-		Default = 					DEBUG_ATTACH_DEFAULT,
-		NonInvasive = 				DEBUG_ATTACH_NONINVASIVE,
-		Existing = 					DEBUG_ATTACH_EXISTING,
-		NonInvasiveNoSuspend = 		DEBUG_ATTACH_NONINVASIVE_NO_SUSPEND,
-		InvasiveNoInitialBreak =	DEBUG_ATTACH_INVASIVE_NO_INITIAL_BREAK,
-		InvasiveResumeProcess =		DEBUG_ATTACH_INVASIVE_RESUME_PROCESS,
-		NonInvasicAllowPartial =	DEBUG_ATTACH_NONINVASIVE_ALLOW_PARTIAL,
-	};
-	DEFINE_ENUM_FLAG_OPERATORS(DebugEngine::AttachType);
-
-	enum class DebuggerNotificationType {
-		ProcessCreated = 0xb00,
-		ThreadCreated,
-		ModuleLoaded,
-		ModuleUnloaded,
-		Output,
-		Exception,
-		Breakpoint,
-		ExitProcess,
-		ExitThread,
-		StatusChanged,
-		// no data for the two below: something the caller can ask the debugger about (IsBusy, GetTargetType) has changed
-		BusyChanged,		// the first call is in flight, or the last one has completed
-		TargetChanged,		// a target was attached or opened, or the session has ended
-		BreakpointsChanged,	// a breakpoint was added, removed, enabled, disabled or changed (by whoever)
-		ContextChanged,		// the current thread has changed, or its registers were written to (data: ContextData)
-		ScopeChanged,		// the frame of the current thread's stack that locals and registers are about (data: ScopeData)
-		MemoryChanged		// target memory was written to (WriteMemory, or a command such as eb); no data
-	};
-
-	enum class ExecutionStatus {
-		NoChange,
-		Go,
-		GoHandled,
-		GoNotHandled,
-		StepOver,
-		StepInfo,
-		Break,
-		NoDebuggee,
-		StepBranch,
-		IgnoreEvent,
-		RestartRequested,
-		ReverseGo,
-		ReverseStepBranch,
-		ReverseStepOver,
-		ReverseStepInto,
-		OutOfSync,
-		WaitInput,
-		Timeout
-	};
-
-	enum class TargetType {
-		Unknown = 0,
-		User = 1,
-		Kernel = 2,
-		Live = 4,
-		Dump = 8,
-		LiveUser = Live | User,
-		LiveKernel = Live | Kernel,
-		LocalKernel = Kernel | 0x10,
-		DumpUser = Dump | User,
-		DumpKernel = Dump | Kernel
-	};
-	DEFINE_ENUM_FLAG_OPERATORS(DebugEngine::TargetType);
-
-	struct ModuleInfo {
-		ULONG64 BaseAddress;
-		ULONG Size;
-		ULONG Symbols;
-		ULONG TimeStamp;
-		std::wstring Name, ImageName, SymbolFile;
-	};
-
-	struct ThreadInfo {
-		ULONG ThreadId;
-		ULONG Id;
-		ULONG64 Teb;
-		HANDLE Handle;
-		ULONG Pid;
-		ULONG ProcessId{ 0 };		// the engine's id of its process (ProcessInfo::Id)
-		std::wstring Name;			// its description (SetThreadDescription), if it has one
-		ULONG64 InstructionOffset{ 0 };
-		std::wstring Location;		// where it is: module!function+0x10
-		ULONG SuspendCount{ 0 };	// as the engine reports it (a thread of a live target that is stopped counts the debugger's one)
-		bool Frozen{ false };		// the debugger does not let it run when the target runs (SetThreadFrozen)
-		bool Current{ false };		// the thread the engine's commands and the panes that show a thread are about
-	};
-
-	struct ProcessInfo {
-		ULONG Id;
-		ULONG ProcessId;
-		ULONG64 Peb;
-		HANDLE Handle;
-		std::wstring ImagePath;
-		ULONG UpTimeSec;
-		ULONG ThreadCount{ 0 };
-		bool Current{ false };		// the process the engine's commands and the panes are about
-	};
-
-	// a process of the machine the debugger attaches to: this one, or the process server's (EnumServerProcesses)
-	struct ServerProcess {
-		ULONG Pid{ 0 };
-		std::wstring Name;
-	};
-
-	// a handle of the current process (EnumHandles)
-	struct HandleInfo {
-		ULONG64 Handle{ 0 };
-		std::wstring Type;
-		std::wstring Name;			// empty if it has none, or it is not asked for (see EnumHandles)
-		ULONG GrantedAccess{ 0 };
-		ULONG Attributes{ 0 };		// OBJ_INHERIT, OBJ_PROTECT_CLOSE (2, 1)
-		ULONG64 Object{ 0 };		// the kernel object's address (0 if not known: not elevated)
-	};
-
-	struct CreateProcessData {
-		void* BaseAddress;
-		HANDLE hProcess;
-		HANDLE hFile;
-		HANDLE hThread;
-		std::string ImageName;
-		ULONG DateTimeStamp;
-		ULONG Checksum;
-		ULONG ModuleSize;
-		void* ThreadDataOffset;
-	};
-
-	// ModuleLoaded and ModuleUnloaded
-	struct ModuleEventData {
-		ULONG64 BaseAddress;
-		std::wstring Name;
-	};
-
-	// ContextChanged: the engine's id of the current thread
-	struct ContextData {
-		ULONG ThreadId;
-	};
-
-	// Exception: an exception in the target, before the engine's event filters decide whether it breaks
-	struct ExceptionData {
-		ULONG Code;
-		ULONG64 Address;
-		bool FirstChance;
-		ULONG ThreadId;			// the system's
-		std::wstring Name;		// the engine's name for the code ("Access violation"), if it has one
-	};
-
-	// An event filter of the engine: what it does when an event happens (a specific one: a thread created, a module
-	// loaded, ...) or an exception is raised -- break, only say so, or ignore it -- and, for an exception, whether it
-	// is passed on to the target as handled or not. What Debug > Exception Settings edits.
-	struct EventFilter {
-		std::wstring Name;			// "Access violation", "Create thread", ...; an exception added by code has none
-		ULONG Code{ 0 };			// an exception's code
-		bool IsException{ false };
-		bool IsArbitrary{ false };	// an exception filter added by code (it can be removed), not one the engine has of its own
-		ULONG ExecutionOption{ DEBUG_FILTER_SECOND_CHANCE_BREAK };	// DEBUG_FILTER_BREAK / SECOND_CHANCE_BREAK (exceptions) / OUTPUT / IGNORE
-		ULONG ContinueOption{ DEBUG_FILTER_GO_NOT_HANDLED };		// exceptions: DEBUG_FILTER_GO_HANDLED / GO_NOT_HANDLED
-	};
-
-	// ScopeChanged: the index of the frame in the current thread's stack (0: the innermost, where the thread is)
-	struct ScopeData {
-		ULONG FrameIndex;
-	};
-
-	// A variable (or one of its members, elements, ...) in a tree of them, flattened: a row for each that can be seen,
-	// in order, children after their parent. Path identifies it across refreshes (its names from the root, separated
-	// by '\n'); what is expanded is asked for by path, so a row's place in the list is never needed to find it.
-	struct SymbolEntry {
-		std::wstring Path;
-		std::wstring Name;
-		std::wstring Type;
-		std::wstring Value;		// or why there is none (an expression that does not evaluate)
-		// a C++ expression for it that can be assigned to (AssignValue): a number, a pointer, ... that has one; else empty
-		std::wstring Expression;
-		ULONG Depth{ 0 };
-		bool Expandable{ false };
-		bool Expanded{ false };
-		bool Error{ false };
-	};
-
-	struct RegisterInfo {
-		std::wstring Name;
-		std::wstring Value;		// as the value is usually written: hexadecimal for integers, decimal for floating point
-	};
-
-	// one line of Disassemble output (as the engine formats it: address, opcode bytes, mnemonic) and the address
-	// it is for -- from the engine's own EndOffset of the previous line, not parsed back out of the text
-	struct DisassemblyLine {
-		ULONG64 Address;
-		std::wstring Text;
-	};
-
-	// where an address is in the source (GetSourceLocations)
-	struct SourceLocation {
-		std::wstring File;		// the source file as the symbols name it (where it was compiled); empty: no line information
-		std::wstring Path;		// the file on this machine (found through the source path, or File itself); empty: not found
-		ULONG Line{ 0 };		// 1-based
-	};
-
-	// SetInstructionOffset: the address is in another function
-	inline constexpr HRESULT SetNextOtherFunction = MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0x201);
-
-	enum class StepKind {
-		Into,	// t
-		Over,	// p
-		Out		// gu
-	};
-
-	struct StackFrameInfo {
-		ULONG Index;
-		ULONG64 InstructionOffset;
-		ULONG64 ReturnOffset;
-		ULONG64 FrameOffset;
-		ULONG64 StackOffset;
-		std::wstring Symbol;		// module!function+0xoffset; empty if there is no symbol
-	};
-
-	// What a breakpoint is to be (AddBreakpoint, UpdateBreakpoint).
-	struct BreakpointSettings {
-		// code: where (module!function, 0x7ff6`1234, ...; it can be in a module that is not loaded yet);
-		// data: the address of the memory (an expression, worked out when the breakpoint is set)
-		std::wstring Expression;
-		// a C++ expression (locals, members, ...), evaluated in the thread that hits the breakpoint: it breaks only if
-		// the value is not zero. Empty: always. (DebugX's own: the engine has no conditions -- see the Breakpoint callback)
-		std::wstring Condition;
-		std::wstring Command;			// debugger commands run when it breaks
-		ULONG PassCount{ 1 };			// it breaks on this hit, and every one after it (1: every time)
-		ULONG ThreadId{ DEBUG_ANY_ID };	// the engine's id of the only thread it breaks in (ThreadInfo::Id), or any
-		bool Enabled{ true };
-		bool OneShot{ false };			// removed when it is hit
-		bool IsData{ false };			// on access to memory rather than on running code
-		ULONG DataSize{ 1 };			// data: 1, 2, 4 or 8 bytes, aligned to their size
-		ULONG DataAccess{ DEBUG_BREAK_WRITE };	// data: DEBUG_BREAK_WRITE, DEBUG_BREAK_READ (read or write), DEBUG_BREAK_EXECUTE
-	};
-
-	struct BreakpointInfo : BreakpointSettings {
-		ULONG Id;
-		bool Deferred;		// its address cannot be worked out yet: the module it is in is not loaded
-		ULONG64 Offset;
-		ULONG Hits{ 0 };	// the times it broke into the debugger (with its condition true), as far as DebugX has seen
-		// where it is in a way that holds in another session (an address does not: the program is loaded elsewhere):
-		// the expression it was set with, or else `file:line` if it is where a line starts, or module!function+0x10
-		std::wstring Location;
-	};
-
-	struct ExitThreadData {
-		ULONG ExitCode;
-		ULONG Id;
-		ULONG ThreadId;
-	};
-
-	struct BreakpointData {
-		IDebugBreakpoint* Breakpoint;
-	};
-
-	enum class OutputDataMask {
-		None				= 0,
-		Normal				= 1,
-		Error				= 2,
-		Warning				= 4,
-		Verbose				= 8,
-		Prompt				= 0x10,
-		PromptRegisters		= 0x20,
-		ExtensionWarning	= 0x40,
-		Debuggee			= 0x80,
-		DebuggePrompt		= 0x100,
-		Symbols				= 0x200,
-		Status				= 0x400,
-		Xml					= 0x800,
-	};
-	DEFINE_ENUM_FLAG_OPERATORS(DebugEngine::OutputDataMask);
-
-	struct OutputData {
-		OutputDataMask Mask;
-		std::wstring Text;
-		bool IsDml : 1;
-	};
-
-	struct ThreadCreateData {
-		HANDLE Handle;
-		ULONG64 Teb;
-		ULONG64 StartAddress;
-		ULONG ThreadId;
-		ULONG Id;
-		ULONG Pid;
-	};
-
 	// Which dbgeng.dll the process uses (EngineLoader.cpp). An executable that delay-loads dbgeng.dll calls LoadEngine before
 	// the first DebuggerX::Create: the dbgeng.dll then loaded is the one every DebuggerX uses.
 	enum class EngineSource {
@@ -315,184 +24,127 @@ namespace DebugEngine {
 	std::wstring LoadEngine(EngineSource source, PCWSTR folder = nullptr);
 
 	//
-	// Wraps a DbgEng client. The engine is bound to a thread of its own; everything that talks to it runs there and
-	// the calling thread is never blocked: the calls below return a Task that is co_await'ed (or dropped, see
-	// AsyncTask.h) and resume on the calling thread, from its message loop. Engine callbacks are queued and delivered
-	// to the notification handler on that thread as well, so the caller never has to synchronize with the engine.
+	// IDebugger on a DbgEng client (the documentation of the members is IDebugger's). The engine is bound to a thread of
+	// its own, where calls are queued as APCs; a call such as g keeps it in WaitForEvent until the target breaks, and a
+	// queued request waits its turn.
 	//
-	// Create, the destructor and every member that is not a Task must be used on the thread that created the debugger,
-	// except Break, which is safe anywhere. Arguments that are pointers or references (the
-	// out parameters of Enum*) must stay valid until the Task completes.
-	//
-	class DebuggerX final {
+	class DebuggerX final : public IDebugger {
 	public:
-		// 'data' is only valid for the duration of the call. Its type depends on 'type' (see the *Data structs above).
-		using NotificationHandler = std::function<void(DebuggerNotificationType type, void* data)>;
-
 		DebuggerX();
-		~DebuggerX();
+		~DebuggerX() override;
 		DebuggerX(const DebuggerX&) = delete;
 		DebuggerX& operator=(const DebuggerX&) = delete;
 
-		// Starts the engine thread and creates the client; the calling thread must have a message loop.
-		HRESULT Create(NotificationHandler handler);
+		// Starts the engine thread and creates the client
+		HRESULT Create(NotificationHandler handler, std::unique_ptr<IDispatcher> dispatcher = nullptr) override;
 
-		Task<HRESULT> OpenDumpFile(PCWSTR filename);
-		Task<HRESULT> AttachToProcess(DWORD pid, AttachType attach = AttachType::Default);
-		Task<HRESULT> LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, PCWSTR workingDir = nullptr, AttachType attach = AttachType::Default);
-		Task<HRESULT> AttachLocalKernel();
-		// a kernel debugging connection, as windbg -k takes it: "net:port=50000,key=a.b.c.d", "com:port=COM1,baud=115200", ...
-		// The task completes once the target has connected (Break gives up waiting).
-		Task<HRESULT> AttachKernel(PCWSTR connectOptions);
-		Task<HRESULT> ExecuteCommand(PCWSTR command);
-		Task<HRESULT> OutputPrompt();
-		// Ends the session and terminates the target. A running target is interrupted first.
-		Task<HRESULT> Stop();
-		// Ends the session and leaves the target running. A running target is interrupted first.
-		Task<HRESULT> Detach();
-		// whether the engine's output is in DML (Debugger Markup Language) where the command can produce it
-		Task<HRESULT> SetDmlEnabled(bool enabled);
+		Task<HRESULT> OpenDumpFile(PCWSTR filename) override;
+		Task<HRESULT> AttachToProcess(DWORD pid, AttachType attach = AttachType::Default) override;
+		Task<HRESULT> LaunchAndAttach(PCWSTR exeName, PCWSTR commandLineArgs = nullptr, PCWSTR workingDir = nullptr, AttachType attach = AttachType::Default) override;
+		Task<HRESULT> AttachLocalKernel() override;
+		Task<HRESULT> AttachKernel(PCWSTR connectOptions) override;
+		Task<HRESULT> ExecuteCommand(PCWSTR command) override;
+		Task<HRESULT> OutputPrompt() override;
+		Task<HRESULT> Stop() override;
+		Task<HRESULT> Detach() override;
+		// .detach / .kill
+		Task<HRESULT> EndCurrentProcess(bool terminate) override;
+		Task<HRESULT> SetDmlEnabled(bool enabled) override;
 
-		Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
-		Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
-		// The handles of the current process (a live user-mode target on this computer only: E_NOTIMPL otherwise). The name of
-		// a file that is not a disk file is not asked for: for a synchronous pipe with a read waiting, that would never return.
-		Task<HRESULT> EnumHandles(std::vector<HandleInfo>& handles);
-		// The first place at or after 'start' where the bytes are: in user mode, in the committed memory of the current
-		// process up to its end; in kernel mode, in the next 'kernelRange' bytes. HRESULT_FROM_WIN32(ERROR_NOT_FOUND): none
-		Task<HRESULT> SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange = 0x10000000);
-		// What !analyze -v says about the target (a dump, or why it stopped): the Windows Kits debugger's ext.dll; E_NOTIMPL
-		// with an engine that has no extensions. It can take a while (symbols are loaded, and downloaded).
-		Task<HRESULT> Analyze(std::wstring& text);
+		Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules) override;
+		Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads) override;
+		Task<HRESULT> EnumHandles(std::vector<HandleInfo>& handles) override;
+		Task<HRESULT> SearchMemory(ULONG64 start, std::vector<BYTE> pattern, ULONG64& found, ULONG64 kernelRange = 0x10000000) override;
+		// !analyze -v: the Windows Kits debugger's ext.dll; E_NOTIMPL with an engine that has no extensions. Symbols are loaded
+		// (and downloaded).
+		Task<HRESULT> Analyze(std::wstring& text) override;
 
-		// A process server on another machine (dbgsrv -t npipe:pipe=X, or tcp:port=N, there): from then on AttachToProcess and
-		// LaunchAndAttach are about its processes (a path on that machine), until DisconnectProcessServer -- this debugger
-		// does the rest, with its own symbols. The options are what windbg -premote takes: "npipe:server=host,pipe=X",
-		// "tcp:server=host,port=N". Not while there is a target.
-		Task<HRESULT> ConnectProcessServer(PCWSTR options);
-		Task<HRESULT> DisconnectProcessServer();
-		// the processes that can be attached to: the process server's, or this machine's
-		Task<HRESULT> EnumServerProcesses(std::vector<ServerProcess>& processes);
+		// dbgsrv -t npipe:pipe=X, or tcp:port=N, on the other machine; the options are what windbg -premote takes
+		Task<HRESULT> ConnectProcessServer(PCWSTR options) override;
+		Task<HRESULT> DisconnectProcessServer() override;
+		Task<HRESULT> EnumServerProcesses(std::vector<ServerProcess>& processes) override;
 
-		// Debugger scripts (JavaScript: the Windows Kits debugger's JsProvider; E_NOTIMPL with an engine that has no script
-		// provider). Run: .scriptrun (loaded, and its invokeScript run); Load: .scriptload (loaded only). Either way it stays
-		// -- its functions can be called: dx @$scriptContents.f() -- until Unload. 'output' is what the engine said, which goes to
-		// the Output notifications as well; a script that throws, or does not load, fails.
-		enum class ScriptAction { Run, Load, Unload };
-		Task<HRESULT> Script(ScriptAction action, PCWSTR path, std::wstring& output);
-		// the scripts that are loaded (their paths)
-		Task<HRESULT> EnumScripts(std::vector<std::wstring>& paths);
+		// JavaScript: the Windows Kits debugger's JsProvider (E_NOTIMPL with an engine that has no script provider). Run:
+		// .scriptrun (loaded, and its invokeScript run); Load: .scriptload. A loaded script's functions can be called with
+		// dx @$scriptContents.f().
+		Task<HRESULT> Script(ScriptAction action, PCWSTR path, std::wstring& output) override;
+		// (.scriptlist, without the engine's own NatVis files)
+		Task<HRESULT> EnumScripts(std::vector<std::wstring>& paths) override;
 
-		// about the current thread of the target; the registers are as they were in the current scope frame
-		// (only the nonvolatile ones are reliable in a frame other than 0)
-		Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers);
-		Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames = 128);
-		// the thread by the engine's id (ThreadInfo::Id)
-		Task<HRESULT> SetCurrentThread(ULONG threadId);
-		// the process by the engine's id (ProcessInfo::Id); its current thread becomes the current one. ContextChanged follows
-		Task<HRESULT> SetCurrentProcess(ULONG processId);
-		// Freezes a thread (the engine's id), or thaws it: a frozen thread does not run when the target does (~f, ~u)
-		Task<HRESULT> SetThreadFrozen(ULONG threadId, bool frozen);
-		// suspends a thread (one more suspend count, ~n), or resumes it (one less, ~m)
-		Task<HRESULT> SuspendThread(ULONG threadId, bool suspend);
-		// whether the processes a program starts are debugged too (by a launch from now on, and by the session there is:
-		// .childdbg); off by default
-		Task<HRESULT> SetDebugChildProcesses(bool debug);
+		Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers) override;
+		Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames = 128) override;
+		Task<HRESULT> SetCurrentThread(ULONG threadId) override;
+		Task<HRESULT> SetCurrentProcess(ULONG processId) override;
+		// ~f, ~u
+		Task<HRESULT> SetThreadFrozen(ULONG threadId, bool frozen) override;
+		// ~n, ~m
+		Task<HRESULT> SuspendThread(ULONG threadId, bool suspend) override;
+		// .childdbg for the session there is
+		Task<HRESULT> SetDebugChildProcesses(bool debug) override;
 
-		// the frame of the current thread's stack (StackFrameInfo::Index) that locals, registers and expressions are
-		// about; it goes back to 0 whenever the target stops or the current thread changes
-		Task<HRESULT> SetScopeFrame(ULONG frameIndex);
-		// where the current scope frame is executing, and its index
-		Task<HRESULT> GetScope(ULONG64& instructionOffset, ULONG& frameIndex);
-		// the arguments and locals of the current scope frame; 'expanded' has the paths (SymbolEntry::Path) to expand
-		Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
-		// a tree for each expression (in the current scope); one that does not evaluate is an Error entry
-		Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded);
+		Task<HRESULT> SetScopeFrame(ULONG frameIndex) override;
+		Task<HRESULT> GetScope(ULONG64& instructionOffset, ULONG& frameIndex) override;
 		// (Locals and watches are the debugger's data model's, as dx shows them: a type with a visualizer -- NatVis, the
 		// standard library's -- by what it shows, with its fields under [Raw View]; see ValueWalker.h)
-		// Assigns the value (a C++ expression) to what the expression (SymbolEntry::Expression) is, in the current scope;
-		// 'error' says why it could not be. MemoryChanged follows, delivered before the task completes.
-		Task<HRESULT> AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error);
+		Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded) override;
+		Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded) override;
+		Task<HRESULT> AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error) override;
 
-		Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
-		// a breakpoint at an address or symbol, as the debugger takes them (module!function, 0x7ff6`1234, ...)
-		Task<HRESULT> AddBreakpoint(PCWSTR expression);
-		Task<HRESULT> AddBreakpoint(BreakpointSettings settings);
-		// a breakpoint made over (a code one cannot become a data one, or the other way around: E_INVALIDARG)
-		Task<HRESULT> UpdateBreakpoint(ULONG id, BreakpointSettings settings);
-		Task<HRESULT> RemoveBreakpoint(ULONG id);
-		Task<HRESULT> SetBreakpointEnabled(ULONG id, bool enabled);
+		Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints) override;
+		using IDebugger::AddBreakpoint;
+		// (the engine has no conditions: DebugX keeps them, and evaluates them in the Breakpoint callback)
+		Task<HRESULT> AddBreakpoint(BreakpointSettings settings) override;
+		Task<HRESULT> UpdateBreakpoint(ULONG id, BreakpointSettings settings) override;
+		Task<HRESULT> RemoveBreakpoint(ULONG id) override;
+		Task<HRESULT> SetBreakpointEnabled(ULONG id, bool enabled) override;
 
-		// the current thread's instruction pointer
-		Task<HRESULT> GetInstructionOffset(ULONG64& offset);
-		// 'count' lines starting at 'address' (not necessarily aligned to an instruction boundary; the engine
-		// resyncs). 'buffer' is resized to however many were actually decoded, which can be less than 'count'
-		// (e.g. unreadable memory).
-		Task<HRESULT> Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines);
-		// the source file and line of each address, in the same order (an address without line information gets an empty one)
-		Task<HRESULT> GetSourceLocations(std::vector<ULONG64> offsets, std::vector<SourceLocation>& locations);
-		// Steps the current thread (and waits for the step to end): by a source line where the thread is in code that has
-		// line information and 'bySourceLine' is set, else by an instruction. The engine's own code level (l+t / l-t,
-		// which p and t typed in the Command view go by) is left as it was.
-		Task<HRESULT> Step(StepKind kind, bool bySourceLine);
-		// Set Next Statement: moves the current thread's instruction pointer (the target must be stopped); ContextChanged
-		// follows. An address in another function than the one the thread is in is refused (SetNextOtherFunction) unless
-		// 'otherFunction' is set: the stack is then not what that code expects.
-		Task<HRESULT> SetInstructionOffset(ULONG64 offset, bool otherFunction = false);
+		// 0x7ff61234; `file:line`
+		std::wstring AddressLocation(ULONG64 address) const override;
+		std::wstring SourceLineLocation(std::wstring_view file, ULONG line) const override;
+		Task<HRESULT> ResolveLocation(PCWSTR location, ULONG64& address) override;
+		// @$csp
+		std::wstring StackPointerExpression() const override;
 
-		// The engine's symbol and source paths, as .sympath and .srcpath have them ("srv*C:\Symbols*https://...;C:\src").
-		// They are the engine's, not a session's: they carry over from one target to the next.
-		Task<HRESULT> GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath);
-		Task<HRESULT> SetSymbolPath(PCWSTR path);
-		Task<HRESULT> SetSourcePath(PCWSTR path);
-		// .reload: the symbols of the modules are looked up again (each when it is next needed); with a module (its image
-		// name, kernel32.dll), .reload /f: that one's are loaded now. ContextChanged follows for a stopped target, so that
-		// what shows symbols catches up.
-		Task<HRESULT> ReloadSymbols(PCWSTR module = nullptr);
-		// A dump file of a live target that is stopped (E_NOTIMPL for a dump, E_UNEXPECTED while it runs). User mode: a
-		// minidump, with all of the memory (and handles, threads...: .dump /ma) if 'full'. Kernel: a small or full one.
-		Task<HRESULT> WriteDump(PCWSTR path, bool full);
+		// g; g <location>
+		Task<HRESULT> Go() override;
+		Task<HRESULT> RunTo(PCWSTR location) override;
+		Task<HRESULT> GetInstructionOffset(ULONG64& offset) override;
+		Task<HRESULT> Disassemble(ULONG64 address, ULONG count, std::vector<DisassemblyLine>& lines) override;
+		Task<HRESULT> GetSourceLocations(std::vector<ULONG64> offsets, std::vector<SourceLocation>& locations) override;
+		// (the engine's code level, l+t / l-t, which p and t typed in the Command view go by, is set for the step and restored)
+		Task<HRESULT> Step(StepKind kind, bool bySourceLine) override;
+		Task<HRESULT> SetInstructionOffset(ULONG64 offset, bool otherFunction = false) override;
 
-		// Kernel targets. The process (its EPROCESS) whose user-mode memory and modules the debugger looks at: .process /p /r.
-		// 'invasive' (a live kernel over a connection only, E_NOTIMPL otherwise): .process /i, the target runs until that
-		// process is the current one, and breaks in (the task completes then). ContextChanged follows.
-		Task<HRESULT> SetKernelProcess(ULONG64 process, bool invasive = false);
-		// the process the debugger looks at (the implicit process)
-		Task<HRESULT> GetKernelProcess(ULONG64& process);
-		// The thread (its ETHREAD) whose registers and stack the debugger looks at: .thread /p /r. ContextChanged follows.
-		// A local kernel has no thread contexts to switch to (it fails).
-		Task<HRESULT> SetKernelThread(ULONG64 thread);
+		// as .sympath and .srcpath have them
+		Task<HRESULT> GetSymbolPaths(std::wstring& symbolPath, std::wstring& sourcePath) override;
+		Task<HRESULT> SetSymbolPath(PCWSTR path) override;
+		Task<HRESULT> SetSourcePath(PCWSTR path) override;
+		// .reload; with a module, .reload /f <module>
+		Task<HRESULT> ReloadSymbols(PCWSTR module = nullptr) override;
+		// User mode: a minidump, with all of the memory (and handles, threads...: .dump /ma) if 'full'. Kernel: a small or full one.
+		Task<HRESULT> WriteDump(PCWSTR path, bool full) override;
 
-		// a debugger expression (register, symbol, C-like arithmetic, ...), as typed at the command prompt
-		Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value);
-		// reads target memory; 'buffer' is resized to however many bytes were actually read (can be less than
-		// requested at the end of a readable region, or empty if none of it is)
-		Task<HRESULT> ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size);
-		// writes target memory (all of it, or it fails: ERROR_PARTIAL_COPY if only some could be); MemoryChanged follows,
-		// delivered before the task completes
-		Task<HRESULT> WriteMemory(ULONG64 address, std::vector<BYTE> data);
-		// a register of the current thread (by name, as GetRegisters has it), from text: an expression for an integer one
-		// (in the engine's radix, hexadecimal by default, as GetRegisters shows them), a number for a floating-point one.
-		// Vector registers are not supported (E_NOTIMPL). ContextChanged follows.
-		Task<HRESULT> SetRegister(PCWSTR name, PCWSTR value);
+		// .process /p /r (/i: invasive); .thread /p /r
+		Task<HRESULT> SetKernelProcess(ULONG64 process, bool invasive = false) override;
+		Task<HRESULT> GetKernelProcess(ULONG64& process) override;
+		Task<HRESULT> SetKernelThread(ULONG64 thread) override;
 
-		// The engine's event filters: the specific events, then the exceptions (its own, then the ones added by code).
-		// 'defaults': as they were when the engine was created, before anybody changed them.
-		Task<HRESULT> GetEventFilters(std::vector<EventFilter>& filters, bool defaults = false);
-		// Sets the filters given (a specific event or exception the engine has by its name or code); the exceptions added
-		// by code become exactly the IsArbitrary ones given -- one that is not in the list is removed.
-		Task<HRESULT> SetEventFilters(std::vector<EventFilter> filters);
+		Task<HRESULT> Evaluate(PCWSTR expression, ULONG64& value) override;
+		Task<HRESULT> ReadMemory(ULONG64 address, std::vector<BYTE>& buffer, ULONG size) override;
+		Task<HRESULT> WriteMemory(ULONG64 address, std::vector<BYTE> data) override;
+		Task<HRESULT> SetRegister(PCWSTR name, PCWSTR value) override;
 
-		// Runs code on the engine thread. The function must not use the client after it returns.
+		Task<HRESULT> GetEventFilters(std::vector<EventFilter>& filters, bool defaults = false) override;
+		Task<HRESULT> SetEventFilters(std::vector<EventFilter> filters) override;
+
+		// DbgEng only: runs code on the engine thread (the kernel analyzers, DebugX.Kernel, use the client). The function must
+		// not use the client after it returns.
 		Task<HRESULT> RunAsync(std::function<HRESULT(IDebugClient*)> func);
 
-		// Interrupts a running target.
-		HRESULT Break();
+		HRESULT Break() override;
 
-		// (The execution status comes with the StatusChanged notifications, in order with the other events.)
-		[[nodiscard]] TargetType GetTargetType() const;
-		// True while any of the calls above is still in flight.
-		[[nodiscard]] bool IsBusy() const;
+		[[nodiscard]] TargetType GetTargetType() const override;
+		[[nodiscard]] bool IsBusy() const override;
 
 		struct Impl;
 	private:

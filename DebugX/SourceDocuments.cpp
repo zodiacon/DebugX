@@ -148,7 +148,7 @@ Task<void> SourceDocuments::Update() {
 	auto alive = m_Lifetime.Watch();
 	m_Updating = true;
 	auto& session = DebugManager::Session();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 
 	do {
 		m_UpdatePending = false;

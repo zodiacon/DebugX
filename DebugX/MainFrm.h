@@ -223,7 +223,7 @@ private:
 	DebugEngine::Task<void> AttachOnServer();
 	// debugger scripts (JavaScript): Run Script, Load Script (a file to pick), Unload Script (one of those loaded)
 	LRESULT OnScript(WORD, WORD id, HWND, BOOL&);
-	DebugEngine::Task<void> RunScript(DebugEngine::DebuggerX::ScriptAction action, std::wstring path);
+	DebugEngine::Task<void> RunScript(DebugEngine::IDebugger::ScriptAction action, std::wstring path);
 	DebugEngine::Task<void> UnloadScript();
 	LRESULT OnToggleChildProcesses(WORD, WORD id, HWND, BOOL&);
 	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);

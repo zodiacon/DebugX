@@ -120,7 +120,7 @@ bool CUserThreadsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 
 DebugEngine::Task<void> CUserThreadsView::Apply(ULONG threadId, Action action) {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
+	auto& dbg = DebugManager::Debugger();
 	HRESULT hr = E_FAIL;
 	switch (action) {
 		case Action::Freeze: hr = co_await dbg.SetThreadFrozen(threadId, true); break;
@@ -187,7 +187,7 @@ DebugEngine::Task<void> CUserThreadsView::Refresh() {
 
 	std::vector<DebugEngine::ProcessInfo> processes;
 	std::vector<DebugEngine::ThreadInfo> threads;
-	co_await DebugManager::DebuggerX().EnumProcesses(processes, threads);
+	co_await DebugManager::Debugger().EnumProcesses(processes, threads);
 	if (!*alive)
 		co_return;
 
@@ -198,5 +198,5 @@ DebugEngine::Task<void> CUserThreadsView::Refresh() {
 
 DebugEngine::Task<void> CUserThreadsView::SwitchTo(ULONG threadId) {
 	// (the panes that are about the current thread hear of it from the engine)
-	co_await DebugManager::DebuggerX().SetCurrentThread(threadId);
+	co_await DebugManager::Debugger().SetCurrentThread(threadId);
 }

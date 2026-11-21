@@ -9,9 +9,9 @@ namespace {
 		ULONG Access;
 		PCWSTR Name;
 	} DataAccesses[] = {
-		{ DEBUG_BREAK_WRITE, L"Write" },
-		{ DEBUG_BREAK_READ, L"Read or write" },
-		{ DEBUG_BREAK_EXECUTE, L"Execute" },
+		{ BreakOnWrite, L"Write" },
+		{ BreakOnRead, L"Read or write" },
+		{ BreakOnExecute, L"Execute" },
 	};
 }
 
@@ -74,7 +74,7 @@ LRESULT CBreakpointDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&) {
 	SetDlgItemText(IDC_BPCONDITION, m_Settings.Condition.c_str());
 	SetDlgItemText(IDC_BPCOMMAND, m_Settings.Command.c_str());
 	SetDlgItemInt(IDC_BPPASSCOUNT, m_Settings.PassCount ? m_Settings.PassCount : 1, FALSE);
-	if (m_Settings.ThreadId != DEBUG_ANY_ID)
+	if (m_Settings.ThreadId != AnyId)
 		SetDlgItemInt(IDC_BPTHREAD, m_Settings.ThreadId, FALSE);
 	CheckDlgButton(IDC_BPENABLED, m_Settings.Enabled ? BST_CHECKED : BST_UNCHECKED);
 	CheckDlgButton(IDC_BPONESHOT, m_Settings.OneShot ? BST_CHECKED : BST_UNCHECKED);
@@ -114,7 +114,7 @@ LRESULT CBreakpointDlg::OnCloseCmd(WORD, WORD wID, HWND, BOOL&) {
 		auto passCount = GetDlgItemInt(IDC_BPPASSCOUNT, &ok, FALSE);
 		m_Settings.PassCount = ok && passCount > 0 ? passCount : 1;
 		auto thread = GetDlgItemInt(IDC_BPTHREAD, &ok, FALSE);
-		m_Settings.ThreadId = ok ? thread : DEBUG_ANY_ID;
+		m_Settings.ThreadId = ok ? thread : AnyId;
 
 		m_Settings.Enabled = IsDlgButtonChecked(IDC_BPENABLED) == BST_CHECKED;
 		m_Settings.OneShot = IsDlgButtonChecked(IDC_BPONESHOT) == BST_CHECKED;

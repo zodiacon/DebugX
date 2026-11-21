@@ -3,7 +3,7 @@
 #include "ListPane.h"
 #include "resource.h"
 
-// The handles of the current process of a live user-mode target (DebuggerX::EnumHandles): type, name, access, the
+// The handles of the current process of a live user-mode target (IDebugger::EnumHandles): type, name, access, the
 // kernel object. The name of a file that is not on a disk (a pipe, the console) is not shown: asking for it can wait.
 class CHandlesView : public CListPane<CHandlesView> {
 public:

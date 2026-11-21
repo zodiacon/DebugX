@@ -61,7 +61,7 @@ void CIrpsView::DoSort(const SortInfo* si) {
 bool CIrpsView::OnDoubleClickList(HWND, int row, int, POINT const&) {
 	if (row < 0 || row >= static_cast<int>(m_Items.size()))
 		return false;
-	DebugManager::DebuggerX().ExecuteCommand(std::format(L"dt nt!_IRP 0x{:X}", m_Items[row].Address).c_str());
+	DebugManager::Debugger().ExecuteCommand(std::format(L"dt nt!_IRP 0x{:X}", m_Items[row].Address).c_str());
 	return true;
 }
 
@@ -81,8 +81,8 @@ bool CIrpsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING | (m_AllProcesses ? MF_CHECKED : 0), CmdAll, L"&All Processes");
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
-		case CmdDetails: DebugManager::DebuggerX().ExecuteCommand(std::format(L"dt nt!_IRP 0x{:X}", address).c_str()); break;
-		case CmdIrp: DebugManager::DebuggerX().ExecuteCommand(std::format(L"!irp 0x{:X}", address).c_str()); break;
+		case CmdDetails: DebugManager::Debugger().ExecuteCommand(std::format(L"dt nt!_IRP 0x{:X}", address).c_str()); break;
+		case CmdIrp: DebugManager::Debugger().ExecuteCommand(std::format(L"!irp 0x{:X}", address).c_str()); break;
 		case CmdCopy: ClipboardHelper::CopyText(m_hWnd, std::format(L"0x{:X}", address).c_str()); break;
 		case CmdAll:
 			m_AllProcesses = !m_AllProcesses;
@@ -120,7 +120,7 @@ Task<void> CIrpsView::Refresh() {
 
 	// (shared with the debug thread, which can outlive the window)
 	auto irps = std::make_shared<std::vector<Irp>>();
-	co_await DebugManager::DebuggerX().RunAsync([irps, all = m_AllProcesses](IDebugClient* client) -> HRESULT {
+	co_await DebugManager::RunAsync([irps, all = m_AllProcesses](IDebugClient* client) -> HRESULT {
 		CComQIPtr<IDebugSystemObjects2> system(client);
 		ULONG64 implicit = 0;
 		if (!system || FAILED(system->GetImplicitProcessDataOffset(&implicit)))

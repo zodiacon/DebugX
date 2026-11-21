@@ -11,7 +11,7 @@ namespace {
 	CString TypeText(const DebugEngine::BreakpointInfo& bp) {
 		if (!bp.IsData)
 			return L"Code";
-		PCWSTR access = bp.DataAccess == DEBUG_BREAK_WRITE ? L"write" : bp.DataAccess == DEBUG_BREAK_EXECUTE ? L"execute" : L"read/write";
+		PCWSTR access = bp.DataAccess == BreakOnWrite ? L"write" : bp.DataAccess == BreakOnExecute ? L"execute" : L"read/write";
 		CString text;
 		text.Format(L"Data: %s %u", access, bp.DataSize);
 		return text;
@@ -55,7 +55,7 @@ CString CBreakpointsView::GetColumnText(HWND hWnd, int row, int column) const {
 				pass.Format(L", on hit %u", bp.PassCount);
 				text += pass;
 			}
-			if (bp.ThreadId != DEBUG_ANY_ID) {
+			if (bp.ThreadId != AnyId) {
 				CString thread;
 				thread.Format(L", thread %u", bp.ThreadId);
 				text += thread;
@@ -147,7 +147,7 @@ void CBreakpointsView::EditSelected() {
 Task<void> CBreakpointsView::Update(ULONG id, BreakpointSettings settings) {
 	auto alive = m_Lifetime.Watch();
 
-	auto hr = co_await DebugManager::DebuggerX().UpdateBreakpoint(id, settings);
+	auto hr = co_await DebugManager::Debugger().UpdateBreakpoint(id, settings);
 	if (!*alive)
 		co_return;
 
@@ -193,11 +193,11 @@ void CBreakpointsView::ToggleSelected() {
 
 // (the engine says when the breakpoints have changed, and the list is made again then)
 DebugEngine::Task<void> CBreakpointsView::Remove(ULONG id) {
-	co_await DebugManager::DebuggerX().RemoveBreakpoint(id);
+	co_await DebugManager::Debugger().RemoveBreakpoint(id);
 }
 
 DebugEngine::Task<void> CBreakpointsView::SetEnabled(ULONG id, bool enabled) {
-	co_await DebugManager::DebuggerX().SetBreakpointEnabled(id, enabled);
+	co_await DebugManager::Debugger().SetBreakpointEnabled(id, enabled);
 }
 
 void CBreakpointsView::OnTargetEnded() {
@@ -210,7 +210,7 @@ DebugEngine::Task<void> CBreakpointsView::Refresh() {
 	auto alive = m_Lifetime.Watch();
 
 	std::vector<DebugEngine::BreakpointInfo> breakpoints;
-	co_await DebugManager::DebuggerX().EnumBreakpoints(breakpoints);
+	co_await DebugManager::Debugger().EnumBreakpoints(breakpoints);
 	if (!*alive)
 		co_return;
 

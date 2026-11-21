@@ -72,7 +72,7 @@ Task<void> CAnalysisView::Analyze() {
 	m_Running = true;
 	SetText(L"Running !analyze -v (this can take a while: symbols are loaded, and downloaded)...");
 	std::wstring text;
-	auto hr = co_await DebugManager::DebuggerX().Analyze(text);
+	auto hr = co_await DebugManager::Debugger().Analyze(text);
 	if (!*alive)
 		co_return;
 	m_Running = false;

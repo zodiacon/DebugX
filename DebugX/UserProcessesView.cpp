@@ -84,13 +84,13 @@ bool CUserProcessesView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 
 DebugEngine::Task<void> CUserProcessesView::Apply(ULONG processId, Action action) {
 	auto alive = m_Lifetime.Watch();
-	auto& dbg = DebugManager::DebuggerX();
-	// (.detach and .kill are about the current process: it becomes the one first)
+	auto& dbg = DebugManager::Debugger();
+	// (detaching and terminating are about the current process: it becomes the one first)
 	auto hr = co_await dbg.SetCurrentProcess(processId);
 	if (!*alive)
 		co_return;
 	if (SUCCEEDED(hr) && action != Action::Switch)
-		hr = co_await dbg.ExecuteCommand(action == Action::Detach ? L".detach" : L".kill");
+		hr = co_await dbg.EndCurrentProcess(action == Action::Terminate);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr))
@@ -113,7 +113,7 @@ DebugEngine::Task<void> CUserProcessesView::Refresh() {
 	auto alive = m_Lifetime.Watch();
 	std::vector<DebugEngine::ProcessInfo> processes;
 	std::vector<DebugEngine::ThreadInfo> threads;
-	co_await DebugManager::DebuggerX().EnumProcesses(processes, threads);
+	co_await DebugManager::Debugger().EnumProcesses(processes, threads);
 	if (!*alive)
 		co_return;
 	m_Items.swap(processes);

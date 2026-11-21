@@ -66,7 +66,7 @@ bool CHandlesView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(name.empty() ? MF_STRING | MF_GRAYED : MF_STRING, CmdCopyName, L"&Copy Name");
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
 		case CmdDetails:
-			DebugManager::DebuggerX().ExecuteCommand(std::format(L"!handle 0x{:X} f", handle).c_str());
+			DebugManager::Debugger().ExecuteCommand(std::format(L"!handle 0x{:X} f", handle).c_str());
 			break;
 		case CmdCopyName:
 			ClipboardHelper::CopyText(m_hWnd, name.c_str());
@@ -89,7 +89,7 @@ bool CHandlesView::CanRefresh() const {
 DebugEngine::Task<void> CHandlesView::Refresh() {
 	auto alive = m_Lifetime.Watch();
 	std::vector<DebugEngine::HandleInfo> handles;
-	co_await DebugManager::DebuggerX().EnumHandles(handles);
+	co_await DebugManager::Debugger().EnumHandles(handles);
 	if (!*alive)
 		co_return;
 	m_Items.swap(handles);

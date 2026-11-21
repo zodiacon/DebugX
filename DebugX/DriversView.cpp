@@ -73,7 +73,7 @@ Task<void> CDriversView::Refresh() {
 
 	// (shared with the debug thread, which can outlive the window)
 	auto drivers = std::make_shared<std::vector<Driver>>();
-	co_await DebugManager::DebuggerX().RunAsync([drivers](IDebugClient* client) -> HRESULT {
+	co_await DebugManager::RunAsync([drivers](IDebugClient* client) -> HRESULT {
 		CComQIPtr<IDebugSymbols3> symbols(client);
 		KernelObjectAnalyzer analyzer(client);
 		wchar_t name[512];
@@ -106,7 +106,7 @@ Task<void> CDriversView::Refresh() {
 bool CDriversView::OnDoubleClickList(HWND, int row, int, POINT const&) {
 	if (row < 0 || row >= static_cast<int>(m_Items.size()))
 		return false;
-	DebugManager::DebuggerX().ExecuteCommand(std::format(L"dt nt!_DRIVER_OBJECT 0x{:X}", m_Items[row].Address).c_str());
+	DebugManager::Debugger().ExecuteCommand(std::format(L"dt nt!_DRIVER_OBJECT 0x{:X}", m_Items[row].Address).c_str());
 	return true;
 }
 
@@ -125,8 +125,8 @@ bool CDriversView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(MF_STRING, CmdCopy, L"&Copy DRIVER_OBJECT");
 	menu.SetMenuDefaultItem(CmdDetails);
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
-		case CmdDetails: DebugManager::DebuggerX().ExecuteCommand(std::format(L"dt nt!_DRIVER_OBJECT 0x{:X}", address).c_str()); break;
-		case CmdDispatch: DebugManager::DebuggerX().ExecuteCommand(std::format(L"!drvobj 0x{:X} 7", address).c_str()); break;
+		case CmdDetails: DebugManager::Debugger().ExecuteCommand(std::format(L"dt nt!_DRIVER_OBJECT 0x{:X}", address).c_str()); break;
+		case CmdDispatch: DebugManager::Debugger().ExecuteCommand(std::format(L"!drvobj 0x{:X} 7", address).c_str()); break;
 		case CmdCopy: ClipboardHelper::CopyText(m_hWnd, std::format(L"0x{:X}", address).c_str()); break;
 	}
 	return true;

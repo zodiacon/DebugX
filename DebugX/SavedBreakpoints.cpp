@@ -163,7 +163,7 @@ void SavedBreakpoints::Save(const std::wstring& key, const std::vector<Breakpoin
 		if (!bp.Location.empty())
 			settings.Expression = bp.Location;
 		// (a thread's id is the session's)
-		settings.ThreadId = DEBUG_ANY_ID;
+		settings.ThreadId = AnyId;
 		program.Breakpoints.push_back(std::move(settings));
 	}
 

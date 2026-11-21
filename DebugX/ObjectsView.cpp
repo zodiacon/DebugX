@@ -77,7 +77,7 @@ bool CObjectsView::OnDoubleClickList(HWND, int row, int, POINT const&) {
 	else if (o.Type == L"SymbolicLink" && o.LinkTarget.starts_with(L'\\'))
 		GoTo(o.LinkTarget);
 	else
-		DebugManager::DebuggerX().ExecuteCommand(std::format(L"!object 0x{:X}", o.Address).c_str());
+		DebugManager::Debugger().ExecuteCommand(std::format(L"!object 0x{:X}", o.Address).c_str());
 	return true;
 }
 
@@ -96,10 +96,10 @@ bool CObjectsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(MF_STRING, CmdCopyAddress, L"Copy &Address");
 	menu.AppendMenu(MF_STRING, CmdCopyName, L"Copy &Path");
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
-		case CmdObject: DebugManager::DebuggerX().ExecuteCommand(std::format(L"!object 0x{:X}", o.Address).c_str()); break;
+		case CmdObject: DebugManager::Debugger().ExecuteCommand(std::format(L"!object 0x{:X}", o.Address).c_str()); break;
 		case CmdHeader:
 			// (the header is right before the body)
-			DebugManager::DebuggerX().ExecuteCommand(std::format(L"dt nt!_OBJECT_HEADER 0x{:X}-@@c++(#FIELD_OFFSET(nt!_OBJECT_HEADER, Body))", o.Address).c_str());
+			DebugManager::Debugger().ExecuteCommand(std::format(L"dt nt!_OBJECT_HEADER 0x{:X}-@@c++(#FIELD_OFFSET(nt!_OBJECT_HEADER, Body))", o.Address).c_str());
 			break;
 		case CmdCopyAddress: ClipboardHelper::CopyText(m_hWnd, std::format(L"0x{:X}", o.Address).c_str()); break;
 		case CmdCopyName: ClipboardHelper::CopyText(m_hWnd, (m_Path == L"\\" ? L"\\" + o.Name : m_Path + L"\\" + o.Name).c_str()); break;
@@ -139,7 +139,7 @@ Task<void> CObjectsView::Refresh() {
 		bool Found{ false };
 	};
 	auto result = std::make_shared<Result>();
-	co_await DebugManager::DebuggerX().RunAsync([result, path = m_Path](IDebugClient* client) -> HRESULT {
+	co_await DebugManager::RunAsync([result, path = m_Path](IDebugClient* client) -> HRESULT {
 		KernelObjectAnalyzer analyzer(client);
 		auto directory = analyzer.FindObject(path.c_str());
 		if (!directory || analyzer.GetObjectTypeName(directory) != L"Directory")

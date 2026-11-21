@@ -102,7 +102,7 @@ Task<void> CKernelThreadsView::Refresh() {
 
 	// (shared with the debug thread, which can outlive the window)
 	auto threads = std::make_shared<std::vector<KernelThread>>();
-	co_await DebugManager::DebuggerX().RunAsync([threads](IDebugClient* client) -> HRESULT {
+	co_await DebugManager::RunAsync([threads](IDebugClient* client) -> HRESULT {
 		CComQIPtr<IDebugSystemObjects2> system(client);
 		CComQIPtr<IDebugSymbols3> symbols(client);
 		ULONG64 process = 0, current = 0;
@@ -160,7 +160,7 @@ bool CKernelThreadsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.SetMenuDefaultItem(CmdSwitch);
 	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
 		case CmdSwitch: SwitchTo(address); break;
-		case CmdDetails: DebugManager::DebuggerX().ExecuteCommand(std::format(L"dt nt!_ETHREAD 0x{:X}", address).c_str()); break;
+		case CmdDetails: DebugManager::Debugger().ExecuteCommand(std::format(L"dt nt!_ETHREAD 0x{:X}", address).c_str()); break;
 		case CmdCopy: CopyText(m_hWnd, std::format(L"0x{:X}", address)); break;
 	}
 	return true;
@@ -168,7 +168,7 @@ bool CKernelThreadsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 
 Task<void> CKernelThreadsView::SwitchTo(ULONG64 thread) {
 	auto alive = m_Lifetime.Watch();
-	auto hr = co_await DebugManager::DebuggerX().SetKernelThread(thread);
+	auto hr = co_await DebugManager::Debugger().SetKernelThread(thread);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr)) {

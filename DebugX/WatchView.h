@@ -29,7 +29,7 @@ public:
 	}
 
 	DebugEngine::Task<HRESULT> Fetch(std::vector<DebugEngine::SymbolEntry>& entries) {
-		return DebugManager::DebuggerX().EvaluateWatches(entries, m_Expressions, ExpandedPaths());
+		return DebugManager::Debugger().EvaluateWatches(entries, m_Expressions, ExpandedPaths());
 	}
 
 	// ISessionObserver

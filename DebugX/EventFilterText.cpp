@@ -48,8 +48,8 @@ std::vector<EventFilter> EventFilterText::Load(const std::wstring& text, const s
 		const wchar_t kind = item[0];
 		const std::wstring key = item.substr(2, eq - 2);
 		const std::wstring value = item.substr(eq + 1);
-		ULONG execution = 0, cont = DEBUG_FILTER_GO_NOT_HANDLED;
-		if (::swscanf_s(value.c_str(), L"%lu,%lu", &execution, &cont) < 1 || execution > DEBUG_FILTER_IGNORE || cont > DEBUG_FILTER_GO_NOT_HANDLED)
+		ULONG execution = 0, cont = FilterGoNotHandled;
+		if (::swscanf_s(value.c_str(), L"%lu,%lu", &execution, &cont) < 1 || execution > FilterIgnore || cont > FilterGoNotHandled)
 			continue;
 
 		if (kind == L'e') {

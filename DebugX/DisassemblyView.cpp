@@ -168,14 +168,14 @@ Task<void> CDisassemblyView::Refresh() {
 	auto alive = m_Lifetime.Watch();
 
 	ULONG64 ip = 0;
-	co_await DebugManager::DebuggerX().GetInstructionOffset(ip);
+	co_await DebugManager::Debugger().GetInstructionOffset(ip);
 	if (!*alive)
 		co_return;
 
 	// in another frame than 0, the window starts where that frame is, not where the thread is
 	ULONG64 frameIp = 0;
 	ULONG frame = 0;
-	if (FAILED(co_await DebugManager::DebuggerX().GetScope(frameIp, frame)))
+	if (FAILED(co_await DebugManager::Debugger().GetScope(frameIp, frame)))
 		frame = 0;
 	if (!*alive)
 		co_return;
@@ -202,12 +202,12 @@ Task<void> CDisassemblyView::Refresh() {
 		RefreshDone();
 		co_return;
 	}
-	co_await DebugManager::DebuggerX().Disassemble(goTo ? goTo : frameIp ? frameIp : ip, LineCount, lines);
+	co_await DebugManager::Debugger().Disassemble(goTo ? goTo : frameIp ? frameIp : ip, LineCount, lines);
 	if (!*alive)
 		co_return;
 
 	std::vector<BreakpointInfo> breakpoints;
-	co_await DebugManager::DebuggerX().EnumBreakpoints(breakpoints);
+	co_await DebugManager::Debugger().EnumBreakpoints(breakpoints);
 	if (!*alive)
 		co_return;
 
@@ -218,7 +218,7 @@ Task<void> CDisassemblyView::Refresh() {
 		offsets.reserve(lines.size());
 		for (auto& line : lines)
 			offsets.push_back(line.Address);
-		co_await DebugManager::DebuggerX().GetSourceLocations(std::move(offsets), locations);
+		co_await DebugManager::Debugger().GetSourceLocations(std::move(offsets), locations);
 		if (!*alive)
 			co_return;
 		if (locations.size() != lines.size())
@@ -319,11 +319,12 @@ Task<void> CDisassemblyView::ToggleBreakpointAt(ULONG64 address) {
 
 	for (auto& bp : m_Breakpoints) {
 		if (!bp.Deferred && bp.Offset == address) {
-			co_await DebugManager::DebuggerX().RemoveBreakpoint(bp.Id);
+			co_await DebugManager::Debugger().RemoveBreakpoint(bp.Id);
 			co_return;
 		}
 	}
-	co_await DebugManager::DebuggerX().AddBreakpoint(std::format(L"0x{:X}", address).c_str());
+	auto& dbg = DebugManager::Debugger();
+	co_await dbg.AddBreakpoint(dbg.AddressLocation(address).c_str());
 	// (nothing of this window's is touched after either await, so no need to check 'alive' before returning)
 }
 
@@ -332,7 +333,8 @@ Task<void> CDisassemblyView::RunToCursor(ULONG64 address) {
 		::MessageBeep(MB_ICONWARNING);
 		co_return;
 	}
-	co_await DebugManager::DebuggerX().ExecuteCommand(std::format(L"g 0x{:X}", address).c_str());
+	auto& dbg = DebugManager::Debugger();
+	co_await dbg.RunTo(dbg.AddressLocation(address).c_str());
 }
 
 LRESULT CDisassemblyView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
@@ -394,7 +396,7 @@ Task<void> CDisassemblyView::GoToAddress() {
 
 	std::wstring expression((PCWSTR)dlg.GetText());
 	ULONG64 address = 0;
-	auto hr = co_await DebugManager::DebuggerX().Evaluate(expression.c_str(), address);
+	auto hr = co_await DebugManager::Debugger().Evaluate(expression.c_str(), address);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr) || address == 0) {

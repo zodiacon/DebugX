@@ -14,7 +14,7 @@ public:
 	END_MSG_MAP()
 
 	DebugEngine::Task<HRESULT> Fetch(std::vector<DebugEngine::SymbolEntry>& entries) {
-		return DebugManager::DebuggerX().GetLocals(entries, ExpandedPaths());
+		return DebugManager::Debugger().GetLocals(entries, ExpandedPaths());
 	}
 
 	bool OnRightClickList(HWND, int row, int, POINT const& pt) {

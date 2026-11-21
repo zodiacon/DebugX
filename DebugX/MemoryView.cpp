@@ -13,7 +13,7 @@ LRESULT CMemoryView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 
 	m_AddressEdit.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_BORDER, 0, AddressId);
 	m_AddressEdit.SetFont(font);
-	m_Expression = L"@$csp";		// architecture-neutral "current stack pointer"; shown until "Go" changes it
+	m_Expression = DebugManager::Debugger().StackPointerExpression().c_str();	// the current stack pointer; shown until "Go" changes it
 	m_AddressEdit.SetWindowText(m_Expression);
 	m_Go.Create(*this, nullptr, L"Go", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, GoId);
 	m_Go.SetFont(font);
@@ -211,7 +211,7 @@ Task<void> CMemoryView::Write(ULONG64 address, std::vector<BYTE> data) {
 
 	// (the MemoryChanged this causes arrives before the task completes: see OnMemoryChanged)
 	m_PendingWrites++;
-	auto hr = co_await DebugManager::DebuggerX().WriteMemory(address, std::move(data));
+	auto hr = co_await DebugManager::Debugger().WriteMemory(address, std::move(data));
 	if (!*alive)
 		co_return;
 	m_PendingWrites--;
@@ -229,7 +229,7 @@ Task<void> CMemoryView::Refresh() {
 	auto alive = m_Lifetime.Watch();
 
 	ULONG64 address = 0;
-	auto hr = co_await DebugManager::DebuggerX().Evaluate((PCWSTR)m_Expression, address);
+	auto hr = co_await DebugManager::Debugger().Evaluate((PCWSTR)m_Expression, address);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr)) {
@@ -238,7 +238,7 @@ Task<void> CMemoryView::Refresh() {
 	}
 
 	std::vector<BYTE> data;
-	co_await DebugManager::DebuggerX().ReadMemory(address, data, ChunkSize);
+	co_await DebugManager::Debugger().ReadMemory(address, data, ChunkSize);
 	if (!*alive)
 		co_return;
 
@@ -316,7 +316,7 @@ Task<void> CMemoryView::Search(bool next) {
 
 	const auto start = m_Buffer->GetAddress() + m_Hex.GetCaretOffset() + (next ? 1 : 0);
 	ULONG64 found = 0;
-	auto hr = co_await DebugManager::DebuggerX().SearchMemory(start, m_SearchPattern, found);
+	auto hr = co_await DebugManager::Debugger().SearchMemory(start, m_SearchPattern, found);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr)) {

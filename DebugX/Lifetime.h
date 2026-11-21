@@ -9,7 +9,7 @@
 // window (or anything else the window owns):
 //
 //   auto alive = m_Lifetime.Watch();
-//   co_await DebugManager::DebuggerX().Something();
+//   co_await DebugManager::Debugger().Something();
 //   if (!*alive)
 //       co_return;
 //

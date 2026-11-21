@@ -28,7 +28,7 @@ DebugEngine::Task<void> CKernelProcessesView::Refresh() {
 	m_List.EnableWindow(FALSE);
 	SetTimer(1, 1000);
 
-	co_await DebugManager::DebuggerX().RunAsync([enumeration](IDebugClient* client) {
+	co_await DebugManager::RunAsync([enumeration](IDebugClient* client) {
 		KernelProcessEnumerator enumerator(client);
 		KernelProcessAnalyzer* p;
 		while (p = enumerator.GetNextProcess()) {
@@ -65,7 +65,7 @@ DebugEngine::Task<void> CKernelProcessesView::Refresh() {
 DebugEngine::Task<void> CKernelProcessesView::UpdateCurrent() {
 	auto alive = m_Lifetime.Watch();
 	ULONG64 current = 0;
-	co_await DebugManager::DebuggerX().GetKernelProcess(current);
+	co_await DebugManager::Debugger().GetKernelProcess(current);
 	if (!*alive)
 		co_return;
 	if (current != m_Current) {
@@ -104,7 +104,7 @@ bool CKernelProcessesView::OnRightClickList(HWND, int row, int, POINT const& pt)
 		case CmdDetails: {
 			CString command;
 			command.Format(L"dt nt!_EPROCESS 0x%llX", address);
-			DebugManager::DebuggerX().ExecuteCommand(command);
+			DebugManager::Debugger().ExecuteCommand(command);
 			break;
 		}
 		case CmdCopy:
@@ -128,7 +128,7 @@ bool CKernelProcessesView::OnRightClickList(HWND, int row, int, POINT const& pt)
 
 DebugEngine::Task<void> CKernelProcessesView::SwitchTo(ULONG64 process, bool invasive) {
 	auto alive = m_Lifetime.Watch();
-	auto hr = co_await DebugManager::DebuggerX().SetKernelProcess(process, invasive);
+	auto hr = co_await DebugManager::Debugger().SetKernelProcess(process, invasive);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr)) {

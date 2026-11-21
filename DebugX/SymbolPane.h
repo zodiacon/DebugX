@@ -48,7 +48,7 @@ private:
 //
 // A value that has an expression (SymbolEntry::Expression: a number, a pointer, ...) can be changed in place, in a
 // live target that is stopped: double-click it (the Value column), or Edit Value (F2 in Locals); what is typed is a
-// C++ expression, assigned with DebuggerX::AssignValue.
+// C++ expression, assigned with IDebugger::AssignValue.
 //
 //   class CMyPane : public CSymbolPane<CMyPane> {
 //       DebugEngine::Task<HRESULT> Fetch(std::vector<DebugEngine::SymbolEntry>& entries);    // the tree, now
@@ -256,7 +256,7 @@ private:
 		auto alive = this->m_Lifetime.Watch();
 		// (the panes hear of the change: MemoryChanged)
 		std::wstring error;
-		auto hr = co_await DebugManager::DebuggerX().AssignValue(expression.c_str(), value.c_str(), error);
+		auto hr = co_await DebugManager::Debugger().AssignValue(expression.c_str(), value.c_str(), error);
 		if (!*alive)
 			co_return;
 		if (FAILED(hr)) {

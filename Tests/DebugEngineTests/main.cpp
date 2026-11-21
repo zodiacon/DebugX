@@ -37,6 +37,23 @@ std::wstring Target(PCWSTR name) {
 }
 
 namespace {
+	// The dispatcher the suites' debuggers are given (IDebugger::Create): the window one, through a wrapper that counts
+	// what goes through it -- so that a dispatcher of the caller's is what the debugger uses
+	class CountingDispatcher final : public IDispatcher {
+	public:
+		CountingDispatcher(std::unique_ptr<IDispatcher> inner, int& posts) : m_Inner(std::move(inner)), m_Posts(posts) {}
+		bool Post(std::function<void()> func) override {
+			return m_Inner->Post([func = std::move(func), &posts = m_Posts] {
+				posts++;
+				func();
+				});
+		}
+
+	private:
+		std::unique_ptr<IDispatcher> m_Inner;
+		int& m_Posts;
+	};
+
 	struct Suite {
 		const char* Name;
 		Task<void>(*Run)(DebuggerX&);
@@ -97,6 +114,12 @@ namespace {
 	void RunSuite(const Suite& suite) {
 		printf("==== %s\n", suite.Name);
 		g_Events = {};
+		std::unique_ptr<IDispatcher> windowDispatcher;
+		if (FAILED(CreateWindowDispatcher(windowDispatcher))) {
+			Check(false, "CreateWindowDispatcher");
+			return;
+		}
+		int posts = 0;
 		DebuggerX dbg;
 		auto hr = dbg.Create([](DebuggerNotificationType type, void* data) {
 			switch (type) {
@@ -117,7 +140,7 @@ namespace {
 					g_Events.Scopes.push_back(static_cast<ScopeData*>(data)->FrameIndex);
 					break;
 			}
-			});
+			}, std::make_unique<CountingDispatcher>(std::move(windowDispatcher), posts));
 		if (FAILED(hr)) {
 			Check(false, "DebuggerX::Create");
 			return;
@@ -142,6 +165,7 @@ namespace {
 		}
 		done = true;
 		watchdog.join();
+		Check(posts > 0, "completions and notifications came through the dispatcher given to Create");
 	}
 }
 

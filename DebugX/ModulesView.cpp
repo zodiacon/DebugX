@@ -120,7 +120,7 @@ bool CModulesView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 
 DebugEngine::Task<void> CModulesView::LoadSymbols(std::wstring image) {
 	auto alive = m_Lifetime.Watch();
-	auto hr = co_await DebugManager::DebuggerX().ReloadSymbols(image.c_str());
+	auto hr = co_await DebugManager::Debugger().ReloadSymbols(image.c_str());
 	if (!*alive)
 		co_return;
 	if (FAILED(hr)) {
@@ -142,7 +142,7 @@ DebugEngine::Task<void> CModulesView::Refresh() {
 	auto alive = m_Lifetime.Watch();
 
 	std::vector<DebugEngine::ModuleInfo> modules;
-	co_await DebugManager::DebuggerX().EnumModules(modules);
+	co_await DebugManager::Debugger().EnumModules(modules);
 	if (!*alive)
 		co_return;
 

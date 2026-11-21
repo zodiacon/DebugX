@@ -48,15 +48,21 @@ namespace {
 		return text;
 	}
 
-	// Both are posted to the message window that the debugger creates on the thread that created it.
-	// WM_DBG_NOTIFY: engine callbacks are waiting in the notification queue
-	// WM_DBG_RESUME: an engine call has completed, lParam is its AsyncOpData
-	constexpr UINT WM_DBG_NOTIFY = WM_APP + 0x500;
-	constexpr UINT WM_DBG_RESUME = WM_APP + 0x501;
-	constexpr PCWSTR WindowClassName = L"DebugEngine.MessageWindow";
+	// (the values IDebugger.h has without DbgEng.h)
+	static_assert(static_cast<ULONG>(AttachType::NonInvasive) == DEBUG_ATTACH_NONINVASIVE && static_cast<ULONG>(AttachType::Existing) == DEBUG_ATTACH_EXISTING &&
+		static_cast<ULONG>(AttachType::NonInvasiveNoSuspend) == DEBUG_ATTACH_NONINVASIVE_NO_SUSPEND && static_cast<ULONG>(AttachType::InvasiveNoInitialBreak) == DEBUG_ATTACH_INVASIVE_NO_INITIAL_BREAK &&
+		static_cast<ULONG>(AttachType::InvasiveResumeProcess) == DEBUG_ATTACH_INVASIVE_RESUME_PROCESS && static_cast<ULONG>(AttachType::NonInvasicAllowPartial) == DEBUG_ATTACH_NONINVASIVE_ALLOW_PARTIAL);
+	static_assert(AnyId == DEBUG_ANY_ID);
+	static_assert(FilterBreak == DEBUG_FILTER_BREAK && FilterSecondChanceBreak == DEBUG_FILTER_SECOND_CHANCE_BREAK && FilterOutput == DEBUG_FILTER_OUTPUT &&
+		FilterIgnore == DEBUG_FILTER_IGNORE && FilterGoHandled == DEBUG_FILTER_GO_HANDLED && FilterGoNotHandled == DEBUG_FILTER_GO_NOT_HANDLED);
+	static_assert(BreakOnRead == DEBUG_BREAK_READ && BreakOnWrite == DEBUG_BREAK_WRITE && BreakOnExecute == DEBUG_BREAK_EXECUTE);
+	static_assert(static_cast<ULONG>(ExecutionStatus::Go) == DEBUG_STATUS_GO && static_cast<ULONG>(ExecutionStatus::Break) == DEBUG_STATUS_BREAK &&
+		static_cast<ULONG>(ExecutionStatus::NoDebuggee) == DEBUG_STATUS_NO_DEBUGGEE && static_cast<ULONG>(ExecutionStatus::StepBranch) == DEBUG_STATUS_STEP_BRANCH &&
+		static_cast<ULONG>(ExecutionStatus::Timeout) == DEBUG_STATUS_TIMEOUT);
 
 	// Carries a suspended coroutine's state across the hop from the debug thread (where the queued engine call
-	// runs) back to the thread that awaited it. Ownership passes to EngineAwaiter::await_resume(), which deletes it.
+	// runs) back to the thread that awaited it (through the dispatcher). Ownership passes to EngineAwaiter::await_resume(),
+	// which deletes it.
 	struct AsyncOpData {
 		std::function<HRESULT()> Action;
 		HRESULT Result{ E_FAIL };
@@ -76,7 +82,7 @@ namespace {
 			case DebuggerNotificationType::Breakpoint: delete static_cast<BreakpointData*>(data); break;
 			case DebuggerNotificationType::ExitProcess:
 			case DebuggerNotificationType::ExitThread: delete static_cast<ExitThreadData*>(data); break;
-			case DebuggerNotificationType::StatusChanged: delete static_cast<ULONG*>(data); break;
+			case DebuggerNotificationType::StatusChanged: delete static_cast<ExecutionStatus*>(data); break;
 			case DebuggerNotificationType::ModuleLoaded:
 			case DebuggerNotificationType::ModuleUnloaded: delete static_cast<ModuleEventData*>(data); break;
 			case DebuggerNotificationType::ContextChanged: delete static_cast<ContextData*>(data); break;
@@ -137,7 +143,7 @@ struct DebuggerX::Impl : CComObjectRoot,
 		return m_spDebugHost.p;
 	}
 
-	HRESULT Create(NotificationHandler handler);
+	HRESULT Create(NotificationHandler handler, std::unique_ptr<IDispatcher> dispatcher);
 	// Detaches from (or ends the session with) the target and stops the debug thread. False if the engine did not
 	// respond, in which case the thread is still running and the object must be left alone.
 	bool Shutdown();
@@ -151,6 +157,10 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> OutputPrompt();
 	Task<HRESULT> Stop();
 	Task<HRESULT> Detach();
+	Task<HRESULT> EndCurrentProcess(bool terminate);
+	Task<HRESULT> Go();
+	Task<HRESULT> RunTo(PCWSTR location);
+	Task<HRESULT> ResolveLocation(PCWSTR location, ULONG64& address);
 	Task<HRESULT> SetDmlEnabled(bool enabled);
 	Task<HRESULT> EnumModules(std::vector<ModuleInfo>& modules);
 	Task<HRESULT> EnumProcesses(std::vector<ProcessInfo>& processes, std::vector<ThreadInfo>& threads);
@@ -211,7 +221,7 @@ struct DebuggerX::Impl : CComObjectRoot,
 
 private:
 	// Awaiter that queues an engine call to the debug thread and suspends the calling coroutine until it has run.
-	// The coroutine is resumed on the calling thread by the message window (see OnResume).
+	// The coroutine is resumed on the calling thread by the dispatcher (see OnResume).
 	struct EngineAwaiter {
 		Impl* Self;
 		std::function<HRESULT()> Action;
@@ -225,7 +235,7 @@ private:
 			Data = new AsyncOpData{ std::move(Action), E_FAIL, handle };
 			if (Self->Queue([self = Self, data = Data] {
 				data->Result = data->Action();
-				::PostMessageW(self->m_hWnd, WM_DBG_RESUME, 0, reinterpret_cast<LPARAM>(data));
+				self->m_Dispatcher->Post([self, data] { self->OnResume(data); });
 				})) {
 				// (the completion is handled on this thread, so it cannot come before this)
 				if (++Self->m_PendingOps == 1)
@@ -251,8 +261,6 @@ private:
 	// runs the function on the debug thread, after whatever is queued or running there
 	bool Queue(std::function<void()> func);
 
-	static LRESULT CALLBACK WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-	HRESULT CreateMessageWindow();
 	void OnNotify();
 	void OnResume(AsyncOpData* data);
 	void SetTargetType(TargetType type);
@@ -288,20 +296,21 @@ private:
 
 private:
 	NotificationHandler m_Handler;
-	HWND m_hWnd{};
+	// runs OnNotify and OnResume on the thread that created the debugger
+	std::unique_ptr<IDispatcher> m_Dispatcher;
 	wil::unique_handle m_hDebugThread;
 	wil::unique_handle m_hShutdownEvent;
 	wil::unique_handle m_hInitEvent;
 	wil::unique_handle m_hDoneEvent;
 	HRESULT m_InitResult{ E_FAIL };
 
-	// engine callbacks (debug thread) waiting to be delivered (message window thread)
+	// engine callbacks (debug thread) waiting to be delivered (dispatcher thread)
 	std::mutex m_QueueLock;
 	std::vector<Notification> m_Queue;
 	bool m_WakePosted{ false };
 
 	std::atomic<ULONG> m_Status{ DEBUG_STATUS_NO_DEBUGGEE };
-	// the message window thread only
+	// the dispatcher thread only
 	int m_PendingOps{ 0 };
 	TargetType m_TargetType{ TargetType::Unknown };
 	// the debug thread only
@@ -397,8 +406,8 @@ private:
 		if (SUCCEEDED(Bp->GetId(&id)) && SUCCEEDED(m_spControl->GetBreakpointById(id, &listed)) && listed.p == Bp)
 			m_StopEvents++;
 
-		auto data = new BreakpointData;
-		data->Breakpoint = Bp;
+		auto data = new BreakpointData{};
+		Bp->GetId(&data->Id);
 		PostNotification(DebuggerNotificationType::Breakpoint, data);
 
 		return DEBUG_STATUS_BREAK;
@@ -563,12 +572,15 @@ DebuggerX::Impl::~Impl() {
 		FreeNotification(n.Type, n.Data);
 }
 
-HRESULT DebuggerX::Impl::Create(NotificationHandler handler) {
-	if (m_hWnd)
+HRESULT DebuggerX::Impl::Create(NotificationHandler handler, std::unique_ptr<IDispatcher> dispatcher) {
+	if (m_Dispatcher)
 		return E_UNEXPECTED;
 
 	m_Handler = std::move(handler);
-	HR(CreateMessageWindow());
+	if (dispatcher)
+		m_Dispatcher = std::move(dispatcher);
+	else
+		HR(CreateWindowDispatcher(m_Dispatcher));
 
 	m_hShutdownEvent.reset(::CreateEvent(nullptr, TRUE, FALSE, nullptr));
 	m_hInitEvent.reset(::CreateEvent(nullptr, TRUE, FALSE, nullptr));
@@ -628,10 +640,8 @@ bool DebuggerX::Impl::Shutdown() {
 		m_hDebugThread.reset();
 	}
 
-	if (m_hWnd) {
-		::DestroyWindow(m_hWnd);
-		m_hWnd = nullptr;
-	}
+	// (what it has not run yet is dropped: nothing is waiting for it any more)
+	m_Dispatcher.reset();
 	return true;
 }
 
@@ -647,36 +657,6 @@ bool DebuggerX::Impl::Queue(std::function<void()> func) {
 	return false;
 }
 
-LRESULT CALLBACK DebuggerX::Impl::WindowProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-	switch (msg) {
-		case WM_NCCREATE:
-			::SetWindowLongPtrW(hWnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCT*>(lParam)->lpCreateParams));
-			break;
-
-		case WM_DBG_NOTIFY:
-			reinterpret_cast<Impl*>(::GetWindowLongPtrW(hWnd, GWLP_USERDATA))->OnNotify();
-			return 0;
-
-		case WM_DBG_RESUME:
-			reinterpret_cast<Impl*>(::GetWindowLongPtrW(hWnd, GWLP_USERDATA))->OnResume(reinterpret_cast<AsyncOpData*>(lParam));
-			return 0;
-	}
-	return ::DefWindowProcW(hWnd, msg, wParam, lParam);
-}
-
-HRESULT DebuggerX::Impl::CreateMessageWindow() {
-	auto hInstance = ::GetModuleHandle(nullptr);
-	WNDCLASSEXW wc{ sizeof(wc) };
-	wc.lpfnWndProc = WindowProc;
-	wc.hInstance = hInstance;
-	wc.lpszClassName = WindowClassName;
-	if (!::RegisterClassExW(&wc) && ::GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
-		return HRESULT_FROM_WIN32(::GetLastError());
-
-	m_hWnd = ::CreateWindowExW(0, WindowClassName, nullptr, 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, hInstance, this);
-	return m_hWnd ? S_OK : HRESULT_FROM_WIN32(::GetLastError());
-}
-
 void DebuggerX::Impl::PostNotification(DebuggerNotificationType type, void* data) {
 	{
 		std::lock_guard locker(m_QueueLock);
@@ -686,7 +666,7 @@ void DebuggerX::Impl::PostNotification(DebuggerNotificationType type, void* data
 			return;
 		m_WakePosted = true;
 	}
-	if (!::PostMessageW(m_hWnd, WM_DBG_NOTIFY, 0, 0)) {
+	if (!m_Dispatcher->Post([this] { OnNotify(); })) {
 		// the notification stays queued; the next one tries again
 		std::lock_guard locker(m_QueueLock);
 		m_WakePosted = false;
@@ -702,7 +682,7 @@ void DebuggerX::Impl::OnNotify() {
 	}
 	for (auto& n : batch) {
 		// the session is over: there is no target any more (whatever the operation that started it will say)
-		if (n.Type == DebuggerNotificationType::StatusChanged && *static_cast<ULONG*>(n.Data) == DEBUG_STATUS_NO_DEBUGGEE)
+		if (n.Type == DebuggerNotificationType::StatusChanged && *static_cast<ExecutionStatus*>(n.Data) == ExecutionStatus::NoDebuggee)
 			SetTargetType(TargetType::Unknown);
 		if (m_Handler)
 			m_Handler(n.Type, n.Data);
@@ -859,7 +839,7 @@ void DebuggerX::Impl::UpdateStatus() {
 		// (a stop is often in another thread: who is current is known before anyone is told that the target has stopped)
 		if (status == DEBUG_STATUS_BREAK)
 			PostContextChanged();
-		PostNotification(DebuggerNotificationType::StatusChanged, new ULONG(status));
+		PostNotification(DebuggerNotificationType::StatusChanged, new ExecutionStatus(static_cast<ExecutionStatus>(status)));
 	}
 }
 
@@ -1079,6 +1059,22 @@ Task<HRESULT> DebuggerX::Impl::Detach() {
 		UpdateStatus();
 		return S_OK;
 		});
+}
+
+Task<HRESULT> DebuggerX::Impl::EndCurrentProcess(bool terminate) {
+	co_return co_await ExecuteCommand(terminate ? L".kill" : L".detach");
+}
+
+Task<HRESULT> DebuggerX::Impl::Go() {
+	co_return co_await ExecuteCommand(L"g");
+}
+
+Task<HRESULT> DebuggerX::Impl::RunTo(PCWSTR location) {
+	co_return co_await ExecuteCommand((L"g " + std::wstring(location)).c_str());
+}
+
+Task<HRESULT> DebuggerX::Impl::ResolveLocation(PCWSTR location, ULONG64& address) {
+	co_return co_await Evaluate(location, address);
 }
 
 Task<HRESULT> DebuggerX::Impl::SetDmlEnabled(bool enabled) {
@@ -2152,8 +2148,8 @@ DebuggerX::~DebuggerX() {
 		static_cast<CComObject<Impl>*>(m_Impl)->Release();
 }
 
-HRESULT DebuggerX::Create(NotificationHandler handler) {
-	return m_Impl->Create(std::move(handler));
+HRESULT DebuggerX::Create(NotificationHandler handler, std::unique_ptr<IDispatcher> dispatcher) {
+	return m_Impl->Create(std::move(handler), std::move(dispatcher));
 }
 
 Task<HRESULT> DebuggerX::OpenDumpFile(PCWSTR filename) {
@@ -2190,6 +2186,35 @@ Task<HRESULT> DebuggerX::Stop() {
 
 Task<HRESULT> DebuggerX::Detach() {
 	return m_Impl->Detach();
+}
+
+Task<HRESULT> DebuggerX::EndCurrentProcess(bool terminate) {
+	return m_Impl->EndCurrentProcess(terminate);
+}
+
+std::wstring DebuggerX::AddressLocation(ULONG64 address) const {
+	return std::format(L"0x{:X}", address);
+}
+
+std::wstring DebuggerX::SourceLineLocation(std::wstring_view file, ULONG line) const {
+	return std::format(L"`{}:{}`", file, line);
+}
+
+Task<HRESULT> DebuggerX::ResolveLocation(PCWSTR location, ULONG64& address) {
+	return m_Impl->ResolveLocation(location, address);
+}
+
+std::wstring DebuggerX::StackPointerExpression() const {
+	// (the pseudo-register is the stack pointer of whatever processor the target has)
+	return L"@$csp";
+}
+
+Task<HRESULT> DebuggerX::Go() {
+	return m_Impl->Go();
+}
+
+Task<HRESULT> DebuggerX::RunTo(PCWSTR location) {
+	return m_Impl->RunTo(location);
 }
 
 Task<HRESULT> DebuggerX::SetDmlEnabled(bool enabled) {
@@ -2298,12 +2323,6 @@ Task<HRESULT> DebuggerX::AssignValue(PCWSTR expression, PCWSTR value, std::wstri
 
 Task<HRESULT> DebuggerX::EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints) {
 	return m_Impl->EnumBreakpoints(breakpoints);
-}
-
-Task<HRESULT> DebuggerX::AddBreakpoint(PCWSTR expression) {
-	BreakpointSettings settings;
-	settings.Expression = expression;
-	return m_Impl->AddBreakpoint(std::move(settings));
 }
 
 Task<HRESULT> DebuggerX::AddBreakpoint(BreakpointSettings settings) {

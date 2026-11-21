@@ -70,7 +70,7 @@ Task<void> CRegistersView::SetRegister(std::wstring name, std::wstring value) {
 	auto alive = m_Lifetime.Watch();
 
 	// (the panes that show the thread hear of the change from the engine)
-	auto hr = co_await DebugManager::DebuggerX().SetRegister(name.c_str(), value.c_str());
+	auto hr = co_await DebugManager::Debugger().SetRegister(name.c_str(), value.c_str());
 	if (!*alive)
 		co_return;
 
@@ -153,7 +153,7 @@ DebugEngine::Task<void> CRegistersView::Refresh() {
 	EndEdit(false);
 
 	std::vector<DebugEngine::RegisterInfo> registers;
-	co_await DebugManager::DebuggerX().GetRegisters(registers);
+	co_await DebugManager::Debugger().GetRegisters(registers);
 	if (!*alive)
 		co_return;
 

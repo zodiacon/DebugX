@@ -3,7 +3,7 @@
 #include <deque>
 #include <string>
 #include <vector>
-#include "..\DebugEngine\Debugger.h"
+#include "..\DebugEngine\IDebugger.h"
 
 //
 // What the windows of the application want to know about the debugging session, as events: they implement the
@@ -51,7 +51,7 @@ struct ISessionObserver {
 //
 class SessionModel final {
 public:
-	explicit SessionModel(DebugEngine::DebuggerX& debugger);
+	explicit SessionModel(DebugEngine::IDebugger& debugger);
 	SessionModel(const SessionModel&) = delete;
 	SessionModel& operator=(const SessionModel&) = delete;
 
@@ -103,7 +103,7 @@ private:
 
 	static constexpr size_t MaxLogLines = 5000;
 
-	DebugEngine::DebuggerX& m_Debugger;
+	DebugEngine::IDebugger& m_Debugger;
 	std::vector<ISessionObserver*> m_Observers;
 	DebugEngine::ExecutionStatus m_Status{ DebugEngine::ExecutionStatus::NoDebuggee };
 	bool m_HadTarget{ false };

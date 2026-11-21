@@ -43,7 +43,7 @@ bool CCallStackView::OnDoubleClickList(HWND, int row, int col, POINT const& pt) 
 		return false;
 
 	// (the panes that follow the scope, this one included, hear of it from the session)
-	DebugManager::DebuggerX().SetScopeFrame(m_Items[row].Index);
+	DebugManager::Debugger().SetScopeFrame(m_Items[row].Index);
 	return true;
 }
 
@@ -57,7 +57,7 @@ DebugEngine::Task<void> CCallStackView::Refresh() {
 	auto alive = m_Lifetime.Watch();
 
 	std::vector<DebugEngine::StackFrameInfo> frames;
-	co_await DebugManager::DebuggerX().GetStackTrace(frames);
+	co_await DebugManager::Debugger().GetStackTrace(frames);
 	if (!*alive)
 		co_return;
 
