@@ -30,7 +30,7 @@ int wmain(int argc, wchar_t* argv[]) {
 	bool flag = true;
 	char letter = 'A';
 	int count = argc;		// line 32
-	wprintf(L"%zu %S %s %zu %d %s %d %d %d %c %d\n", numbers.size(), text.c_str(), wide.c_str(), names.size(), point.X,
+	wprintf(L"%zu %S %s %zu %d %S %d %d %d %c %d\n", numbers.size(), text.c_str(), wide.c_str(), names.size(), point.X,
 		shape.Name, array[1], unique->Y, flag, letter, count);	// line 34
 	return 0;
 }
