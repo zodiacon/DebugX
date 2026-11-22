@@ -11,6 +11,7 @@
 #include "FindDlg.h"
 #include "AppMessages.h"
 #include "DefaultLayouts.h"
+#include "CommandLine.h"
 
 class CMainFrame :
 	public CFrameWindowImpl<CMainFrame>,
@@ -25,6 +26,8 @@ public:
 	// Called once the frame is created, not from WM_CREATE: WTLHelper's dark-mode hook gives a top-level window its
 	// menu bar subclass when WM_CREATE returns, and a frame shown before that paints a light menu bar that stays.
 	void InitDock();
+	// what DebugX was started with (a program, -p, -z, -k, ...: CommandLine.h), started once the frame is up
+	DebugEngine::Task<void> StartFromCommandLine(CommandLine cmd);
 
 	BOOL PreTranslateMessage(MSG* pMsg) override;
 	BOOL OnIdle() override;
@@ -47,6 +50,8 @@ public:
 		MESSAGE_HANDLER(WM_INITMENUPOPUP, OnInitMenuPopup)
 		MESSAGE_HANDLER(WM_ADDWATCH, OnAddWatch)
 		MESSAGE_HANDLER(WM_GOTODISASSEMBLY, OnGoToDisassembly)
+		MESSAGE_HANDLER(WM_DROPFILES, OnDropFiles)
+		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		NOTIFY_CODE_HANDLER(TTN_GETDISPINFOW, OnToolTipText)
 		COMMAND_RANGE_HANDLER(ID_FILE_RECENT1, ID_FILE_RECENT10, OnRecentTarget)
 		COMMAND_ID_HANDLER(ID_FILE_CLEARRECENT, OnClearRecent)
@@ -159,10 +164,16 @@ private:
 	// the window's title: the target and whether it runs, then DebugX's own (m_BaseTitle)
 	void SetTargetName(CString name);
 	void UpdateTitle();
+	// the status bar's parts: the messages, then the session's status, the kind of target and the engine
+	void LayoutStatusParts();
+	void UpdateStatusParts();
+	LRESULT OnSize(UINT, WPARAM, LPARAM, BOOL& handled);
 
 	DebugEngine::Task<void> RunExecutable(CString exePath, CString arguments, CString workingDir);
 	// (by the process name too, if it is known: what Recent Targets keeps)
 	DebugEngine::Task<void> AttachToProcess(DWORD pid, CString name = {});
+	// the one running process of that name (Recent Targets, -pn); says so if there is none, or more than one
+	DebugEngine::Task<void> AttachToProcessByName(std::wstring name);
 	DebugEngine::Task<void> SaveDump();
 	DebugEngine::Task<void> AttachLocalKernel();
 	DebugEngine::Task<void> AttachKernel(CString connection);
@@ -238,6 +249,9 @@ private:
 	LRESULT OnSymbolPaths(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnInitMenuPopup(UINT, WPARAM wParam, LPARAM, BOOL& bHandled);
 	LRESULT OnAddWatch(UINT, WPARAM, LPARAM lParam, BOOL&);
+	// files dropped on the window: a dump is opened, a program run (the Run Executable dialog, for its arguments), any
+	// other file opened as a source file
+	LRESULT OnDropFiles(UINT, WPARAM wParam, LPARAM, BOOL&);
 	// shows the Disassembly pane and has it go to the address (WM_GOTODISASSEMBLY, from a pane)
 	LRESULT OnGoToDisassembly(UINT, WPARAM, LPARAM lParam, BOOL&);
 	// the toolbar buttons' tips: the text of their menu items

@@ -13,6 +13,9 @@ public:
 		return -1;
 	}
 	void DoSort(const SortInfo* si);
+	bool HasFilter() const {
+		return true;
+	}
 	bool OnRightClickList(HWND, int row, int col, POINT const& pt);
 
 	// ISessionObserver: another process

@@ -8,6 +8,13 @@ LRESULT CRunExeDlg::OnInitDialog(UINT, WPARAM, LPARAM, BOOL&) {
 
 	::SHAutoComplete(GetDlgItem(IDC_EXEPATH), SHACF_FILESYSTEM);
 	::SHAutoComplete(GetDlgItem(IDC_INITIALDIR), SHACF_FILESYS_DIRS);
+	if (!m_ExePath.IsEmpty()) {
+		GetDlgItem(IDC_EXEPATH).SetWindowText(m_ExePath);
+		// (what is left to fill in)
+		GotoDlgCtrl(GetDlgItem(IDC_ARGS));
+		CenterWindow();
+		return FALSE;
+	}
 
 	CenterWindow();
 

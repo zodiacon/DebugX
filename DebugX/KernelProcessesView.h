@@ -30,6 +30,12 @@ public:
 
 	void InitList();
 	void DoSort(const SortInfo* si);
+	// the filter box: by name, PID and address -- of the processes it has (all of them, m_Items keeps them), without
+	// walking the kernel's list again
+	bool HasFilter() const {
+		return true;
+	}
+	void FilterChanged();
 	// Switch to Process (.process /p /r: the debugger looks at its user-mode memory and modules; the Kernel Threads pane
 	// lists its threads), also invasively on a kernel over a connection; Details (dt nt!_EPROCESS)
 	bool OnDoubleClickList(HWND, int row, int col, POINT const& pt);

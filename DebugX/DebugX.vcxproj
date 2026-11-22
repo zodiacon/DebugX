@@ -331,6 +331,7 @@
     <ClCompile Include="EventFilterText.cpp" />
     <ClCompile Include="SymbolPathsDlg.cpp" />
     <ClCompile Include="InputDlg.cpp" />
+    <ClCompile Include="CommandLine.cpp" />
     <ClCompile Include="RecentTargets.cpp" />
     <ClCompile Include="SavedBreakpoints.cpp" />
     <ClCompile Include="KernelThreadsView.cpp" />
@@ -386,6 +387,7 @@
     <ClInclude Include="EventFilterText.h" />
     <ClInclude Include="SymbolPathsDlg.h" />
     <ClInclude Include="InputDlg.h" />
+    <ClInclude Include="CommandLine.h" />
     <ClInclude Include="RecentTargets.h" />
     <ClInclude Include="SavedBreakpoints.h" />
     <ClInclude Include="KernelThreadsView.h" />

@@ -76,6 +76,9 @@
     <ClCompile Include="KernelThreadsView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="CommandLine.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="RecentTargets.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -210,6 +213,9 @@
     </ClInclude>
     <ClInclude Include="KernelThreadsView.h">
       <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="CommandLine.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="RecentTargets.h">
       <Filter>Header Files</Filter>

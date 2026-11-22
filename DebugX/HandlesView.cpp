@@ -97,6 +97,7 @@ DebugEngine::Task<void> CHandlesView::Refresh() {
 	if (!*alive)
 		co_return;
 	m_Items.swap(handles);
+	ApplyFilter(m_Items);
 	UpdateList(m_Items.size());
 	RefreshDone();
 }

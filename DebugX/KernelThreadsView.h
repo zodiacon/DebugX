@@ -12,6 +12,9 @@ public:
 	CString GetColumnText(HWND hWnd, int row, int column) const;
 	int GetRowImage(HWND, int row, int col) const;
 	void DoSort(const SortInfo* si);
+	bool HasFilter() const {
+		return true;
+	}
 	bool OnDoubleClickList(HWND, int row, int col, POINT const& pt);
 	bool OnRightClickList(HWND, int row, int col, POINT const& pt);
 

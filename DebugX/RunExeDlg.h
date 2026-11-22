@@ -18,6 +18,9 @@ public:
 		COMMAND_ID_HANDLER(IDC_BROWSEDIR, OnBrowseDir)
 	END_MSG_MAP()
 
+	// the program to start with (a file dropped on the window); the arguments are typed
+	explicit CRunExeDlg(PCWSTR exePath = nullptr) : m_ExePath(exePath) {}
+
 	const CString& GetExePath() const {
 		return m_ExePath;
 	}

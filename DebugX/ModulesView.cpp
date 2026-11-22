@@ -151,6 +151,7 @@ DebugEngine::Task<void> CModulesView::Refresh() {
 		co_return;
 
 	m_Items.swap(modules);
+	ApplyFilter(m_Items);
 	UpdateList(m_Items.size());
 	RefreshDone();
 }

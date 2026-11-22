@@ -12,6 +12,9 @@ public:
 		return 0;
 	}
 	void DoSort(const SortInfo* si);
+	bool HasFilter() const {
+		return true;
+	}
 	// Load Symbols, Open Containing Folder, Copy Path
 	bool OnRightClickList(HWND, int row, int col, POINT const& pt);
 

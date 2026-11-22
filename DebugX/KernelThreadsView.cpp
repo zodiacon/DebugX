@@ -133,6 +133,7 @@ Task<void> CKernelThreadsView::Refresh() {
 		co_return;
 
 	m_Items = std::move(*threads);
+	ApplyFilter(m_Items);
 	UpdateList(m_Items.size());
 	RefreshDone();
 }

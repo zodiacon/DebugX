@@ -3,6 +3,7 @@
 #include "DebugManager.h"
 #include "DebugX.Kernel.h"
 #include "SortHelper.h"
+#include <format>
 
 void CKernelProcessesView::OnTargetEnded() {
 	m_Items.clear();
@@ -65,6 +66,8 @@ DebugEngine::Task<void> CKernelProcessesView::Refresh() {
 	KillTimer(1);
 	m_Items.Set(std::move(enumeration->Processes));
 	m_Enumeration = nullptr;
+	if (!FilterText().empty())
+		FilterChanged();
 	m_NoSymbols = !enumeration->Valid;
 	if (m_NoSymbols)
 		m_Message = L"No processes: the kernel's symbols are not loaded (nt!PsActiveProcessHead, _EPROCESS). "
@@ -202,11 +205,29 @@ void CKernelProcessesView::InitList() {
 	//m_List.InsertColumn(7, L"User Time", LVCFMT_RIGHT, 120);
 }
 
-LRESULT CKernelProcessesView::OnTimer(UINT, WPARAM id, LPARAM, BOOL&) {
-	if (id == 1 && m_Enumeration)
+LRESULT CKernelProcessesView::OnTimer(UINT, WPARAM id, LPARAM, BOOL& handled) {
+	// (the others are CListPane's: the filter's)
+	if (id != 1) {
+		handled = FALSE;
+		return 0;
+	}
+	if (m_Enumeration)
 		m_List.RedrawItems(0, 0);
 
 	return 0;
+}
+
+void CKernelProcessesView::FilterChanged() {
+	if (FilterText().empty())
+		m_Items.Filter(nullptr);
+	else
+		m_Items.Filter([this](const KernelProcess& p, size_t) {
+			return MatchesFilter(p.ImageName) || MatchesFilter(std::to_wstring(p.Pid).c_str())
+				|| MatchesFilter(std::format(L"0x{:X}", p.Address).c_str());
+			});
+	UpdateRows();
+	DoSort(GetSortInfo());
+	m_List.Invalidate();
 }
 
 LRESULT CKernelProcessesView::OnViewRefresh(WORD, WORD, HWND, BOOL&) {

@@ -155,6 +155,7 @@ void CUserThreadsView::OnThreadCreated(const DebugEngine::ThreadCreateData& data
 	ti.Id = data.Id;
 
 	m_Items.push_back(ti);
+	ApplyFilter(m_Items);
 	UpdateList(m_Items.size());
 }
 
@@ -196,6 +197,7 @@ DebugEngine::Task<void> CUserThreadsView::Refresh() {
 		co_return;
 
 	m_Items.swap(threads);
+	ApplyFilter(m_Items);
 	UpdateList(m_Items.size());
 	RefreshDone();
 }

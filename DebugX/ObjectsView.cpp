@@ -158,6 +158,7 @@ Task<void> CObjectsView::Refresh() {
 
 	m_Error = result->Found ? L"" : L"not a directory, or not there";
 	m_Items = std::move(result->Objects);
+	ApplyFilter(m_Items, HeaderRows);
 	UpdateList(m_Items.size() + HeaderRows);
 	RefreshDone();
 }

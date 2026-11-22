@@ -12,7 +12,7 @@
 CAppModule _Module;
 AppSettings g_Settings;
 
-int Run(LPTSTR /*lpstrCmdLine*/ = nullptr, int nCmdShow = SW_SHOWDEFAULT) {
+int Run(LPTSTR lpstrCmdLine = nullptr, int nCmdShow = SW_SHOWDEFAULT) {
 	CMessageLoop theLoop;
 	_Module.AddMessageLoop(&theLoop);
 
@@ -27,6 +27,8 @@ int Run(LPTSTR /*lpstrCmdLine*/ = nullptr, int nCmdShow = SW_SHOWDEFAULT) {
 	frame->InitDock();
 
 	frame->ShowWindow(nCmdShow);
+	// (a program to run, a process to attach to, a dump, ...: WinDbg's options)
+	frame->StartFromCommandLine(CommandLine::Parse(lpstrCmdLine));
 
 	int nRet = theLoop.Run();
 

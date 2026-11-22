@@ -99,6 +99,7 @@ Task<void> CDriversView::Refresh() {
 		co_return;
 
 	m_Items = std::move(*drivers);
+	ApplyFilter(m_Items);
 	UpdateList(m_Items.size());
 	RefreshDone();
 }

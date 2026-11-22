@@ -262,6 +262,23 @@ Task<void> CMemoryView::Refresh() {
 	const bool samePlace = m_Buffer && m_Buffer->GetAddress() == address;
 	const auto caret = samePlace ? m_Hex.GetCaretOffset() : 0;
 
+	// what changed since the last refresh of the same place (a stop, a step, a write): runs of bytes [offset, length)
+	std::vector<std::pair<int64_t, int64_t>> changed;
+	if (samePlace && m_Buffer->GetSize() > 0) {
+		const auto common = std::min<int64_t>(m_Buffer->GetSize(), static_cast<int64_t>(data.size()));
+		const auto old = m_Buffer->GetRawData(0);
+		for (int64_t i = 0; i < common; ) {
+			if (old[i] == data[i]) {
+				i++;
+				continue;
+			}
+			auto start = i;
+			while (i < common && old[i] != data[i])
+				i++;
+			changed.emplace_back(start, i - start);
+		}
+	}
+
 	const auto size = static_cast<int64_t>(data.size());
 	auto buffer = std::make_unique<TargetMemoryBuffer>(address, std::move(data), [this](ULONG64 address, std::vector<BYTE> data) {
 		Write(address, std::move(data));
@@ -274,6 +291,12 @@ Task<void> CMemoryView::Refresh() {
 	if (m_SelectAfterRefresh > 0 && m_SelectAfterRefresh <= size)
 		m_Hex.SetSelection(0, m_SelectAfterRefresh);
 	m_SelectAfterRefresh = 0;
+	// (as the Registers pane shows a register that changed, until the next refresh)
+	m_Hex.ClearHighlights();
+	const auto text = WTLHelper::IsDarkMode() ? RGB(255, 140, 140) : RGB(200, 0, 0);
+	const auto background = ::GetSysColor(COLOR_WINDOW);
+	for (auto& [offset, length] : changed)
+		m_Hex.AddHighlight(offset, length, text, background);
 	m_Hex.Refresh();
 	if (m_Format != Format::Hex)
 		RenderFormatted();

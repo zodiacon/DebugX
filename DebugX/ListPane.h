@@ -34,6 +34,11 @@ public:
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
 		MESSAGE_HANDLER(AppFonts::FontsChangedMessage, OnFontsChanged)
 		COMMAND_ID_HANDLER(ID_EDIT_COPY, OnEditCopy)
+		COMMAND_ID_HANDLER(ID_EDIT_FIND, OnEditFind)
+		COMMAND_ID_HANDLER(ID_EDIT_PASTE, OnEditToFocus)
+		COMMAND_ID_HANDLER(ID_EDIT_CUT, OnEditToFocus)
+		COMMAND_HANDLER(FilterId, EN_CHANGE, OnFilterEdited)
+		MESSAGE_HANDLER(WM_TIMER, OnTimer)
 		CHAIN_MSG_MAP(CPaneBase<T>)
 		CHAIN_MSG_MAP(BaseFrame)
 		CHAIN_MSG_MAP(CVirtualListView<T>)
@@ -61,6 +66,29 @@ public:
 	DWORD ExtendedStyle() const {
 		return LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER | LVS_EX_INFOTIP | LVS_EX_LABELTIP;
 	}
+	// A filter box above the list (Ctrl+F goes to it, Escape empties it, Down goes to the list): the pane's Refresh calls
+	// ApplyFilter on its rows before UpdateList, and a change to the text refreshes it (FilterChanged).
+	bool HasFilter() const {
+		return false;
+	}
+	// the filter's text changed (a moment after the last key): the rows again. A pane that keeps all of its rows can
+	// filter them itself instead of asking the target again.
+	void FilterChanged() {
+		this->RequestRefresh();
+	}
+
+	// (CFrameWindowImpl's: the filter box, then the list)
+	void UpdateLayout(BOOL = TRUE) {
+		CRect rc;
+		this->GetClientRect(&rc);
+		if (m_Filter) {
+			const int height = AppFonts::TextHeight(AppFonts::UiFont()) + ::MulDiv(8, ::GetDpiForWindow(this->m_hWnd), 96);
+			m_Filter.SetWindowPos(nullptr, rc.left, rc.top, rc.Width(), height, SWP_NOZORDER | SWP_NOACTIVATE);
+			rc.top += height;
+		}
+		if (m_List)
+			m_List.SetWindowPos(nullptr, &rc, SWP_NOZORDER | SWP_NOACTIVATE);
+	}
 
 	// A pane without a right-click menu of its own gets Copy / Copy All. (One with its own puts them in it:
 	// AppendCopyItems, then HandleCopyCommand with what TrackPopupMenu returned.)
@@ -74,6 +102,42 @@ public:
 protected:
 	// the commands of AppendCopyItems (TPM_RETURNCMD: apart from the panes' own, which count from 1)
 	enum { CmdCopyRows = 0x7F00, CmdCopyAllRows };
+	enum { FilterId = 0x7F10, FilterTimerId = 0x7F11 };
+
+	// the filter's text, lowercase; empty: none
+	const std::wstring& FilterText() const {
+		return m_FilterText;
+	}
+	// does the text (a cell's) have the filter's text in it (any case)
+	bool MatchesFilter(PCWSTR text) const {
+		if (m_FilterText.empty())
+			return true;
+		std::wstring lower(text ? text : L"");
+		for (auto& c : lower)
+			c = towlower(c);
+		return lower.find(m_FilterText) != std::wstring::npos;
+	}
+
+	// The rows whose text (as the list shows it: GetColumnText, any column) does not have the filter's in it are dropped
+	// from 'items' -- the pane's own rows, items[i] being row i + firstRow. Called by Refresh, before UpdateList.
+	template<typename Items>
+	void ApplyFilter(Items& items, int firstRow = 0) {
+		if (m_FilterText.empty())
+			return;
+		auto pT = static_cast<T*>(this);
+		const int columns = CHeaderCtrl(m_List.GetHeader()).GetItemCount();
+		for (auto i = static_cast<int>(items.size()) - 1; i >= 0; i--) {
+			bool match = false;
+			for (int c = 0; c < columns && !match; c++)
+				match = MatchesFilter(CString(pT->GetColumnText(m_List, i + firstRow, c)));
+			if (!match) {
+				if constexpr (requires { items.erase(items.begin()); })
+					items.erase(items.begin() + i);
+				else
+					items.erase(i);
+			}
+		}
+	}
 
 	void AppendCopyItems(CMenuHandle menu) const {
 		if (menu.GetMenuItemCount() > 0)
@@ -167,9 +231,94 @@ protected:
 			| LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS);
 		m_List.SetExtendedListViewStyle(pT->ExtendedStyle());
 		m_List.SetFont(AppFonts::UiFont());		// (before InitList: an editor it makes takes the list's font)
+		if (pT->HasFilter()) {
+			m_Filter.Create(*this, CWindow::rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | ES_AUTOHSCROLL, WS_EX_CLIENTEDGE, FilterId);
+			m_Filter.SetFont(AppFonts::UiFont());
+			m_Filter.SetCueBannerText(L"Filter (Ctrl+F)");
+			::SetWindowSubclass(m_Filter, FilterProc, 0, reinterpret_cast<DWORD_PTR>(this));
+		}
 		pT->InitList();
 		this->InitPane();
 		return 0;
+	}
+
+	// Ctrl+F (Edit > Find, which the frame passes to a pane without text to search): to the filter box. 1: handled
+	LRESULT OnEditFind(WORD, WORD, HWND, BOOL& handled) {
+		if (!m_Filter) {
+			handled = FALSE;
+			return 0;
+		}
+		m_Filter.SetFocus();
+		m_Filter.SetSelAll();
+		return 1;
+	}
+
+	// Ctrl+V, Ctrl+X (the frame's accelerators): to an edit of the pane's that has the focus (the filter box, an in-place
+	// editor) -- the list has nothing to paste into
+	LRESULT OnEditToFocus(WORD, WORD id, HWND, BOOL& handled) {
+		auto focus = ::GetFocus();
+		if (!focus || focus == m_List.m_hWnd || !this->IsChild(focus)) {
+			handled = FALSE;
+			return 0;
+		}
+		::SendMessage(focus, id == ID_EDIT_PASTE ? WM_PASTE : WM_CUT, 0, 0);
+		return 0;
+	}
+
+	LRESULT OnFilterEdited(WORD, WORD, HWND, BOOL&) {
+		// (not on every key: a refresh can be a walk of the kernel's lists)
+		this->SetTimer(FilterTimerId, 300);
+		return 0;
+	}
+
+	LRESULT OnTimer(UINT, WPARAM id, LPARAM, BOOL& handled) {
+		if (id != FilterTimerId) {
+			handled = FALSE;
+			return 0;
+		}
+		this->KillTimer(FilterTimerId);
+		CString text;
+		m_Filter.GetWindowText(text);
+		text.Trim();
+		std::wstring lower(text);
+		for (auto& c : lower)
+			c = towlower(c);
+		if (lower != m_FilterText) {
+			m_FilterText = std::move(lower);
+			static_cast<T*>(this)->FilterChanged();
+		}
+		return 0;
+	}
+
+	// the filter box's keys: Escape empties it (and goes back to the list when it was empty), Down goes to the list
+	static LRESULT CALLBACK FilterProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR, DWORD_PTR data) {
+		auto pane = reinterpret_cast<CListPane*>(data);
+		switch (msg) {
+			case WM_KEYDOWN:
+				if (wParam == VK_ESCAPE) {
+					if (::GetWindowTextLengthW(hWnd))
+						::SetWindowTextW(hWnd, L"");
+					else
+						pane->m_List.SetFocus();
+					return 0;
+				}
+				if (wParam == VK_DOWN) {
+					pane->m_List.SetFocus();
+					if (pane->m_List.GetItemCount() && pane->m_List.GetNextItem(-1, LVNI_SELECTED) < 0)
+						pane->m_List.SetItemState(0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+					return 0;
+				}
+				break;
+			case WM_CHAR:
+				// (no beep for them)
+				if (wParam == VK_ESCAPE || wParam == VK_RETURN)
+					return 0;
+				break;
+			case WM_NCDESTROY:
+				::RemoveWindowSubclass(hWnd, FilterProc, 0);
+				break;
+		}
+		return ::DefSubclassProc(hWnd, msg, wParam, lParam);
 	}
 
 	LRESULT OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
@@ -177,6 +326,10 @@ protected:
 		if (static_cast<AppFonts::Kind>(wParam) != AppFonts::Kind::Ui)
 			return 0;
 		m_List.SetFont(AppFonts::UiFont());
+		if (m_Filter) {
+			m_Filter.SetFont(AppFonts::UiFont());
+			static_cast<T*>(this)->UpdateLayout();
+		}
 		// and what the pane put on the list (an in-place editor); the header has taken it from the list
 		HWND header = m_List.GetHeader();
 		for (CWindow child = m_List.GetWindow(GW_CHILD); child; child = child.GetWindow(GW_HWNDNEXT))
@@ -193,5 +346,7 @@ protected:
 
 protected:
 	CListViewCtrl m_List;
+	CEdit m_Filter;					// (HasFilter)
+	std::wstring m_FilterText;		// lowercase, trimmed
 	Lifetime m_Lifetime;
 };

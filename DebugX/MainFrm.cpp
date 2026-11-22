@@ -81,6 +81,74 @@ void CMainFrame::OnSessionChanged() {
 	UpdateTitle();
 }
 
+void CMainFrame::LayoutStatusParts() {
+	if (!m_hWndStatusBar)
+		return;
+	CStatusBarCtrl sb(m_hWndStatusBar);
+	// (the frame's width: on WM_SIZE the status bar has not been made as wide yet)
+	CRect rc;
+	GetClientRect(&rc);
+	// (from the right: the engine, the target, the status; the messages have the rest)
+	const int dpi = ::GetDpiForWindow(m_hWnd);
+	const int widths[] = { ::MulDiv(90, dpi, 96), ::MulDiv(110, dpi, 96), ::MulDiv(150, dpi, 96) };
+	int parts[4];
+	parts[3] = -1;
+	parts[2] = rc.right - widths[2] - ::GetSystemMetricsForDpi(SM_CXVSCROLL, dpi);	// (the grip)
+	parts[1] = parts[2] - widths[1];
+	parts[0] = std::max(parts[1] - widths[0], 0);
+	sb.SetParts(_countof(parts), parts);
+}
+
+void CMainFrame::UpdateStatusParts() {
+	if (!m_hWndStatusBar)
+		return;
+	CStatusBarCtrl sb(m_hWndStatusBar);
+	auto& session = DebugManager::Session();
+	const auto target = session.Target();
+
+	PCWSTR status = L"";
+	if (m_Connecting)
+		status = L"Connecting";
+	else if (!session.HasTarget())
+		status = L"No target";
+	else if (session.IsRunning())
+		status = L"Running";
+	else if (session.IsBusy())
+		status = L"Busy";
+	else if (session.IsBroken())
+		status = L"Break";
+
+	PCWSTR kind = L"";
+	if (target == TargetType::LocalKernel)
+		kind = L"Local kernel";
+	else if ((target & TargetType::DumpKernel) == TargetType::DumpKernel)
+		kind = L"Kernel dump";
+	else if ((target & TargetType::DumpUser) == TargetType::DumpUser)
+		kind = L"User dump";
+	else if ((target & TargetType::LiveKernel) == TargetType::LiveKernel)
+		kind = L"Kernel";
+	else if ((target & TargetType::LiveUser) == TargetType::LiveUser)
+		kind = m_ProcessServer.IsEmpty() ? L"User mode" : L"User mode (remote)";
+
+	// which dbgeng.dll: the Windows Kits debugger's, System32's, or another's
+	auto& path = DebugManager::EnginePath();
+	PCWSTR engine = L"Engine: other";
+	if (path.find(L"\\Windows Kits\\") != std::wstring::npos)
+		engine = L"Engine: Windows Kits";
+	else if (WCHAR system[MAX_PATH]; ::GetSystemDirectoryW(system, _countof(system)) && _wcsnicmp(path.c_str(), system, wcslen(system)) == 0)
+		engine = L"Engine: System32";
+
+	sb.SetText(1, status);
+	sb.SetText(2, kind);
+	sb.SetText(3, engine);
+}
+
+LRESULT CMainFrame::OnSize(UINT, WPARAM, LPARAM, BOOL& handled) {
+	handled = FALSE;	// (the frame lays out its bars and client)
+	LayoutStatusParts();
+	return 0;
+}
+
 void CMainFrame::SetTargetName(CString name) {
 	m_TargetName = name;
 	UpdateTitle();
@@ -133,6 +201,12 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	}
 	// (UpdateTitle puts the target before it)
 	GetWindowText(m_BaseTitle);
+
+	// files dropped on the window (OnDropFiles) -- also from Explorer when DebugX runs elevated and Explorer does not,
+	// which the system filters out unless let through
+	DragAcceptFiles(TRUE);
+	for (UINT msg : { UINT(WM_DROPFILES), UINT(WM_COPYDATA), UINT(0x0049) /* WM_COPYGLOBALDATA */ })
+		::ChangeWindowMessageFilterEx(m_hWnd, msg, MSGFLT_ALLOW, nullptr);
 	UIAddMenu(GetMenu());
 
 	ToolBarButtonInfo buttons[] = {
@@ -149,6 +223,8 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 		{ ID_DEBUG_STEPINTO, IDI_STEP_INTO },
 		{ ID_DEBUG_STEPOVER, IDI_DEBUG_STEP_OVER },
 		{ ID_DEBUG_STEPOUT, IDI_DEBUG_STEP_OUT },
+		// (the arrow of the current line)
+		{ ID_DEBUG_SHOWNEXT, IDI_ICON9 },
 	};
 	// the panes of the View menu, in its order and groups (the icons are the panes' own; Memory 2-4 stay in the menu)
 	static const UINT paneCommands[] = {
@@ -176,8 +252,12 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	UIAddToolBar(panesTb);
 	AddSimpleReBarBand(panesTb);
 	CreateSimpleStatusBar();
-	// (which engine it is matters: only the Windows Kits debugger's has symbol servers and the !-commands)
+	// Parts: the messages (SetWindowText is the first part's text), then what the session is (UpdateStatusParts).
+	// (which engine it is matters: only the Windows Kits debugger's has symbol servers and the !-commands -- its path is
+	// the first message, and stays in its own part, shorter)
+	LayoutStatusParts();
 	::SetWindowText(m_hWndStatusBar, (L"Debugger engine: " + DebugManager::EnginePath()).c_str());
+	UpdateStatusParts();
 
 	m_hWndClient = m_Dock.Create(m_hWnd, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN);
 
@@ -748,6 +828,13 @@ void CMainFrame::OnException(const ExceptionData& data) {
 }
 
 void CMainFrame::OnBroke() {
+	// the target stopped (a breakpoint, an exception, Break) while the user was in another program: the taskbar button
+	// flashes until DebugX is brought to the front (not for a step, which the user is in front for)
+	auto foreground = ::GetForegroundWindow();
+	if (foreground != m_hWnd && ::GetAncestor(foreground, GA_ROOTOWNER) != m_hWnd) {
+		FLASHWINFO flash{ sizeof(flash), m_hWnd, FLASHW_TRAY | FLASHW_TIMERNOFG };
+		::FlashWindowEx(&flash);
+	}
 	if (m_AnalyzeOnBreak) {
 		m_AnalyzeOnBreak = false;
 		PostMessage(WM_COMMAND, ID_DEBUG_ANALYZE);
@@ -979,7 +1066,10 @@ void CMainFrame::FindNext(bool up) {
 LRESULT CMainFrame::OnEditFind(WORD, WORD, HWND, BOOL&) {
 	auto text = ActiveTextControl();
 	if (!text) {
-		::MessageBeep(MB_ICONWARNING);
+		// a list pane with a filter box takes it there (CListPane::OnEditFind)
+		auto pane = m_Dock.ActivePane();
+		if (!pane || !pane->hWnd || !::SendMessage(pane->hWnd, WM_COMMAND, ID_EDIT_FIND, 0))
+			::MessageBeep(MB_ICONWARNING);
 		return 0;
 	}
 	// (what is selected, if it is a word or so, is what is looked for)
@@ -1368,6 +1458,133 @@ LRESULT CMainFrame::OnClearRecent(WORD, WORD, HWND, BOOL&) {
 	return 0;
 }
 
+LRESULT CMainFrame::OnDropFiles(UINT, WPARAM wParam, LPARAM, BOOL&) {
+	auto drop = reinterpret_cast<HDROP>(wParam);
+	std::vector<std::wstring> files;
+	const UINT count = ::DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+	for (UINT i = 0; i < count; i++) {
+		WCHAR path[MAX_PATH];
+		if (::DragQueryFileW(drop, i, path, _countof(path)))
+			files.push_back(path);
+	}
+	::DragFinish(drop);
+	// (the dialog a program asks for comes up in front)
+	::SetForegroundWindow(m_hWnd);
+
+	auto extension = [](const std::wstring& path) {
+		auto dot = path.find_last_of(L'.');
+		auto ext = dot == std::wstring::npos ? std::wstring() : path.substr(dot);
+		for (auto& c : ext)
+			c = towlower(c);
+		return ext;
+		};
+	for (auto& file : files) {
+		auto ext = extension(file);
+		if (ext == L".dmp" || ext == L".mdmp" || ext == L".hdmp" || ext == L".exe") {
+			// a target: one, and only when nothing is being debugged
+			if (files.size() > 1 || !CanStartSession()) {
+				::MessageBeep(MB_ICONWARNING);
+				continue;
+			}
+			if (ext == L".exe") {
+				// (the arguments are asked for)
+				CRunExeDlg dlg(file.c_str());
+				if (dlg.DoModal() == IDOK)
+					RunExecutable(dlg.GetExePath(), dlg.GetArguments(), dlg.GetWorkingDir());
+			}
+			else
+				OpenDumpFile(file.c_str());
+		}
+		else if (::GetFileAttributesW(file.c_str()) & FILE_ATTRIBUTE_DIRECTORY)
+			::MessageBeep(MB_ICONWARNING);
+		else
+			// anything else is a file to read: a source file
+			m_Sources.Open(file, 0, true);
+	}
+	return 0;
+}
+
+Task<void> CMainFrame::AttachToProcessByName(std::wstring name) {
+	// the running process with that name, if there is just one
+	std::vector<DWORD> pids;
+	wil::unique_handle snapshot(::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
+	PROCESSENTRY32W pe{ sizeof(pe) };
+	if (snapshot && ::Process32FirstW(snapshot.get(), &pe)) {
+		do {
+			if (_wcsicmp(pe.szExeFile, name.c_str()) == 0 && pe.th32ProcessID != ::GetCurrentProcessId())
+				pids.push_back(pe.th32ProcessID);
+		} while (::Process32NextW(snapshot.get(), &pe));
+	}
+	if (pids.size() == 1) {
+		co_await AttachToProcess(pids[0], name.c_str());
+		co_return;
+	}
+	auto text = pids.empty() ? std::format(L"No process named {} is running.", name)
+		: std::format(L"{} processes named {} are running: choose one with Attach to Process.", pids.size(), name);
+	AtlMessageBox(*this, text.c_str(), IDS_TITLE, MB_ICONINFORMATION);
+}
+
+Task<void> CMainFrame::StartFromCommandLine(CommandLine cmd) {
+	auto alive = m_Lifetime.Watch();
+	// (a relative path is the current directory's: made full, for Recent Targets and the saved breakpoints)
+	auto fullPath = [](const std::wstring& path) {
+		WCHAR full[MAX_PATH];
+		return ::GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES && ::GetFullPathNameW(path.c_str(), _countof(full), full, nullptr)
+			? std::wstring(full) : path;
+		};
+
+	switch (cmd.Type) {
+		case CommandLine::Kind::None:
+			co_return;
+
+		case CommandLine::Kind::Help: {
+			auto text = cmd.Error.empty() ? std::wstring(CommandLine::Usage()) : cmd.Error + L"\n\n" + CommandLine::Usage();
+			AtlMessageBox(*this, text.c_str(), IDS_TITLE, cmd.Error.empty() ? MB_ICONINFORMATION : MB_ICONWARNING);
+			co_return;
+		}
+
+		case CommandLine::Kind::Run:
+			co_await RunExecutable(fullPath(cmd.Path).c_str(), cmd.Arguments.c_str(), L"");
+			break;
+
+		case CommandLine::Kind::Attach: {
+			auto image = SavedBreakpoints::ImagePathOf(cmd.Pid);
+			co_await AttachToProcess(cmd.Pid, image.empty() ? CString() : ::PathFindFileName(image.c_str()));
+			// AeDebug's event: the process that crashed waits for it -- signaled whether the attach worked or not
+			if (cmd.Event) {
+				auto event = reinterpret_cast<HANDLE>(cmd.Event);
+				::SetEvent(event);
+				::CloseHandle(event);
+			}
+			break;
+		}
+
+		case CommandLine::Kind::AttachByName:
+			co_await AttachToProcessByName(cmd.Path);
+			break;
+
+		case CommandLine::Kind::Dump:
+			co_await OpenDumpFile(fullPath(cmd.Path).c_str());
+			break;
+
+		case CommandLine::Kind::Kernel:
+			co_await AttachKernel(cmd.Path.c_str());
+			break;
+
+		case CommandLine::Kind::LocalKernel:
+			// (elevation is asked for there)
+			PostMessage(WM_COMMAND, ID_DEBUG_ATTACHTOLOCALKERNEL);
+			co_return;
+	}
+	if (!*alive)
+		co_return;
+	// -g: past the initial break. (Not CanRun: the session still says busy as the start's last task completes -- the
+	// notice comes after -- and Go is queued behind it anyway.)
+	auto& session = DebugManager::Session();
+	if (cmd.Go && session.HasTarget() && !session.IsRunning() && (session.Target() & TargetType::Dump) != TargetType::Dump)
+		DebugManager::Debugger().Go();
+}
+
 LRESULT CMainFrame::OnRecentTarget(WORD, WORD id, HWND, BOOL&) {
 	auto targets = RecentTargets::Load();
 	const size_t index = id - ID_FILE_RECENT1;
@@ -1396,23 +1613,7 @@ LRESULT CMainFrame::OnRecentTarget(WORD, WORD id, HWND, BOOL&) {
 			break;
 
 		case RecentTarget::Kind::Attach: {
-			// the running process with that name, if there is just one
-			std::vector<DWORD> pids;
-			wil::unique_handle snapshot(::CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0));
-			PROCESSENTRY32W pe{ sizeof(pe) };
-			if (snapshot && ::Process32FirstW(snapshot.get(), &pe)) {
-				do {
-					if (_wcsicmp(pe.szExeFile, target.Path.c_str()) == 0 && pe.th32ProcessID != ::GetCurrentProcessId())
-						pids.push_back(pe.th32ProcessID);
-				} while (::Process32NextW(snapshot.get(), &pe));
-			}
-			if (pids.size() == 1)
-				AttachToProcess(pids[0], target.Path.c_str());
-			else {
-				auto text = pids.empty() ? std::format(L"No process named {} is running.", target.Path)
-					: std::format(L"{} processes named {} are running: choose one with Attach to Process.", pids.size(), target.Path);
-				AtlMessageBox(*this, text.c_str(), IDS_TITLE, MB_ICONINFORMATION);
-			}
+			AttachToProcessByName(target.Path);
 			break;
 		}
 	}
@@ -1549,6 +1750,7 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_DEBUG_STEPINTO, IDI_STEP_INTO },
 		{ ID_DEBUG_STEPOVER, IDI_DEBUG_STEP_OVER },
 		{ ID_DEBUG_STEPOUT, IDI_DEBUG_STEP_OUT },
+		{ ID_DEBUG_SHOWNEXT, IDI_ICON9 },
 		{ ID_WINDOW_CLOSE, IDI_WINDOW_CLOSE },
 		{ ID_WINDOW_CLOSE_ALL, IDI_WINDOW_CLOSEALL },
 	};
@@ -1672,4 +1874,5 @@ void CMainFrame::UpdateUI(bool force) {
 		UIEnable(info.Command, PaneRegistry::IsAvailable(info, target), force);
 	UIEnable(ID_DEBUG_ADDBREAKPOINT, attached, force);
 	UIEnable(ID_DEBUG_EXCEPTIONS, !session.IsRunning(), force);
+	UpdateStatusParts();
 }
