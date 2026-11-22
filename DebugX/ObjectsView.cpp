@@ -95,7 +95,11 @@ bool CObjectsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING, CmdCopyAddress, L"Copy &Address");
 	menu.AppendMenu(MF_STRING, CmdCopyName, L"Copy &Path");
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdObject: DebugManager::Debugger().ExecuteCommand(std::format(L"!object 0x{:X}", o.Address).c_str()); break;
 		case CmdHeader:
 			// (the header is right before the body)

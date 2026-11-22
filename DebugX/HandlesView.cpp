@@ -64,7 +64,11 @@ bool CHandlesView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.CreatePopupMenu();
 	menu.AppendMenu(MF_STRING, CmdDetails, L"&Details (!handle)");
 	menu.AppendMenu(name.empty() ? MF_STRING | MF_GRAYED : MF_STRING, CmdCopyName, L"&Copy Name");
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdDetails:
 			DebugManager::Debugger().ExecuteCommand(std::format(L"!handle 0x{:X} f", handle).c_str());
 			break;

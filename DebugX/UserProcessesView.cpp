@@ -74,7 +74,11 @@ bool CUserProcessesView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(live ? MF_STRING : MF_STRING | MF_GRAYED, CmdDetach, L"&Detach (.detach)");
 	menu.AppendMenu(live ? MF_STRING : MF_STRING | MF_GRAYED, CmdTerminate, L"&Terminate (.kill)");
 	menu.SetMenuDefaultItem(CmdSwitch);
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdSwitch: Apply(id, Action::Switch); break;
 		case CmdDetach: Apply(id, Action::Detach); break;
 		case CmdTerminate: Apply(id, Action::Terminate); break;

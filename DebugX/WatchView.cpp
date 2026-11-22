@@ -61,7 +61,11 @@ bool CWatchView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(CanEditValue(row) ? MF_STRING : MF_GRAYED, CmdEditValue, isExpression ? L"Edit &Value" : L"Edit &Value\tF2");
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(m_Expressions.empty() ? MF_GRAYED : MF_STRING, CmdRemoveAll, L"Remove A&ll");
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdAdd: Edit(static_cast<int>(m_Entries.size())); break;
 		case CmdEdit: Edit(row); break;
 		case CmdRemove: Remove(row); break;

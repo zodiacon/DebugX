@@ -124,7 +124,11 @@ bool CDriversView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING, CmdCopy, L"&Copy DRIVER_OBJECT");
 	menu.SetMenuDefaultItem(CmdDetails);
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdDetails: DebugManager::Debugger().ExecuteCommand(std::format(L"dt nt!_DRIVER_OBJECT 0x{:X}", address).c_str()); break;
 		case CmdDispatch: DebugManager::Debugger().ExecuteCommand(std::format(L"!drvobj 0x{:X} 7", address).c_str()); break;
 		case CmdCopy: ClipboardHelper::CopyText(m_hWnd, std::format(L"0x{:X}", address).c_str()); break;

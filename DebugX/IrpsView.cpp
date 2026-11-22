@@ -80,7 +80,11 @@ bool CIrpsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(flags(valid), CmdCopy, L"&Copy IRP");
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING | (m_AllProcesses ? MF_CHECKED : 0), CmdAll, L"&All Processes");
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdDetails: DebugManager::Debugger().ExecuteCommand(std::format(L"dt nt!_IRP 0x{:X}", address).c_str()); break;
 		case CmdIrp: DebugManager::Debugger().ExecuteCommand(std::format(L"!irp 0x{:X}", address).c_str()); break;
 		case CmdCopy: ClipboardHelper::CopyText(m_hWnd, std::format(L"0x{:X}", address).c_str()); break;

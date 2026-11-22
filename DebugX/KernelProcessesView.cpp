@@ -115,7 +115,11 @@ bool CKernelProcessesView::OnRightClickList(HWND, int row, int, POINT const& pt)
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING, CmdCopy, L"&Copy EPROCESS");
 	menu.SetMenuDefaultItem(CmdSwitch);
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdSwitch: SwitchTo(address, false); break;
 		case CmdInvade: SwitchTo(address, true); break;
 		case CmdDetails: {

@@ -7,6 +7,7 @@
 #include "PaneBase.h"
 #include "ScintillaCtrl.h"
 #include "AppFonts.h"
+#include "AppMessages.h"
 #include "resource.h"
 
 // A window of instructions around the current thread's instruction pointer (or wherever "Go to
@@ -45,6 +46,7 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_SETNEXTSTATEMENT, OnCaretCommand)
 		COMMAND_ID_HANDLER(ID_EDIT_GOTO, OnGoTo)
 		COMMAND_HANDLER(GoId, BN_CLICKED, OnGoClicked)
+		MESSAGE_HANDLER(WM_GOTODISASSEMBLY, OnGoToMessage)
 		CHAIN_MSG_MAP(CPaneBase<CDisassemblyView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(2)
@@ -103,6 +105,12 @@ private:
 	LRESULT OnGoTo(WORD, WORD, HWND, BOOL&);
 	LRESULT OnGoClicked(WORD, WORD, HWND, BOOL&);
 	LRESULT OnAddressChar(UINT, WPARAM, LPARAM, BOOL&);
+	// another pane's Go to Disassembly (AppMessages.h): the expression in the address bar, and gone to
+	LRESULT OnGoToMessage(UINT, WPARAM, LPARAM lParam, BOOL&) {
+		m_AddressEdit.SetWindowText(reinterpret_cast<PCWSTR>(lParam));
+		GoToAddress();
+		return 0;
+	}
 	// Ctrl+G, the menu: to the address bar, its text selected
 	void FocusAddressBar();
 	// the address bar's expression, evaluated; empty: back to where the code runs

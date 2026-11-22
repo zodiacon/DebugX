@@ -83,10 +83,10 @@ BEGIN
         MENUITEM SEPARATOR
         MENUITEM "&Refresh\tCtrl+R",            ID_VIEW_REFRESH
         MENUITEM SEPARATOR
-        MENUITEM "&Command",                    ID_VIEW_COMMAND
+        MENUITEM "&Command\tAlt+1",                    ID_VIEW_COMMAND
         MENUITEM "&Output",                     ID_VIEW_OUTPUT
         MENUITEM "Anal&ysis",                   ID_VIEW_ANALYSIS
-        MENUITEM "&Threads",                    ID_VIEW_THREADS
+        MENUITEM "&Threads\tAlt+8",                    ID_VIEW_THREADS
         MENUITEM "&Processes",                  ID_VIEW_USERPROCESSES
         MENUITEM "&Handles",                    ID_VIEW_HANDLES
         MENUITEM SEPARATOR
@@ -96,17 +96,17 @@ BEGIN
         MENUITEM "Object &Namespace",           ID_VIEW_OBJECTS
         MENUITEM "&IRPs",                       ID_VIEW_IRPS
         MENUITEM SEPARATOR
-        MENUITEM "&Modules",                    ID_VIEW_MODULES
-        MENUITEM "&Registers",                  ID_VIEW_REGISTERS
-        MENUITEM "Call &Stack",                 ID_VIEW_CALLSTACK
-        MENUITEM "&Breakpoints",                ID_VIEW_BREAKPOINTS
-        MENUITEM "&Memory",                     ID_VIEW_MEMORY
+        MENUITEM "&Modules\tAlt+9",                    ID_VIEW_MODULES
+        MENUITEM "&Registers\tAlt+4",                  ID_VIEW_REGISTERS
+        MENUITEM "Call &Stack\tAlt+6",                 ID_VIEW_CALLSTACK
+        MENUITEM "&Breakpoints\tAlt+0",                ID_VIEW_BREAKPOINTS
+        MENUITEM "&Memory\tAlt+5",                     ID_VIEW_MEMORY
         MENUITEM "Memory &2",                   ID_VIEW_MEMORY2
         MENUITEM "Memory &3",                   ID_VIEW_MEMORY3
         MENUITEM "Memory &4",                   ID_VIEW_MEMORY4
-        MENUITEM "&Disassembly",                ID_VIEW_DISASSEMBLY
-        MENUITEM "&Locals",                     ID_VIEW_LOCALS
-        MENUITEM "&Watch",                      ID_VIEW_WATCH
+        MENUITEM "&Disassembly\tAlt+7",                ID_VIEW_DISASSEMBLY
+        MENUITEM "&Locals\tAlt+3",                     ID_VIEW_LOCALS
+        MENUITEM "&Watch\tAlt+2",                      ID_VIEW_WATCH
     END
     POPUP "&Debug"
     BEGIN
@@ -535,6 +535,16 @@ BEGIN
     VK_F10,         ID_DEBUG_RUNTOCURSOR,   VIRTKEY, CONTROL
     "O",            ID_FILE_OPENSOURCE,     VIRTKEY, SHIFT, CONTROL
     "E",            ID_DEBUG_EXCEPTIONS,    VIRTKEY, CONTROL, ALT
+    "1",            ID_VIEW_COMMAND, VIRTKEY, ALT
+    "2",            ID_VIEW_WATCH, VIRTKEY, ALT
+    "3",            ID_VIEW_LOCALS, VIRTKEY, ALT
+    "4",            ID_VIEW_REGISTERS, VIRTKEY, ALT
+    "5",            ID_VIEW_MEMORY, VIRTKEY, ALT
+    "6",            ID_VIEW_CALLSTACK, VIRTKEY, ALT
+    "7",            ID_VIEW_DISASSEMBLY, VIRTKEY, ALT
+    "8",            ID_VIEW_THREADS, VIRTKEY, ALT
+    "9",            ID_VIEW_MODULES, VIRTKEY, ALT
+    "0",            ID_VIEW_BREAKPOINTS, VIRTKEY, ALT
     VK_F10,         ID_DEBUG_STEPOVER,      VIRTKEY 
     VK_F11,         ID_DEBUG_STEPINTO,      VIRTKEY 
     VK_F11,         ID_DEBUG_STEPOUT,       VIRTKEY, SHIFT

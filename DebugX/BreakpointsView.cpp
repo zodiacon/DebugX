@@ -123,7 +123,11 @@ bool CBreakpointsView::OnRightClickList(HWND, int row, int col, POINT const& pt)
 	menu.AppendMenu(onRow, ID_BREAKPOINT_DELETE, L"&Delete\tDel");
 	if (row >= 0)
 		menu.SetMenuDefaultItem(ID_BREAKPOINT_EDIT);
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case ID_DEBUG_ADDBREAKPOINT: AddBreakpoint(); break;
 		case ID_BREAKPOINT_EDIT: EditSelected(); break;
 		case ID_BREAKPOINT_TOGGLE: ToggleSelected(); break;

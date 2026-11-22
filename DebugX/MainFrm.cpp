@@ -1385,6 +1385,14 @@ LRESULT CMainFrame::OnAddWatch(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	return 0;
 }
 
+LRESULT CMainFrame::OnGoToDisassembly(UINT, WPARAM, LPARAM lParam, BOOL&) {
+	BOOL handled;
+	OnViewPane(0, ID_VIEW_DISASSEMBLY, nullptr, handled);
+	if (auto pane = m_Dock.Layout().FindPane(L"disassembly"); pane && pane->hWnd)
+		::SendMessage(pane->hWnd, WM_GOTODISASSEMBLY, 0, lParam);
+	return 0;
+}
+
 Task<void> CMainFrame::AddBreakpoint(BreakpointSettings settings) {
 	auto alive = m_Lifetime.Watch();
 

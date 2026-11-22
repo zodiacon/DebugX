@@ -11,3 +11,12 @@ inline void AddToWatch(HWND from, PCWSTR expression) {
 	if (expression && *expression)
 		::SendMessage(::GetAncestor(from, GA_ROOTOWNER), WM_ADDWATCH, 0, reinterpret_cast<LPARAM>(expression));
 }
+
+// to the main frame (or, from it, to the Disassembly pane): show the code at the address expression lParam points to
+// (PCWSTR, valid during the call) in the Disassembly pane, which is shown -- as its address bar's Go to does
+constexpr UINT WM_GOTODISASSEMBLY = WM_APP + 2;
+
+inline void GoToDisassembly(HWND from, PCWSTR expression) {
+	if (expression && *expression)
+		::SendMessage(::GetAncestor(from, GA_ROOTOWNER), WM_GOTODISASSEMBLY, 0, reinterpret_cast<LPARAM>(expression));
+}

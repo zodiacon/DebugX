@@ -94,7 +94,11 @@ bool CUserThreadsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	// (the rows can change while the menu is up: what it needs is taken now)
 	const auto id = t.Id;
 	const auto location = t.Location;
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdSwitch: SwitchTo(id); break;
 		case CmdFreeze: Apply(id, Action::Freeze); break;
 		case CmdThaw: Apply(id, Action::Thaw); break;

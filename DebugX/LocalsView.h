@@ -28,7 +28,11 @@ public:
 		menu.AppendMenu(CanEditValue(row) ? MF_STRING : MF_GRAYED, CmdEditValue, L"&Edit Value\tF2");
 		menu.AppendMenu(MF_STRING, CmdAddWatch, L"Add to &Watch");
 		menu.AppendMenu(MF_STRING, CmdCopyValue, L"&Copy Value");
-		switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+		AppendCopyItems(menu.m_hMenu);
+		auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+		if (HandleCopyCommand(cmd))
+			return true;
+		switch (cmd) {
 			case CmdAddWatch: AddToWatch(m_hWnd, Expression(row).c_str()); break;
 			case CmdCopyValue: CopyText(m_Entries[row].Value); break;
 			case CmdEditValue: BeginEdit(row); break;

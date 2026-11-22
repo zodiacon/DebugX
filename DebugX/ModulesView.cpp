@@ -88,7 +88,11 @@ bool CModulesView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(session.HasTarget() && !session.IsRunning() ? MF_STRING : (MF_STRING | MF_GRAYED), CmdLoadSymbols, L"&Load Symbols");
 	menu.AppendMenu(onDisk ? MF_STRING : (MF_STRING | MF_GRAYED), CmdOpenFolder, L"&Open Containing Folder");
 	menu.AppendMenu(m.ImageName.empty() ? (MF_STRING | MF_GRAYED) : MF_STRING, CmdCopyPath, L"&Copy Path");
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdLoadSymbols: {
 			// .reload /f takes the image's name (kernel32.dll)
 			auto image = m.ImageName.substr(m.ImageName.find_last_of(L"\\/") + 1);

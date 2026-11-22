@@ -158,7 +158,11 @@ bool CKernelThreadsView::OnRightClickList(HWND, int row, int, POINT const& pt) {
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(MF_STRING, CmdCopy, L"&Copy ETHREAD");
 	menu.SetMenuDefaultItem(CmdSwitch);
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+	AppendCopyItems(menu.m_hMenu);
+	auto cmd = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd);
+	if (HandleCopyCommand(cmd))
+		return true;
+	switch (cmd) {
 		case CmdSwitch: SwitchTo(address); break;
 		case CmdDetails: DebugManager::Debugger().ExecuteCommand(std::format(L"dt nt!_ETHREAD 0x{:X}", address).c_str()); break;
 		case CmdCopy: CopyText(m_hWnd, std::format(L"0x{:X}", address)); break;
