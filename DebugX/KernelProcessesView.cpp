@@ -6,8 +6,14 @@
 
 void CKernelProcessesView::OnTargetEnded() {
 	m_Items.clear();
+	m_Message.Empty();
+	m_NoSymbols = false;
 	m_List.SetItemCount(0);
 	MarkDirty();
+}
+
+void CKernelProcessesView::UpdateRows() {
+	m_List.SetItemCount(static_cast<int>(m_Items.size()) + (m_Message.IsEmpty() ? 0 : 1));
 }
 
 bool CKernelProcessesView::CanRefresh() const {
@@ -24,13 +30,16 @@ DebugEngine::Task<void> CKernelProcessesView::Refresh() {
 	enumeration->Processes.reserve(256);
 	m_Enumeration = enumeration;
 	m_Items.clear();
+	m_Message.Empty();
 	m_List.SetItemCount(1);
 	m_List.EnableWindow(FALSE);
 	SetTimer(1, 1000);
 
 	co_await DebugManager::RunAsync([enumeration](IDebugClient* client) {
 		KernelProcessEnumerator enumerator(client);
+		enumeration->Valid = enumerator.IsValid();
 		KernelProcessAnalyzer* p;
+		// (it ends: see KernelProcessEnumerator::IsComplete)
 		while (p = enumerator.GetNextProcess()) {
 			KernelProcess kp;
 			kp.Pid = p->GetProcessId();
@@ -47,6 +56,7 @@ DebugEngine::Task<void> CKernelProcessesView::Refresh() {
 			enumeration->Processes.push_back(std::move(kp));
 			enumeration->Count = enumeration->Processes.size();
 		}
+		enumeration->Complete = enumerator.IsComplete();
 		return S_OK;
 		});
 	if (!*alive)
@@ -55,7 +65,14 @@ DebugEngine::Task<void> CKernelProcessesView::Refresh() {
 	KillTimer(1);
 	m_Items.Set(std::move(enumeration->Processes));
 	m_Enumeration = nullptr;
-	m_List.SetItemCount(static_cast<int>(m_Items.size()));
+	m_NoSymbols = !enumeration->Valid;
+	if (m_NoSymbols)
+		m_Message = L"No processes: the kernel's symbols are not loaded (nt!PsActiveProcessHead, _EPROCESS). "
+			L"They are looked for again when the target stops, or after Debug > Reload Symbols.";
+	else if (!enumeration->Complete)
+		m_Message.Format(L"The list of processes could not be followed to its end (a link could not be read, or it went "
+			L"on past %u entries): these are the ones found.", DebugX::Analysis::KernelProcessEnumerator::MaxProcesses);
+	UpdateRows();
 	DoSort(GetSortInfo());
 	m_List.EnableWindow(TRUE);
 	RefreshDone();
@@ -200,6 +217,14 @@ LRESULT CKernelProcessesView::OnListGetDispInfo(int, LPNMHDR hdr, BOOL&) {
 	if (m_Enumeration) {
 		if (item.iSubItem == 0)
 			::StringCchPrintf(item.pszText, item.cchTextMax, L"Refreshing processes... %u", static_cast<ULONG>(m_Enumeration->Count));
+		return 0;
+	}
+	if (item.iItem >= static_cast<int>(m_Items.size())) {
+		// (the message row)
+		if (item.iSubItem == 0 && (item.mask & LVIF_TEXT))
+			::StringCchCopy(item.pszText, item.cchTextMax, m_Message);
+		if (item.mask & LVIF_IMAGE)
+			item.iImage = -1;
 		return 0;
 	}
 	auto& data = m_Items[item.iItem];

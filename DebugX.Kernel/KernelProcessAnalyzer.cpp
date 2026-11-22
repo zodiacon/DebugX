@@ -8,7 +8,7 @@
 
 using namespace DebugX::Analysis;
 
-static ULONG ActiveProcessLinksOffset;
+static int ActiveProcessLinksOffset = -1;		// (-1: the symbols do not have it)
 static ULONG EProcessTypeId, KProcessTypeId;
 
 typedef struct _OBJECT_NAME_INFORMATION {
@@ -22,8 +22,8 @@ struct SE_AUDIT_PROCESS_CREATION_INFO {
 KernelProcessAnalyzer::KernelProcessAnalyzer(IDebugClient* pClient) : 
 	KernelAnalyzerBase(pClient), m_Globals(CComQIPtr<IDebugSymbols>(pClient)) {
 	// (each time: another target can have another kernel -- the lookups are cached, by kernel)
+	// (0 without the kernel's symbols: see CanWalk)
 	EProcessTypeId = GetTypeId("_EPROCESS");
-	ATLASSERT(EProcessTypeId);
 	ActiveProcessLinksOffset = GetFieldOffset(EProcessTypeId, "ActiveProcessLinks");
 	KProcessTypeId = GetTypeId("_KPROCESS");
 }
@@ -149,10 +149,16 @@ ULONG64 KernelProcessAnalyzer::GetProcessAddress() const {
 	return m_ProcessAddress;
 }
 
+bool KernelProcessAnalyzer::CanWalk() const {
+	return EProcessTypeId != 0 && ActiveProcessLinksOffset >= 0;
+}
+
 ULONG64 DebugX::Analysis::KernelProcessAnalyzer::GetNextProcessLink() const {
-	LIST_ENTRY entry;
-	auto hr = Data()->ReadVirtual(m_ProcessAddress + ActiveProcessLinksOffset, &entry, sizeof(entry), nullptr);
-	ATLASSERT(SUCCEEDED(hr));
+	if (!CanWalk())
+		return 0;
+	LIST_ENTRY entry{};
+	if (FAILED(Data()->ReadVirtual(m_ProcessAddress + ActiveProcessLinksOffset, &entry, sizeof(entry), nullptr)))
+		return 0;
 	return (ULONG64)entry.Flink;
 }
 

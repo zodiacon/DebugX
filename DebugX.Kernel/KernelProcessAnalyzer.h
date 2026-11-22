@@ -15,9 +15,12 @@ namespace DebugX::Analysis {
 		bool SetProcessEntry(ULONG64 processEntry);
 		ULONG64 MoveToNextProcess();
 		std::unique_ptr<KernelProcessThreadEnumerator> GetThreadEnumerator() const;
+		// whether the kernel's symbols have what following the list of processes takes (_EPROCESS.ActiveProcessLinks)
+		bool CanWalk() const;
 
 		// attributes
 		ULONG64 GetProcessAddress() const;
+		// 0 if it cannot be read
 		ULONG64 GetNextProcessLink() const;
 		ULONG GetProcessId() const;
 		CString GetImageName() const;

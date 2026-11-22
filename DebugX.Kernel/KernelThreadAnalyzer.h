@@ -15,6 +15,7 @@ namespace DebugX::Analysis {
 		LARGE_INTEGER GetExitTime() const;
 		ClientId GetClientId() const;
 		ULONG64 GetNextThread() const;
+		// 0 if it cannot be read (nor GetNextThread)
 		ULONG64 GetNextThreadLink() const;
 		ULONG GetKernelTime() const;
 		ULONG GetUserTime() const;

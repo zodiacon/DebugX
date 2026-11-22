@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "KernelGlobals.h"
+#include "KernelAnalyzerBase.h"
 #include <string>
 #include <unordered_map>
 
@@ -20,7 +21,9 @@ ULONG64 KernelGlobals::GetVariable(PCSTR name) const {
 	ULONG64 offset;
 	if (FAILED(m_Symbols->GetOffsetByName(("nt!" + std::string(name)).c_str(), &offset)))
 		offset = 0;
-	symbols.insert({ key, offset });
+	// (not a failure without the kernel's PDB: see KernelAnalyzerBase's lookups)
+	if (offset || KernelAnalyzerBase::HasKernelSymbols(m_Symbols, base))
+		symbols.insert({ key, offset });
 	return offset;
 }
 

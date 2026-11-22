@@ -21,8 +21,8 @@ LARGE_INTEGER KernelThreadAnalyzer::GetExitTime() const {
 
 ClientId KernelThreadAnalyzer::GetClientId() const {
 	HANDLE id[2] = { 0 };
-	auto hr = Data()->ReadVirtual(m_Address + GetFieldOffset(GetTypeId(EThreadName), "Cid"), id, sizeof(id), nullptr);
-	ATLASSERT(SUCCEEDED(hr));
+	// (0s if it cannot be read)
+	Data()->ReadVirtual(m_Address + GetFieldOffset(GetTypeId(EThreadName), "Cid"), id, sizeof(id), nullptr);
 	ClientId cid;
 	cid.ProcessId = HandleToUlong(id[0]);
 	cid.ThreadId = HandleToUlong(id[1]);
@@ -30,13 +30,16 @@ ClientId KernelThreadAnalyzer::GetClientId() const {
 }
 
 ULONG64 KernelThreadAnalyzer::GetNextThread() const {
-	auto offset = GetFieldOffset(GetTypeId(EThreadName), "ThreadListEntry");
-	return GetNextThreadLink() - offset;
+	auto link = GetNextThreadLink();
+	return link ? link - GetFieldOffset(GetTypeId(EThreadName), "ThreadListEntry") : 0;
 }
 
 ULONG64 KernelThreadAnalyzer::GetNextThreadLink() const {
 	auto offset = GetFieldOffset(GetTypeId(EThreadName), "ThreadListEntry");
-	auto entry = ReadVirtual<LIST_ENTRY>(m_Address + offset);
+	HRESULT hr = E_FAIL;
+	auto entry = offset >= 0 ? ReadVirtual<LIST_ENTRY>(m_Address + offset, &hr) : LIST_ENTRY{};
+	if (FAILED(hr))
+		return 0;
 	auto nextEntry = (ULONG64)entry.Flink;
 	ATLTRACE(L"KernelThreadAnalyzer next thread link: 0x%llX\n", nextEntry);
 	return nextEntry;

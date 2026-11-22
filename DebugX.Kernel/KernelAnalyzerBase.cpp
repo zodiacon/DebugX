@@ -9,6 +9,8 @@ namespace {
 	// A lookup the symbols answer is remembered -- one they cannot answer as well: a type or field the kernel's PDB does
 	// not have (public symbols lack some) is looked for through all of them each time, which is slow, and a walk of the
 	// processes asks for each one. Keyed by the kernel's base too: another target can have another kernel.
+	// Not a failure without the kernel's PDB, though (none loaded yet, as on a kernel over a connection at first, or
+	// exports only): remembered, it would hold for the rest of the session, after the symbols have come.
 	struct Key {
 		ULONG64 Base;
 		ULONG TypeId;
@@ -49,6 +51,24 @@ ULONG64 KernelAnalyzerBase::KernelBase() const {
 	return m_NtBase;
 }
 
+bool KernelAnalyzerBase::HasKernelSymbols(IUnknown* symbols, ULONG64 base) {
+	CComQIPtr<IDebugSymbols> spSymbols(symbols);
+	DEBUG_MODULE_PARAMETERS params;
+	if (base == 0 || !spSymbols || FAILED(spSymbols->GetModuleParameters(1, &base, 0, &params)))
+		return false;
+	switch (params.SymbolType) {
+		case DEBUG_SYMTYPE_NONE:
+		case DEBUG_SYMTYPE_DEFERRED:
+		case DEBUG_SYMTYPE_EXPORT:
+			return false;
+	}
+	return true;
+}
+
+bool KernelAnalyzerBase::HasKernelSymbols() const {
+	return HasKernelSymbols(m_Symbols, m_NtBase);
+}
+
 int KernelAnalyzerBase::GetFieldOffset(ULONG typeId, PCSTR name) const {
 	// (-1: no such field, or no such type -- 0)
 	static std::unordered_map<Key, int, KeyHash> offsets;
@@ -58,7 +78,8 @@ int KernelAnalyzerBase::GetFieldOffset(ULONG typeId, PCSTR name) const {
 
 	ULONG offset;
 	int result = typeId != 0 && SUCCEEDED(Symbols()->GetFieldOffset(KernelBase(), typeId, name, &offset)) ? static_cast<int>(offset) : -1;
-	offsets.insert({ std::move(key), result });
+	if (result >= 0 || (typeId != 0 && HasKernelSymbols()))
+		offsets.insert({ std::move(key), result });
 	return result;
 }
 
@@ -72,6 +93,7 @@ ULONG KernelAnalyzerBase::GetTypeId(PCSTR name) const {
 	ULONG id;
 	if (FAILED(Symbols()->GetTypeId(KernelBase(), name, &id)))
 		id = 0;
-	typeIds.insert({ std::move(key), id });
+	if (id || HasKernelSymbols())
+		typeIds.insert({ std::move(key), id });
 	return id;
 }

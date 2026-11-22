@@ -9,6 +9,11 @@ namespace DebugX::Analysis {
 		ULONG GetTypeId(PCSTR type) const;
 		ULONG64 KernelBase() const;
 
+		// whether the kernel's symbols are loaded (a PDB, not only its exports, or none yet -- as on a kernel over a
+		// connection before they have come): a lookup that fails without them may well succeed later
+		static bool HasKernelSymbols(IUnknown* symbols, ULONG64 base);		// (any IDebugSymbols*)
+		bool HasKernelSymbols() const;
+
 		template<typename T>
 		T ReadVirtual(ULONG64 address, HRESULT* phr = nullptr) const;
 
@@ -20,7 +25,7 @@ namespace DebugX::Analysis {
 		IDebugDataSpaces4* Data() const;
 
 	private:
-		ULONG64 m_NtBase;
+		ULONG64 m_NtBase{ 0 };
 		CComQIPtr<IDebugClient7> m_Client;
 		CComQIPtr<IDebugSymbols3> m_Symbols;
 		CComQIPtr<IDebugDataSpaces4> m_Data;

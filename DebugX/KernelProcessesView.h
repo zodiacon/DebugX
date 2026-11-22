@@ -39,6 +39,9 @@ public:
 	// in the View menu), not every time it stops; which one the debugger looks at is marked
 	void OnBroke() override {}
 	void OnContextChanged() override {
+		// (a walk that found no symbols is tried again: they may have come since, Reload Symbols too ends here)
+		if (m_NoSymbols)
+			RequestRefresh();
 		UpdateCurrent();
 	}
 	void OnTargetEnded() override;
@@ -53,11 +56,16 @@ private:
 	struct Enumeration {
 		std::vector<KernelProcess> Processes;
 		std::atomic<size_t> Count{ 0 };
+		// KernelProcessEnumerator's IsValid, IsComplete
+		bool Valid{ true }, Complete{ true };
 	};
 
 	LRESULT OnTimer(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& /*bHandled*/);
 	LRESULT OnViewRefresh(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnListGetDispInfo(int /*idCtrl*/, LPNMHDR /*pnmh*/, BOOL& /*bHandled*/);
+
+	// the rows: the processes, then a row for m_Message (why there are none, or not all)
+	void UpdateRows();
 
 	// the process the debugger looks at, marked in the list
 	DebugEngine::Task<void> UpdateCurrent();
@@ -66,5 +74,7 @@ private:
 private:
 	SortedFilteredVector<KernelProcess> m_Items;
 	ULONG64 m_Current{ 0 };
+	CString m_Message;
+	bool m_NoSymbols{ false };
 	std::shared_ptr<Enumeration> m_Enumeration;
 };

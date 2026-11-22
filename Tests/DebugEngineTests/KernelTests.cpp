@@ -18,7 +18,37 @@ namespace {
 	};
 }
 
+// Without the kernel's symbols -- a kernel over a connection before they have come -- the walks of the lists end at once.
+// They used to go round the list for ever, looking for a head that had not been found, and filled the memory. A user-mode
+// target has no nt module: the same as far as the walks are concerned, and it needs no kernel.
+static Task<void> WithoutKernelSymbols(DebuggerX& dbg) {
+	auto hr = co_await dbg.LaunchAndAttach(Target(L"loop").c_str());
+	Check(SUCCEEDED(hr), "launch loop.exe (no kernel symbols)");
+	if (FAILED(hr))
+		co_return;
+
+	bool valid = true, complete = false, processes = true, threads = true;
+	auto start = ::GetTickCount64();
+	co_await dbg.RunAsync([&](IDebugClient* client) -> HRESULT {
+		KernelProcessEnumerator enumerator(client);
+		valid = enumerator.IsValid();
+		processes = enumerator.GetNextProcess() != nullptr;
+		complete = enumerator.IsComplete();
+		// (any address: there are no _EPROCESS and _ETHREAD types to find the list with)
+		KernelProcessThreadEnumerator tenum(0xFFFF800000001000ull, client);
+		threads = tenum.GetNextThread() != nullptr;
+		return S_OK;
+		});
+	Check(!valid, "no kernel symbols: the process list is not valid");
+	Check(!processes && complete, "no kernel symbols: no processes, and nothing left out");
+	Check(!threads, "no kernel symbols: no threads");
+	Check(::GetTickCount64() - start < 10000, "no kernel symbols: the walks end at once");
+	co_await dbg.Stop();
+}
+
 Task<void> KernelSuite(DebuggerX& dbg) {
+	co_await WithoutKernelSymbols(dbg);
+
 	auto hr = co_await dbg.AttachLocalKernel();
 	if (FAILED(hr)) {
 		printf("SKIP: the local kernel cannot be attached to (0x%08X): an elevated runner and bcdedit /debug on are needed\n", hr);
