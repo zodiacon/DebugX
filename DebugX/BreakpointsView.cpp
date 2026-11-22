@@ -97,7 +97,7 @@ void CBreakpointsView::OnListViewClick(HWND, int row, int col, POINT const& pt) 
 	info.pt = pt;
 	if (m_List.HitTest(&info) >= 0 && (info.flags & LVHT_ONITEMSTATEICON) && info.iItem < static_cast<int>(m_Items.size())) {
 		auto& bp = m_Items[info.iItem];
-		SetEnabled(bp.Id, !bp.Enabled);
+		SetEnabled({ bp.Id }, !bp.Enabled);
 	}
 }
 
@@ -110,7 +110,8 @@ bool CBreakpointsView::OnDoubleClickList(HWND, int row, int col, POINT const& pt
 }
 
 bool CBreakpointsView::OnRightClickList(HWND, int row, int col, POINT const& pt) {
-	if (row >= 0)
+	// (a right-click on a row that is not selected selects it alone; one on a selected row keeps the selection)
+	if (row >= 0 && !(m_List.GetItemState(row, LVIS_SELECTED) & LVIS_SELECTED))
 		m_List.SelectItem(row);
 
 	CMenu menu;
@@ -121,6 +122,11 @@ bool CBreakpointsView::OnRightClickList(HWND, int row, int col, POINT const& pt)
 	menu.AppendMenu(MF_SEPARATOR);
 	menu.AppendMenu(onRow, ID_BREAKPOINT_TOGGLE, L"E&nable / Disable\tSpace");
 	menu.AppendMenu(onRow, ID_BREAKPOINT_DELETE, L"&Delete\tDel");
+	const UINT canChange = DebugManager::CanChangeBreakpoints() && !m_Items.empty() ? MF_STRING : MF_GRAYED;
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(canChange, ID_DEBUG_ENABLEALLBREAKPOINTS, L"Enable A&ll");
+	menu.AppendMenu(canChange, ID_DEBUG_DISABLEALLBREAKPOINTS, L"Disable All");
+	menu.AppendMenu(canChange, ID_DEBUG_DELETEALLBREAKPOINTS, L"Delete All\tCtrl+Shift+F9");
 	if (row >= 0)
 		menu.SetMenuDefaultItem(ID_BREAKPOINT_EDIT);
 	AppendCopyItems(menu.m_hMenu);
@@ -132,6 +138,9 @@ bool CBreakpointsView::OnRightClickList(HWND, int row, int col, POINT const& pt)
 		case ID_BREAKPOINT_EDIT: EditSelected(); break;
 		case ID_BREAKPOINT_TOGGLE: ToggleSelected(); break;
 		case ID_BREAKPOINT_DELETE: RemoveSelected(); break;
+		case ID_DEBUG_ENABLEALLBREAKPOINTS: DebugManager::SetAllBreakpointsEnabled(true); break;
+		case ID_DEBUG_DISABLEALLBREAKPOINTS: DebugManager::SetAllBreakpointsEnabled(false); break;
+		case ID_DEBUG_DELETEALLBREAKPOINTS: DebugManager::RemoveAllBreakpoints(m_hWnd); break;
 	}
 	return true;
 }
@@ -182,26 +191,48 @@ void CBreakpointsView::AddBreakpoint() {
 	::PostMessage(::GetAncestor(m_hWnd, GA_ROOTOWNER), WM_COMMAND, ID_DEBUG_ADDBREAKPOINT, 0);
 }
 
-// (the first selected row; CListViewCtrl::GetSelectedIndex is only for lists that allow a single selection)
-void CBreakpointsView::RemoveSelected() {
-	const int row = m_List.GetNextItem(-1, LVNI_SELECTED);
-	if (row >= 0 && row < static_cast<int>(m_Items.size()))
-		Remove(m_Items[row].Id);
+// the selected rows' breakpoints (taken now: the list is made again as the engine says they change)
+std::vector<DebugEngine::BreakpointInfo> CBreakpointsView::Selected() const {
+	std::vector<DebugEngine::BreakpointInfo> selected;
+	for (int row = m_List.GetNextItem(-1, LVNI_SELECTED); row >= 0; row = m_List.GetNextItem(row, LVNI_SELECTED))
+		if (row < static_cast<int>(m_Items.size()))
+			selected.push_back(m_Items[row]);
+	return selected;
 }
 
+void CBreakpointsView::RemoveSelected() {
+	if (!DebugManager::CanChangeBreakpoints())
+		return;
+	std::vector<ULONG> ids;
+	for (auto& bp : Selected())
+		ids.push_back(bp.Id);
+	Remove(std::move(ids));
+}
+
+// Space: the selected ones all become what the first of them is not
 void CBreakpointsView::ToggleSelected() {
-	const int row = m_List.GetNextItem(-1, LVNI_SELECTED);
-	if (row >= 0 && row < static_cast<int>(m_Items.size()))
-		SetEnabled(m_Items[row].Id, !m_Items[row].Enabled);
+	if (!DebugManager::CanChangeBreakpoints())
+		return;
+	auto selected = Selected();
+	if (selected.empty())
+		return;
+	const bool enable = !selected[0].Enabled;
+	std::vector<ULONG> ids;
+	for (auto& bp : selected)
+		if (bp.Enabled != enable)
+			ids.push_back(bp.Id);
+	SetEnabled(std::move(ids), enable);
 }
 
 // (the engine says when the breakpoints have changed, and the list is made again then)
-DebugEngine::Task<void> CBreakpointsView::Remove(ULONG id) {
-	co_await DebugManager::Debugger().RemoveBreakpoint(id);
+DebugEngine::Task<void> CBreakpointsView::Remove(std::vector<ULONG> ids) {
+	for (auto id : ids)
+		co_await DebugManager::Debugger().RemoveBreakpoint(id);
 }
 
-DebugEngine::Task<void> CBreakpointsView::SetEnabled(ULONG id, bool enabled) {
-	co_await DebugManager::Debugger().SetBreakpointEnabled(id, enabled);
+DebugEngine::Task<void> CBreakpointsView::SetEnabled(std::vector<ULONG> ids, bool enabled) {
+	for (auto id : ids)
+		co_await DebugManager::Debugger().SetBreakpointEnabled(id, enabled);
 }
 
 void CBreakpointsView::OnTargetEnded() {

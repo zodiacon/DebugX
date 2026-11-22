@@ -450,6 +450,11 @@ namespace DebugEngine {
 		virtual Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded) = 0;
 		// a tree for each expression (in the current scope); one that does not evaluate is an Error entry
 		virtual Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded) = 0;
+		// how GetLocals and EvaluateWatches show integers from now on: 16 (hexadecimal, as dx's ",x") or 10 (the default).
+		// May be called at any time, from the UI thread.
+		virtual HRESULT SetDisplayRadix(ULONG radix) {
+			return E_NOTIMPL;
+		}
 		// Assigns the value (a C++ expression) to what the expression (SymbolEntry::Expression) is, in the current scope;
 		// 'error' says why it could not be. MemoryChanged follows, delivered before the task completes.
 		virtual Task<HRESULT> AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error) = 0;

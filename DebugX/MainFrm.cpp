@@ -78,6 +78,31 @@ void CMainFrame::OnFinalMessage(HWND) {
 
 void CMainFrame::OnSessionChanged() {
 	UpdateUI(true);
+	UpdateTitle();
+}
+
+void CMainFrame::SetTargetName(CString name) {
+	m_TargetName = name;
+	UpdateTitle();
+}
+
+void CMainFrame::UpdateTitle() {
+	// "notepad.exe (1234) [Break] - DebugX (Administrator)": which instance is debugging what, on the taskbar too
+	CString title;
+	auto& session = DebugManager::Session();
+	if (!m_TargetName.IsEmpty() && session.HasTarget()) {
+		title = m_TargetName;
+		if (session.IsRunning())
+			title += L" [Running]";
+		else if (session.IsBroken())
+			title += L" [Break]";
+		title += L" - ";
+	}
+	title += m_BaseTitle;
+	CString current;
+	GetWindowText(current);
+	if (current != title)
+		SetWindowText(title);
 }
 
 LRESULT CMainFrame::OnForward(WORD, WORD, HWND, BOOL&) {
@@ -106,6 +131,8 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 		GetWindowText(title);
 		SetWindowText(title + L" (Administrator)");
 	}
+	// (UpdateTitle puts the target before it)
+	GetWindowText(m_BaseTitle);
 	UIAddMenu(GetMenu());
 
 	ToolBarButtonInfo buttons[] = {
@@ -172,6 +199,9 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	if (AppSettings::Get().DebugChildProcesses())
 		DebugManager::Debugger().SetDebugChildProcesses(true);
 	UISetCheck(ID_OPTIONS_DEBUGCHILDPROCESSES, AppSettings::Get().DebugChildProcesses() != 0);
+	if (AppSettings::Get().HexDisplay())
+		DebugManager::Debugger().SetDisplayRadix(16);
+	UISetCheck(ID_OPTIONS_HEXDISPLAY, AppSettings::Get().HexDisplay() != 0);
 	ApplySavedEventFilters();
 	ApplySavedSymbolPaths();
 
@@ -318,6 +348,18 @@ LRESULT CMainFrame::OnToggleChildProcesses(WORD, WORD id, HWND, BOOL&) {
 	AppSettings::Get().DebugChildProcesses(debug ? 1 : 0);
 	DebugManager::Debugger().SetDebugChildProcesses(debug);
 	UISetCheck(id, debug);
+	return 0;
+}
+
+LRESULT CMainFrame::OnToggleHexDisplay(WORD, WORD id, HWND, BOOL&) {
+	auto hex = !AppSettings::Get().HexDisplay();
+	AppSettings::Get().HexDisplay(hex ? 1 : 0);
+	DebugManager::Debugger().SetDisplayRadix(hex ? 16 : 10);
+	UISetCheck(id, hex);
+	// the panes that show values, again (one that is hidden refreshes when it is shown)
+	for (auto paneId : { L"locals", L"watch" })
+		if (auto pane = m_Dock.Layout().FindPane(paneId); pane && pane->hWnd)
+			::SendMessage(pane->hWnd, WM_COMMAND, ID_VIEW_REFRESH, 0);
 	return 0;
 }
 
@@ -695,6 +737,7 @@ void CMainFrame::OnTargetAttached() {
 }
 
 void CMainFrame::OnTargetEnded() {
+	SetTargetName({});
 	m_BreakpointsKey.clear();
 	m_AnalyzeOnBreak = false;
 }
@@ -1115,6 +1158,56 @@ LRESULT CMainFrame::OnDebugAddBreakpoint(WORD, WORD, HWND, BOOL&) {
 	return 0;
 }
 
+LRESULT CMainFrame::OnDebugShowNext(WORD, WORD, HWND, BOOL&) {
+	if (DebugManager::Session().IsBroken())
+		ShowNextStatement();
+	else
+		::MessageBeep(MB_ICONWARNING);
+	return 0;
+}
+
+Task<void> CMainFrame::ShowNextStatement() {
+	auto alive = m_Lifetime.Watch();
+	auto& session = DebugManager::Session();
+	auto& dbg = DebugManager::Debugger();
+	// (from the Disassembly window: there; otherwise the source file, if there is one)
+	const bool inDisassembly = ActivePaneId() == L"disassembly";
+
+	// back to the thread's own frame (the panes that follow the scope come back with it)
+	if (session.CurrentFrame() != 0) {
+		co_await dbg.SetScopeFrame(0);
+		if (!*alive)
+			co_return;
+	}
+	if (!inDisassembly) {
+		ULONG64 ip = 0;
+		auto hr = co_await dbg.GetInstructionOffset(ip);
+		if (!*alive || FAILED(hr))
+			co_return;
+		std::vector<SourceLocation> locations;
+		co_await dbg.GetSourceLocations({ ip }, locations);
+		if (!*alive)
+			co_return;
+		if (locations.size() == 1 && !locations[0].Path.empty()) {
+			if (auto view = m_Sources.Open(locations[0].Path, locations[0].Line, true))
+				view->SetSymbolFile(locations[0].File);
+			co_return;
+		}
+	}
+	// no source there: the instruction (an empty address bar goes back to it)
+	SendMessage(WM_GOTODISASSEMBLY, 0, reinterpret_cast<LPARAM>(L""));
+}
+
+LRESULT CMainFrame::OnDeleteAllBreakpoints(WORD, WORD, HWND, BOOL&) {
+	DebugManager::RemoveAllBreakpoints(m_hWnd);
+	return 0;
+}
+
+LRESULT CMainFrame::OnEnableAllBreakpoints(WORD, WORD id, HWND, BOOL&) {
+	DebugManager::SetAllBreakpointsEnabled(id == ID_DEBUG_ENABLEALLBREAKPOINTS);
+	return 0;
+}
+
 Task<void> CMainFrame::RunExecutable(CString exePath, CString arguments, CString workingDir) {
 	auto alive = m_Lifetime.Watch();
 	auto& dbg = DebugManager::Debugger();
@@ -1132,6 +1225,7 @@ Task<void> CMainFrame::RunExecutable(CString exePath, CString arguments, CString
 	const bool remote = !m_ProcessServer.IsEmpty();
 	if (!remote)
 		RecentTargets::Add({ RecentTarget::Kind::Run, (PCWSTR)exePath, (PCWSTR)arguments, (PCWSTR)workingDir });
+	SetTargetName(::PathFindFileName(exePath));
 	UpdateUI();
 	auto failed = co_await RestoreBreakpoints(remote ? std::wstring() : SavedBreakpoints::KeyOf((PCWSTR)exePath));
 	if (!*alive)
@@ -1161,6 +1255,7 @@ Task<void> CMainFrame::AttachToProcess(DWORD pid, CString name) {
 	}
 	if (!name.IsEmpty() && !remote)
 		RecentTargets::Add({ RecentTarget::Kind::Attach, (PCWSTR)name });
+	SetTargetName(std::format(L"{} ({})", name.IsEmpty() ? L"PID" : (PCWSTR)name, pid).c_str());
 	auto failed = co_await RestoreBreakpoints(key);
 	if (!*alive)
 		co_return;
@@ -1183,6 +1278,7 @@ Task<void> CMainFrame::AttachLocalKernel() {
 		co_return;
 	}
 	RecentTargets::Add({ RecentTarget::Kind::LocalKernel });
+	SetTargetName(L"Local kernel");
 	co_await dbg.OutputPrompt();
 }
 
@@ -1209,6 +1305,7 @@ Task<void> CMainFrame::AttachKernel(CString connection) {
 		co_return;
 	}
 	RecentTargets::Add({ RecentTarget::Kind::Kernel, (PCWSTR)connection });
+	SetTargetName(L"Kernel (" + connection + L")");
 	co_await dbg.OutputPrompt();
 }
 
@@ -1228,6 +1325,7 @@ Task<void> CMainFrame::OpenDumpFile(CString path) {
 		co_return;
 	}
 	RecentTargets::Add({ RecentTarget::Kind::Dump, (PCWSTR)path });
+	SetTargetName(::PathFindFileName(path));
 	co_await dbg.OutputPrompt();
 	// (what a dump is about)
 	if (*alive)
@@ -1560,6 +1658,11 @@ void CMainFrame::UpdateUI(bool force) {
 	UIEnable(ID_DEBUG_STEPOUT, canRun, force);
 	UIEnable(ID_DEBUG_RUNTOCURSOR, canRun, force);
 	UIEnable(ID_DEBUG_SETNEXTSTATEMENT, canRun, force);
+	UIEnable(ID_DEBUG_SHOWNEXT, session.IsBroken(), force);
+	const bool canChangeBreakpoints = DebugManager::CanChangeBreakpoints();
+	UIEnable(ID_DEBUG_DELETEALLBREAKPOINTS, canChangeBreakpoints, force);
+	UIEnable(ID_DEBUG_ENABLEALLBREAKPOINTS, canChangeBreakpoints, force);
+	UIEnable(ID_DEBUG_DISABLEALLBREAKPOINTS, canChangeBreakpoints, force);
 	UIEnable(ID_DEBUG_RESTART, m_Launch.has_value() && !m_Restarting && session.HasTarget(), force);
 	UIEnable(ID_DEBUG_RELOADSYMBOLS, session.HasTarget() && !session.IsRunning(), force);
 	UIEnable(ID_OPTIONS_SYMBOLPATHS, !session.IsRunning(), force);

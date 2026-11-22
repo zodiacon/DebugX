@@ -88,6 +88,7 @@ namespace DebugEngine {
 		// standard library's -- by what it shows, with its fields under [Raw View]; see ValueWalker.h)
 		Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded) override;
 		Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded) override;
+		HRESULT SetDisplayRadix(ULONG radix) override;
 		Task<HRESULT> AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error) override;
 
 		Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints) override;

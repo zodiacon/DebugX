@@ -4,7 +4,7 @@
 #include "resource.h"
 
 // The breakpoints of the session, whoever set them (here, or with bp in the Command window). The check box (or Space)
-// is whether one is enabled; Delete removes the selected one, Insert (and the menu) adds one, a double click or Enter
+// is whether one is enabled (Space: the selected ones); Delete removes the selected ones, Insert (and the menu) adds one, a double click or Enter
 // edits it (condition, command, hit count, thread, ...).
 class CBreakpointsView : public CListPane<CBreakpointsView> {
 public:
@@ -47,8 +47,9 @@ private:
 	void ToggleSelected();
 	void EditSelected();
 	DebugEngine::Task<void> Update(ULONG id, DebugEngine::BreakpointSettings settings);
-	DebugEngine::Task<void> Remove(ULONG id);
-	DebugEngine::Task<void> SetEnabled(ULONG id, bool enabled);
+	std::vector<DebugEngine::BreakpointInfo> Selected() const;
+	DebugEngine::Task<void> Remove(std::vector<ULONG> ids);
+	DebugEngine::Task<void> SetEnabled(std::vector<ULONG> ids, bool enabled);
 
 	std::vector<DebugEngine::BreakpointInfo> m_Items;
 };

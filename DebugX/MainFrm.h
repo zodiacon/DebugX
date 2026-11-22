@@ -74,6 +74,10 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOVER, OnDebugStepOver)
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOUT, OnDebugStepOut)
 		COMMAND_ID_HANDLER(ID_DEBUG_ADDBREAKPOINT, OnDebugAddBreakpoint)
+		COMMAND_ID_HANDLER(ID_DEBUG_SHOWNEXT, OnDebugShowNext)
+		COMMAND_ID_HANDLER(ID_DEBUG_DELETEALLBREAKPOINTS, OnDeleteAllBreakpoints)
+		COMMAND_ID_HANDLER(ID_DEBUG_ENABLEALLBREAKPOINTS, OnEnableAllBreakpoints)
+		COMMAND_ID_HANDLER(ID_DEBUG_DISABLEALLBREAKPOINTS, OnEnableAllBreakpoints)
 		COMMAND_ID_HANDLER(ID_DEBUG_EXCEPTIONS, OnDebugExceptions)
 		COMMAND_ID_HANDLER(ID_DEBUG_RELOADSYMBOLS, OnReloadSymbols)
 		COMMAND_ID_HANDLER(ID_FILE_OPENSOURCE, OnOpenSourceFile)
@@ -119,6 +123,7 @@ public:
 		COMMAND_ID_HANDLER(ID_OPTIONS_UIFONT, OnChooseFont)
 		COMMAND_ID_HANDLER(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, OnToggleDml)
 		COMMAND_ID_HANDLER(ID_OPTIONS_DEBUGCHILDPROCESSES, OnToggleChildProcesses)
+		COMMAND_ID_HANDLER(ID_OPTIONS_HEXDISPLAY, OnToggleHexDisplay)
 		COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
 		CHAIN_MSG_MAP(CAutoUpdateUI<CMainFrame>)
 		CHAIN_MSG_MAP(CFrameWindowImpl<CMainFrame>)
@@ -151,6 +156,9 @@ private:
 	LRESULT OnWindowApplyLayout(WORD, WORD id, HWND, BOOL&);
 	LRESULT OnWindowDeleteLayout(WORD, WORD id, HWND, BOOL&);
 	void UpdateUI(bool force = false);
+	// the window's title: the target and whether it runs, then DebugX's own (m_BaseTitle)
+	void SetTargetName(CString name);
+	void UpdateTitle();
 
 	DebugEngine::Task<void> RunExecutable(CString exePath, CString arguments, CString workingDir);
 	// (by the process name too, if it is known: what Recent Targets keeps)
@@ -217,6 +225,13 @@ private:
 	LRESULT OnDebugStepInto(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStepOut(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugAddBreakpoint(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	// Show Next Statement: the thread's frame again, and its line in the source (with the focus), else its instruction
+	// in the Disassembly window (also when that is the window in use)
+	LRESULT OnDebugShowNext(WORD, WORD, HWND, BOOL&);
+	DebugEngine::Task<void> ShowNextStatement();
+	LRESULT OnDeleteAllBreakpoints(WORD, WORD, HWND, BOOL&);
+	// (and Disable All)
+	LRESULT OnEnableAllBreakpoints(WORD, WORD id, HWND, BOOL&);
 	LRESULT OnDebugExceptions(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnReloadSymbols(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnOpenSourceFile(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
@@ -243,6 +258,8 @@ private:
 	DebugEngine::Task<void> RunScript(DebugEngine::IDebugger::ScriptAction action, std::wstring path);
 	DebugEngine::Task<void> UnloadScript();
 	LRESULT OnToggleChildProcesses(WORD, WORD id, HWND, BOOL&);
+	// Options > Hexadecimal Display: integers in Locals, Watch and the call tips (SetDisplayRadix)
+	LRESULT OnToggleHexDisplay(WORD, WORD id, HWND, BOOL&);
 	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditFindAgain(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
@@ -258,6 +275,10 @@ private:
 	bool m_Restarting{ false };
 	// Attach to Kernel is waiting for the target to connect (Break and Stop give up waiting: CancelKernelConnection)
 	bool m_Connecting{ false };
+	// what is being debugged, for the title (set by each start: the program's or dump's file name, ...); empty: nothing
+	CString m_TargetName;
+	// the title without a target ("DebugX", with " (Administrator)" when elevated)
+	CString m_BaseTitle;
 	// the program whose breakpoints are kept (SavedBreakpoints::KeyOf): one that was run or attached to; empty: none
 	std::wstring m_BreakpointsKey;
 	bool m_AnalyzeOnBreak{ false };

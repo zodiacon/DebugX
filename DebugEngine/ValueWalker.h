@@ -21,7 +21,9 @@ namespace DebugEngine {
 	//
 	class ValueWalker {
 	public:
-		ValueWalker(IDebugDataSpaces4* data, const std::set<std::wstring>& expanded, std::vector<SymbolEntry>& entries);
+		// format: the data model's display metadata (PreferredRadix: 16 for hexadecimal, see SetDisplayRadix); null: the default
+		ValueWalker(IDebugDataSpaces4* data, const std::set<std::wstring>& expanded, std::vector<SymbolEntry>& entries,
+			IKeyStore* format = nullptr);
 
 		// a row for the value (depth 0), and its children if it is expanded
 		void Add(IModelObject* value, const std::wstring& name, std::optional<std::wstring> expression);
@@ -55,10 +57,12 @@ namespace DebugEngine {
 		IDebugDataSpaces4* m_Data;
 		const std::set<std::wstring>& m_Expanded;
 		std::vector<SymbolEntry>& m_Entries;
+		CComPtr<IKeyStore> m_Format;
 	};
 
 	// the type's name, empty if it has none
 	std::wstring TypeName(IModelObject* value);
 	// the text of a value the data model shows as it is (a number, an error's message, a visualizer's display string)
-	std::wstring DisplayString(IModelObject* value);
+	// (with the format, as ValueWalker's; an index or a name is not to be given one: it goes into an expression)
+	std::wstring DisplayString(IModelObject* value, IKeyStore* format = nullptr);
 }

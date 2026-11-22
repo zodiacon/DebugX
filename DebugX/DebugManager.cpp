@@ -81,3 +81,40 @@ Task<void> DebugManager::SetNextStatement(HWND owner, ULONG64 address) {
 		AtlMessageBox(owner, std::format(L"Failed to set the next statement (0x{:08X})", static_cast<unsigned>(hr)).c_str(),
 			IDS_TITLE, MB_ICONERROR);
 }
+
+bool DebugManager::CanChangeBreakpoints() {
+	auto& session = Session();
+	return session.HasTarget() && !session.IsRunning();
+}
+
+Task<void> DebugManager::RemoveAllBreakpoints(HWND owner) {
+	if (!CanChangeBreakpoints()) {
+		::MessageBeep(MB_ICONWARNING);
+		co_return;
+	}
+	auto& dbg = Debugger();
+	std::vector<BreakpointInfo> breakpoints;
+	co_await dbg.EnumBreakpoints(breakpoints);
+	if (breakpoints.empty() || !::IsWindow(owner))
+		co_return;
+	if (AtlMessageBox(owner, std::format(L"Delete all {} breakpoints?", breakpoints.size()).c_str(), IDS_TITLE,
+		MB_ICONQUESTION | MB_OKCANCEL) != IDOK)
+		co_return;
+	// (the panes hear of each from the engine)
+	for (auto& bp : breakpoints)
+		co_await dbg.RemoveBreakpoint(bp.Id);
+}
+
+Task<void> DebugManager::SetAllBreakpointsEnabled(bool enabled) {
+	if (!CanChangeBreakpoints()) {
+		::MessageBeep(MB_ICONWARNING);
+		co_return;
+	}
+	auto& dbg = Debugger();
+	std::vector<BreakpointInfo> breakpoints;
+	co_await dbg.EnumBreakpoints(breakpoints);
+	for (auto& bp : breakpoints) {
+		if (bp.Enabled != enabled)
+			co_await dbg.SetBreakpointEnabled(bp.Id, enabled);
+	}
+}

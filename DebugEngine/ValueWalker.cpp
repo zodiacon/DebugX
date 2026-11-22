@@ -113,20 +113,32 @@ std::wstring DebugEngine::TypeName(IModelObject* value) {
 	return name.m_str;
 }
 
-std::wstring DebugEngine::DisplayString(IModelObject* value) {
+std::wstring DebugEngine::DisplayString(IModelObject* value, IKeyStore* format) {
 	if (auto display = GetConcept<IStringDisplayableConcept>(value)) {
 		CComBSTR text;
-		if (SUCCEEDED(display->ToDisplayString(value, nullptr, &text)))
+		if (SUCCEEDED(display->ToDisplayString(value, format, &text)))
 			return text ? text.m_str : L"";
 	}
 	CComVariant v;
-	if (SUCCEEDED(value->GetIntrinsicValue(&v)) && SUCCEEDED(v.ChangeType(VT_BSTR)) && v.bstrVal)
+	if (FAILED(value->GetIntrinsicValue(&v)))
+		return {};
+	// (a number without a display string of its own: hexadecimal as the format asks)
+	if (format) {
+		switch (v.vt) {
+			case VT_I1: case VT_I2: case VT_I4: case VT_I8: case VT_INT:
+			case VT_UI1: case VT_UI2: case VT_UI4: case VT_UI8: case VT_UINT:
+				if (SUCCEEDED(v.ChangeType(VT_UI8)))
+					return std::format(L"0x{:X}", v.ullVal);
+				break;
+		}
+	}
+	if (SUCCEEDED(v.ChangeType(VT_BSTR)) && v.bstrVal)
 		return v.bstrVal;
 	return {};
 }
 
-ValueWalker::ValueWalker(IDebugDataSpaces4* data, const std::set<std::wstring>& expanded, std::vector<SymbolEntry>& entries)
-	: m_Data(data), m_Expanded(expanded), m_Entries(entries) {
+ValueWalker::ValueWalker(IDebugDataSpaces4* data, const std::set<std::wstring>& expanded, std::vector<SymbolEntry>& entries,
+	IKeyStore* format) : m_Data(data), m_Expanded(expanded), m_Entries(entries), m_Format(format) {
 }
 
 void ValueWalker::Add(IModelObject* value, const std::wstring& name, std::optional<std::wstring> expression) {
@@ -316,13 +328,22 @@ void ValueWalker::AddFields(IModelObject* value, const std::optional<std::wstrin
 
 std::wstring ValueWalker::Format(IModelObject* value) {
 	switch (KindOf(value)) {
-		case ObjectIntrinsic:
+		case ObjectIntrinsic: {
 			if (IsPointer(value))
 				return FormatPointer(value);
-			return DisplayString(value);
+			auto text = DisplayString(value, m_Format);
+			// (in hexadecimal a character is only its number: 0x41 'A', as decimal shows it with the character)
+			if (m_Format && text.find(L'\'') == std::wstring::npos) {
+				static const std::set<std::wstring> characters{ L"char", L"signed char", L"unsigned char", L"wchar_t", L"char8_t", L"char16_t", L"char32_t" };
+				CComVariant v;
+				if (characters.contains(TypeName(value)) && SUCCEEDED(value->GetIntrinsicValueAs(VT_UI4, &v)) && v.ulVal >= 0x20 && v.ulVal < 0xD800)
+					text += std::format(L" '{}'", static_cast<wchar_t>(v.ulVal));
+			}
+			return text;
+		}
 
 		case ObjectTargetObject: {
-			auto text = IsVisualized(value) ? DisplayString(value) : std::wstring();
+			auto text = IsVisualized(value) ? DisplayString(value, m_Format) : std::wstring();
 			return text.empty() ? Summary(value) : text;
 		}
 
@@ -330,14 +351,14 @@ std::wstring ValueWalker::Format(IModelObject* value) {
 			return {};
 
 		default:		// an error (its message), a synthetic object, ...
-			return DisplayString(value);
+			return DisplayString(value, m_Format);
 	}
 }
 
 std::wstring ValueWalker::FormatPointer(IModelObject* value) {
 	CComVariant v;
 	if (FAILED(value->GetIntrinsicValueAs(VT_UI8, &v)))
-		return DisplayString(value);
+		return DisplayString(value, m_Format);
 	auto address = v.ullVal;
 	auto text = std::format(L"0x{:X}", address);
 	if (address == 0)
@@ -407,9 +428,9 @@ std::wstring ValueWalker::Summary(IModelObject* value) {
 		std::wstring item;
 		auto childKind = KindOf(c.Value);
 		if (childKind == ObjectIntrinsic)
-			item = IsPointer(c.Value) ? FormatPointer(c.Value) : DisplayString(c.Value);
+			item = IsPointer(c.Value) ? FormatPointer(c.Value) : DisplayString(c.Value, m_Format);
 		else if (childKind == ObjectTargetObject && IsVisualized(c.Value))
-			item = DisplayString(c.Value);
+			item = DisplayString(c.Value, m_Format);
 		if (item.empty())
 			item = L"{...}";
 		if (!text.empty())

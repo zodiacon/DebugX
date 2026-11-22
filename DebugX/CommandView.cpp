@@ -26,6 +26,8 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Text->SetMarginWidthN(1, 0);
 	m_Text->SetMarginWidthN(2, 0);
 	m_Text->SetWrapMode(Wrap::None);
+	// (the view's own menu, with Clear Output: OnOutputContextMenu)
+	m_Text->UsePopUp(PopUp::Never);
 	AppFonts::ApplyCodeFont(m_Text.Call());
 	ApplyOutputColors();
 
@@ -37,7 +39,6 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Execute.Create(*this, nullptr, L"Exec", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, ExecuteId);
 	m_Execute.SetFont(AppFonts::UiFont());		// the UI font, like the Memory pane's "Go" button, not the code font
 
-	m_CommandHistory.reserve(64);
 
 	DebugManager::Session().AddObserver(this);
 	UpdateControls();
@@ -197,11 +198,24 @@ void CCommandView::DoExecuteCommand(PCWSTR command) {
 		cmd = command;
 	}
 
-	AppendText((PCWSTR)(m_PromptText + L" " + cmd + L"\n"));
-	ScrollToEnd();
-	m_CommandHistory.push_back(cmd);
+	// (the same command again is not kept twice in a row; the oldest go past MaxHistory)
+	if (m_CommandHistory.empty() || m_CommandHistory.back() != cmd)
+		m_CommandHistory.push_back(cmd);
+	if (m_CommandHistory.size() > MaxHistory)
+		m_CommandHistory.erase(m_CommandHistory.begin(), m_CommandHistory.end() - MaxHistory);
 	m_CommandHistoryIndex = (int)m_CommandHistory.size();
 	m_CommandEdit.SetWindowText(L"");
+
+	// WinDbg's .cls is the window's, not the engine's
+	CString trimmed(cmd);
+	trimmed.Trim();
+	if (trimmed.CompareNoCase(L".cls") == 0) {
+		ClearOutput();
+		return;
+	}
+
+	AppendText((PCWSTR)(m_PromptText + L" " + cmd + L"\n"));
+	ScrollToEnd();
 	m_RestoreFocus = true;
 	m_CommandEdit.EnableWindow(FALSE);
 	m_Execute.EnableWindow(FALSE);
@@ -313,6 +327,72 @@ LRESULT CCommandView::OnEditChar(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
 		handled = FALSE;
 	}
 	return 0;
+}
+
+void CCommandView::ClearOutput() {
+	m_Text->SetReadOnly(false);
+	m_Text->ClearAll();
+	m_Text->SetReadOnly(true);
+	// (the links are by position in the text)
+	m_Links.clear();
+}
+
+LRESULT CCommandView::OnOutputContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
+	CPoint pt(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+	if (pt.x == -1 && pt.y == -1) {
+		// (the keyboard's menu key: at the caret)
+		auto pos = m_Text->CurrentPos();
+		pt.SetPoint(m_Text->PointXFromPosition(pos), m_Text->PointYFromPosition(pos));
+		m_Text.ClientToScreen(&pt);
+	}
+	enum { CmdCopy = 1, CmdSelectAll, CmdClear };
+	CMenu menu;
+	menu.CreatePopupMenu();
+	menu.AppendMenu(m_Text->SelectionEmpty() ? MF_GRAYED : MF_STRING, CmdCopy, L"&Copy\tCtrl+C");
+	menu.AppendMenu(MF_STRING, CmdSelectAll, L"Select &All");
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(m_Text->Length() ? MF_STRING : MF_GRAYED, CmdClear, L"C&lear Output\t.cls");
+	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
+		case CmdCopy: m_Text->Copy(); break;
+		case CmdSelectAll: m_Text->SelectAll(); break;
+		case CmdClear: ClearOutput(); break;
+	}
+	return 0;
+}
+
+std::wstring CCommandView::SaveState() const {
+	if (m_CommandHistory.empty())
+		return {};
+	std::wstring state(L"h:");
+	for (size_t i = 0; i < m_CommandHistory.size(); i++) {
+		if (i)
+			state += L'\t';
+		// (a command is one line: no tab or line break of its own goes into the state)
+		CString cmd(m_CommandHistory[i]);
+		cmd.Replace(L'\t', L' ');
+		cmd.Replace(L'\r', L' ');
+		cmd.Replace(L'\n', L' ');
+		state += cmd;
+	}
+	return state;
+}
+
+void CCommandView::LoadState(PCWSTR state) {
+	if (!state || wcsncmp(state, L"h:", 2) != 0)
+		return;
+	m_CommandHistory.clear();
+	for (auto p = state + 2; *p; ) {
+		auto end = wcschr(p, L'\t');
+		CString cmd(p, end ? static_cast<int>(end - p) : static_cast<int>(wcslen(p)));
+		if (!cmd.IsEmpty())
+			m_CommandHistory.push_back(cmd);
+		if (!end)
+			break;
+		p = end + 1;
+	}
+	if (m_CommandHistory.size() > MaxHistory)
+		m_CommandHistory.erase(m_CommandHistory.begin(), m_CommandHistory.end() - MaxHistory);
+	m_CommandHistoryIndex = static_cast<int>(m_CommandHistory.size());
 }
 
 LRESULT CCommandView::OnOutputKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handled) {

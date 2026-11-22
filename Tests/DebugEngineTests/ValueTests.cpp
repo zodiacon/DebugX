@@ -39,6 +39,22 @@ Task<void> ValueSuite(DebuggerX& dbg) {
 	Check(Contains(Find(locals, L"array\n[1]"), L"8") && Contains(Find(locals, L"array"), L"7, 8, 9"), "an array's elements");
 	Check(Contains(Find(locals, L"argv\n*argv"), L"values.exe"), "argv expands to *argv, a string");
 
+	// hexadecimal (Options > Hexadecimal Display): the numbers, also in a summary and an array's; the expressions stay
+	Check(SUCCEEDED(dbg.SetDisplayRadix(16)), "SetDisplayRadix(16)");
+	std::vector<SymbolEntry> hex;
+	co_await dbg.GetLocals(hex, { L"point", L"array" });
+	dbg.SetDisplayRadix(10);
+	Dump("locals (hex)", hex);
+	Check(Contains(Find(hex, L"argc"), L"0x3"), "hex: argc is 0x3");
+	Check(Contains(Find(hex, L"point\nX"), L"0xa") || Contains(Find(hex, L"point\nX"), L"0xA"), "hex: point.X is 0xa");
+	Check(Contains(Find(hex, L"point"), L"X=0x"), "hex: point's summary");
+	Check(Contains(Find(hex, L"array"), L"0x7"), "hex: an array's elements");
+	Check(Contains(Find(hex, L"letter"), L"0x41 'A'"), "hex: a character shows its number and the character");
+	Check(ExpressionIs(Find(hex, L"array\n[1]"), L"array[1]"), "hex: array[1]'s expression keeps its decimal index");
+	std::vector<SymbolEntry> decimal;
+	co_await dbg.GetLocals(decimal, {});
+	Check(Contains(Find(decimal, L"argc"), L"3") && !Contains(Find(decimal, L"argc"), L"0x"), "decimal again after SetDisplayRadix(10)");
+
 	// The Kits engine has the standard library's visualizers (its Visualizers folder); System32's and the package's do
 	// not: they show the fields
 	const bool visualized = Contains(Find(locals, L"text"), L"\"hello\"");

@@ -186,6 +186,9 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> GetScope(ULONG64& instructionOffset, ULONG& frameIndex);
 	Task<HRESULT> GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded);
 	Task<HRESULT> EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded);
+	void SetDisplayRadix(ULONG radix) {
+		m_DisplayRadix = radix;
+	}
 	Task<HRESULT> AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error);
 	Task<HRESULT> EnumBreakpoints(std::vector<BreakpointInfo>& breakpoints);
 	Task<HRESULT> AddBreakpoint(BreakpointSettings settings);
@@ -310,6 +313,10 @@ private:
 	bool m_WakePosted{ false };
 
 	std::atomic<ULONG> m_Status{ DEBUG_STATUS_NO_DEBUGGEE };
+	// SetDisplayRadix: how the values of GetLocals and EvaluateWatches show integers
+	std::atomic<ULONG> m_DisplayRadix{ 10 };
+	// (the debug thread) the metadata that asks the data model for hexadecimal (PreferredRadix: 16); null: the default
+	CComPtr<IKeyStore> DisplayFormat();
 	// the dispatcher thread only
 	int m_PendingOps{ 0 };
 	TargetType m_TargetType{ TargetType::Unknown };
@@ -1455,7 +1462,7 @@ HRESULT DebuggerX::Impl::EvaluateModel(const std::wstring& expression, CComPtr<I
 Task<HRESULT> DebuggerX::Impl::GetLocals(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expanded) {
 	co_return co_await Run([this, &entries, expanded = std::set<std::wstring>(expanded.begin(), expanded.end())] {
 		// (the scope frame's: @$curframe follows SetScopeFrame)
-		ValueWalker walker(m_spData, expanded, entries);
+		ValueWalker walker(m_spData, expanded, entries, DisplayFormat());
 		CComPtr<IModelObject> parameters, locals;
 		auto hr = EvaluateModel(L"@$curframe.Parameters", parameters);
 		if (SUCCEEDED(hr))
@@ -1469,7 +1476,7 @@ Task<HRESULT> DebuggerX::Impl::GetLocals(std::vector<SymbolEntry>& entries, std:
 
 Task<HRESULT> DebuggerX::Impl::EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded) {
 	co_return co_await Run([this, &entries, expressions = std::move(expressions), expanded = std::set<std::wstring>(expanded.begin(), expanded.end())] {
-		ValueWalker walker(m_spData, expanded, entries);
+		ValueWalker walker(m_spData, expanded, entries, DisplayFormat());
 		for (auto& expr : expressions) {
 			CComPtr<IModelObject> value;
 			auto hr = EvaluateModel(expr, value);
@@ -1486,6 +1493,22 @@ Task<HRESULT> DebuggerX::Impl::EvaluateWatches(std::vector<SymbolEntry>& entries
 		}
 		return S_OK;
 		});
+}
+
+CComPtr<IKeyStore> DebuggerX::Impl::DisplayFormat() {
+	if (m_DisplayRadix != 16 || !m_spDataMgr)
+		return nullptr;
+	// what dx's ",x" format specifier asks for
+	CComPtr<IKeyStore> metadata;
+	CComPtr<IModelObject> radix;
+	VARIANT v{};
+	v.vt = VT_I4;
+	v.lVal = 16;
+	if (FAILED(m_spDataMgr->CreateMetadataStore(nullptr, &metadata)) ||
+		FAILED(m_spDataMgr->CreateIntrinsicObject(ObjectIntrinsic, &v, &radix)) ||
+		FAILED(metadata->SetKey(L"PreferredRadix", radix, nullptr)))
+		return nullptr;
+	return metadata;
 }
 
 Task<HRESULT> DebuggerX::Impl::AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error) {
@@ -2316,6 +2339,13 @@ Task<HRESULT> DebuggerX::GetLocals(std::vector<SymbolEntry>& entries, std::vecto
 
 Task<HRESULT> DebuggerX::EvaluateWatches(std::vector<SymbolEntry>& entries, std::vector<std::wstring> expressions, std::vector<std::wstring> expanded) {
 	return m_Impl->EvaluateWatches(entries, std::move(expressions), std::move(expanded));
+}
+
+HRESULT DebuggerX::SetDisplayRadix(ULONG radix) {
+	if (radix != 10 && radix != 16)
+		return E_INVALIDARG;
+	m_Impl->SetDisplayRadix(radix);
+	return S_OK;
 }
 
 Task<HRESULT> DebuggerX::AssignValue(PCWSTR expression, PCWSTR value, std::wstring& error) {

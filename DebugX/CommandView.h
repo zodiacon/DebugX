@@ -42,11 +42,22 @@ public:
 		MESSAGE_HANDLER(WM_CHAR, OnEditChar)
 	ALT_MSG_MAP(2)
 		MESSAGE_HANDLER(WM_KEYDOWN, OnOutputKeyDown)
+		MESSAGE_HANDLER(WM_CONTEXTMENU, OnOutputContextMenu)
 	END_MSG_MAP()
 
 	void OnFinalMessage(HWND) override;
 
+	// IPane: the commands typed, the last MaxHistory of them ("h:" then tab-separated), for Up / Down in the next run
+	std::wstring SaveState() const override;
+	void LoadState(PCWSTR state) override;
+
+	static constexpr size_t MaxHistory = 100;
+
 private:
+	// the output emptied (the right-click menu's Clear Output; .cls, as in WinDbg)
+	void ClearOutput();
+	LRESULT OnOutputContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&);
+
 	void DoExecuteCommand(PCWSTR = nullptr);
 	// the edit gets the focus when it is enabled again -- see UpdateControls
 	void RestoreFocus(bool commandFromHere);

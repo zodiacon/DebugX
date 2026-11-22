@@ -30,6 +30,14 @@ public:
 	// as the message box's) if it is in another function. Beeps if the target cannot be changed now.
 	static DebugEngine::Task<void> SetNextStatement(HWND owner, ULONG64 address);
 
+	// Delete All / Enable All / Disable All Breakpoints (the Debug menu's, the Breakpoints pane's): every breakpoint of the
+	// session's, whoever set it. Deleting asks first ('owner' the message box's). Beeps while the target runs (the engine
+	// is not there to ask) or when there is none.
+	static DebugEngine::Task<void> RemoveAllBreakpoints(HWND owner);
+	static DebugEngine::Task<void> SetAllBreakpointsEnabled(bool enabled);
+	// (what they need: a target that is not running)
+	static bool CanChangeBreakpoints();
+
 private:
 	DebugManager() = default;
 	DebugManager(const DebugManager&) = delete;
