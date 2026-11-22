@@ -123,11 +123,31 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 		{ ID_DEBUG_STEPOVER, IDI_DEBUG_STEP_OVER },
 		{ ID_DEBUG_STEPOUT, IDI_DEBUG_STEP_OUT },
 	};
+	// the panes of the View menu, in its order and groups (the icons are the panes' own; Memory 2-4 stay in the menu)
+	static const UINT paneCommands[] = {
+		ID_VIEW_COMMAND, ID_VIEW_OUTPUT, ID_VIEW_ANALYSIS, 0,
+		ID_VIEW_THREADS, ID_VIEW_USERPROCESSES, ID_VIEW_HANDLES, 0,
+		ID_VIEW_PROCESSES, ID_VIEW_KERNELTHREADS, ID_VIEW_DRIVERS, ID_VIEW_OBJECTS, ID_VIEW_IRPS, 0,
+		ID_VIEW_MODULES, ID_VIEW_REGISTERS, ID_VIEW_CALLSTACK, ID_VIEW_BREAKPOINTS, ID_VIEW_MEMORY,
+		ID_VIEW_DISASSEMBLY, ID_VIEW_LOCALS, ID_VIEW_WATCH,
+	};
+	std::vector<ToolBarButtonInfo> paneButtons;
+	for (auto id : paneCommands) {
+		auto info = id ? PaneRegistry::Get().FindByCommand(id) : nullptr;
+		ATLASSERT(id == 0 || info);
+		paneButtons.push_back({ id, info ? int(info->Icon) : 0 });
+	}
+
 	CreateSimpleReBar(ATL_SIMPLE_REBAR_NOBORDER_STYLE);
 	// the frame is per-monitor DPI aware: size the images for the monitor it is on
-	auto tb = ToolbarHelper::CreateAndInitToolBar(m_hWnd, buttons, _countof(buttons), ::MulDiv(24, ::GetDpiForWindow(m_hWnd), 96));
+	const int imageSize = ::MulDiv(24, ::GetDpiForWindow(m_hWnd), 96);
+	auto tb = ToolbarHelper::CreateAndInitToolBar(m_hWnd, buttons, _countof(buttons), imageSize);
 	UIAddToolBar(tb);
 	AddSimpleReBarBand(tb);
+	// (a band of its own, which the rebar puts on a row of its own when the window is too narrow for both)
+	auto panesTb = ToolbarHelper::CreateAndInitToolBar(m_hWnd, paneButtons.data(), int(paneButtons.size()), imageSize);
+	UIAddToolBar(panesTb);
+	AddSimpleReBarBand(panesTb);
 	CreateSimpleStatusBar();
 	// (which engine it is matters: only the Windows Kits debugger's has symbol servers and the !-commands)
 	::SetWindowText(m_hWndStatusBar, (L"Debugger engine: " + DebugManager::EnginePath()).c_str());
@@ -297,8 +317,9 @@ LRESULT CMainFrame::OnViewToolBar(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWn
 	static BOOL bVisible = TRUE;	// initially visible
 	bVisible = !bVisible;
 	CReBarCtrl rebar = m_hWndToolBar;
-	int nBandIndex = rebar.IdToIndex(ATL_IDW_BAND_FIRST);	// the toolbar is the only band
-	rebar.ShowBand(nBandIndex, bVisible);
+	// (the debug commands' toolbar and the panes')
+	for (UINT i = 0; i < rebar.GetBandCount(); i++)
+		rebar.ShowBand(i, bVisible);
 	UISetCheck(ID_VIEW_TOOLBAR, bVisible);
 	UpdateLayout();
 	return 0;
@@ -309,6 +330,26 @@ LRESULT CMainFrame::OnViewStatusBar(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*h
 	::ShowWindow(m_hWndStatusBar, bVisible ? SW_SHOWNOACTIVATE : SW_HIDE);
 	UISetCheck(ID_VIEW_STATUS_BAR, bVisible);
 	UpdateLayout();
+	return 0;
+}
+
+LRESULT CMainFrame::OnToolTipText(int, LPNMHDR pnmh, BOOL& bHandled) {
+	auto info = reinterpret_cast<NMTTDISPINFOW*>(pnmh);
+	WCHAR item[128]{};
+	if ((info->uFlags & TTF_IDISHWND) == 0 && pnmh->idFrom)
+		::GetMenuString(GetMenu(), UINT(pnmh->idFrom), item, _countof(item), MF_BYCOMMAND);
+	CString text(item);
+	if (text.IsEmpty()) {
+		bHandled = FALSE;	// (WTL's: the command's string resource, if it has one)
+		return 0;
+	}
+	// a toolbar button's tip is its menu item's text: "Step &Into\tF11" -> "Step Into (F11)"
+	if (int tab = text.Find(L'\t'); tab >= 0)
+		text = text.Left(tab) + L" (" + text.Mid(tab + 1) + L")";
+	text.Replace(L"&&", L"\x1");
+	text.Remove(L'&');
+	text.Replace(L"\x1", L"&");
+	wcsncpy_s(info->szText, text, _TRUNCATE);
 	return 0;
 }
 

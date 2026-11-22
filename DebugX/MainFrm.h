@@ -46,6 +46,7 @@ public:
 		MESSAGE_HANDLER(WM_CLOSE, OnClose)
 		MESSAGE_HANDLER(WM_INITMENUPOPUP, OnInitMenuPopup)
 		MESSAGE_HANDLER(WM_ADDWATCH, OnAddWatch)
+		NOTIFY_CODE_HANDLER(TTN_GETDISPINFOW, OnToolTipText)
 		COMMAND_RANGE_HANDLER(ID_FILE_RECENT1, ID_FILE_RECENT10, OnRecentTarget)
 		COMMAND_ID_HANDLER(ID_FILE_CLEARRECENT, OnClearRecent)
 		COMMAND_ID_HANDLER(ID_DEBUG_SAVEDUMP, OnSaveDump)
@@ -218,6 +219,8 @@ private:
 	LRESULT OnSymbolPaths(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnInitMenuPopup(UINT, WPARAM wParam, LPARAM, BOOL& bHandled);
 	LRESULT OnAddWatch(UINT, WPARAM, LPARAM lParam, BOOL&);
+	// the toolbar buttons' tips: the text of their menu items
+	LRESULT OnToolTipText(int, LPNMHDR pnmh, BOOL& bHandled);
 	LRESULT OnRecentTarget(WORD, WORD id, HWND, BOOL&);
 	LRESULT OnClearRecent(WORD, WORD, HWND, BOOL&);
 	LRESULT OnSaveDump(WORD, WORD, HWND, BOOL&);
