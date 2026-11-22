@@ -408,7 +408,7 @@
     <ClInclude Include="ProcessSelectDlg.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="RunExeDlg.h" />
-    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="pch.h" />
     <ClInclude Include="UserThreadsView.h" />
     <ClInclude Include="UserProcessesView.h" />
     <ClInclude Include="HandlesView.h" />

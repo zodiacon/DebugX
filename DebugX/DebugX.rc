@@ -277,7 +277,7 @@ CAPTION "About DebugX"
 FONT 9, "Segoe UI", 0, 0, 0x0
 BEGIN
     DEFPUSHBUTTON   "OK",IDOK,68,81,50,14
-    CTEXT           "DebugX v1.0\n\n©2020-2026 Pavel Yosifovich",IDC_STATIC,36,24,114,32
+    CTEXT           "DebugX v1.1\n\n©2020-2026 Pavel Yosifovich",IDC_STATIC,36,24,114,32
     ICON            IDR_MAINFRAME,IDC_STATIC,6,6,20,20
 END
 
@@ -567,8 +567,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,1
- PRODUCTVERSION 1,0,0,1
+ FILEVERSION 1,1,0
+ PRODUCTVERSION 1,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -584,12 +584,12 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "FileDescription", "Debugger based on DbgEng"
-            VALUE "FileVersion", "1, 0, 0"
+            VALUE "FileVersion", "1, 1, 0"
             VALUE "InternalName", "DebugX"
             VALUE "LegalCopyright", "©2020-2026 Pavel Yosifovich"
             VALUE "OriginalFilename", "DebugX.exe"
             VALUE "ProductName", "DebugX"
-            VALUE "ProductVersion", "1, 0, 0"
+            VALUE "ProductVersion", "1, 1, 0"
         END
     END
     BLOCK "VarFileInfo"
@@ -627,7 +627,7 @@ END
 
 STRINGTABLE
 BEGIN
-    IDR_MAINFRAME           "DebugX v1.0"
+    IDR_MAINFRAME           "DebugX v1.1"
     IDS_TITLE               "DebugX"
 END
 
