@@ -96,6 +96,15 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 
 	::SetThreadPriority(::GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
 
+	if (SecurityHelper::IsRunningElevated()) {
+		// File > Run As Administrator (the first item) and its separator: nothing to do
+		CMenuHandle file = CMenuHandle(GetMenu()).GetSubMenu(0);
+		file.DeleteMenu(ID_FILE_RUNASADMINISTRATOR, MF_BYCOMMAND);
+		file.DeleteMenu(0, MF_BYPOSITION);
+		CString title;
+		GetWindowText(title);
+		SetWindowText(title + L" (Administrator)");
+	}
 	UIAddMenu(GetMenu());
 
 	ToolBarButtonInfo buttons[] = {
@@ -167,9 +176,13 @@ LRESULT CMainFrame::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*
 	return 0;
 }
 
-LRESULT CMainFrame::OnClose(UINT, WPARAM, LPARAM, BOOL& bHandled) {
+void CMainFrame::SaveState() {
 	AppSettings::Get().PaneStates(PaneRegistry::Get().SaveStates());
 	SaveLayout();
+}
+
+LRESULT CMainFrame::OnClose(UINT, WPARAM, LPARAM, BOOL& bHandled) {
+	SaveState();
 
 	// the target is detached when the debugger is destroyed, see OnFinalMessage
 	bHandled = FALSE;
@@ -179,6 +192,27 @@ LRESULT CMainFrame::OnClose(UINT, WPARAM, LPARAM, BOOL& bHandled) {
 
 LRESULT CMainFrame::OnFileExit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/) {
 	PostMessage(WM_CLOSE);
+	return 0;
+}
+
+bool CMainFrame::RelaunchElevated() {
+	// saved before the new instance starts, which reads them (closing this one saves them again, the same)
+	SaveState();
+	AppSettings::Get().Save();
+	if (!SecurityHelper::RunElevated(nullptr, true))
+		return false;
+
+	PostMessage(WM_CLOSE);
+	return true;
+}
+
+LRESULT CMainFrame::OnRunAsAdministrator(WORD, WORD, HWND, BOOL&) {
+	if (DebugManager::Session().HasTarget()
+		&& AtlMessageBox(*this, L"Running as administrator ends the debugging session. Continue?", IDS_TITLE,
+			MB_ICONQUESTION | MB_OKCANCEL) != IDOK)
+		return 0;
+
+	RelaunchElevated();
 	return 0;
 }
 
@@ -243,10 +277,8 @@ LRESULT CMainFrame::OnAttachLocalKernel(WORD /*wNotifyCode*/, WORD /*wID*/, HWND
 	if (!SecurityHelper::IsRunningElevated()) {
 		int reply = AtlMessageBox(*this, L"Local kernel debugging requires admin privileges. Run elevated now?",
 			IDS_TITLE, MB_ICONEXCLAMATION | MB_YESNO);
-		if (reply == IDYES) {
-			if (SecurityHelper::RunElevated(nullptr, true))
-				PostQuitMessage(0);
-		}
+		if (reply == IDYES)
+			RelaunchElevated();
 		return 0;
 	}
 	AttachLocalKernel();
@@ -1283,7 +1315,10 @@ Task<void> CMainFrame::AddBreakpoint(BreakpointSettings settings) {
 }
 
 void CMainFrame::InitMenu(HMENU menu) {
+	// (kept for the life of the process, as WTLHelper::InitMenu wants an icon that is not a resource)
+	static HICON shield = IconHelper::GetShieldIcon();
 	MenuItemData commands[] = {
+		{ ID_FILE_RUNASADMINISTRATOR, 0, shield },
 		{ ID_EDIT_CUT, IDI_CUT },
 		{ ID_EDIT_COPY, IDI_COPY },
 		{ ID_EDIT_PASTE, IDI_PASTE },

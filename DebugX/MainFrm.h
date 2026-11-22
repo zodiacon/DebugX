@@ -57,6 +57,7 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_UNLOADSCRIPT, OnScript)
 		COMMAND_ID_HANDLER(ID_VIEW_ANALYSIS, OnViewPane)
 		COMMAND_ID_HANDLER(ID_APP_EXIT, OnFileExit)
+		COMMAND_ID_HANDLER(ID_FILE_RUNASADMINISTRATOR, OnRunAsAdministrator)
 		COMMAND_ID_HANDLER(ID_FILE_OPEN, OnOpenDumpFile)
 		COMMAND_ID_HANDLER(ID_DEBUG_ATTACHTOLOCALKERNEL, OnAttachLocalKernel)
 		COMMAND_ID_HANDLER(ID_DEBUG_ATTACHTOKERNEL, OnAttachKernel)
@@ -128,6 +129,9 @@ public:
 
 private:
 	void InitMenu(HMENU menu);
+	// saves what a close saves, starts DebugX again elevated and closes this one; false if it was not started (UAC declined)
+	bool RelaunchElevated();
+	void SaveState();
 	void ApplyTheme();
 	void SaveLayout();
 	// Window layouts. The one in use is the layout of m_LayoutMode; the other mode's waits in m_ModeLayouts.
@@ -179,6 +183,7 @@ private:
 	LRESULT OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled);
 	LRESULT OnClose(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled);
 	LRESULT OnFileExit(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnRunAsAdministrator(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnAttachLocalKernel(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnAttachKernel(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnOpenDumpFile(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);

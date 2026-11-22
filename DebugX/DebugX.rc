@@ -53,6 +53,8 @@ IDR_MAINFRAME MENU
 BEGIN
     POPUP "&File"
     BEGIN
+        MENUITEM "&Run As Administrator...",    ID_FILE_RUNASADMINISTRATOR
+        MENUITEM SEPARATOR
         MENUITEM "&Open Dump File...\tCtrl+O",  ID_FILE_OPEN
         MENUITEM "Open &Source File...\tCtrl+Shift+O", ID_FILE_OPENSOURCE
         MENUITEM SEPARATOR
@@ -322,16 +324,75 @@ BEGIN
     PUSHBUTTON      "  Cancel",IDCANCEL,158,177,54,14,BS_FLAT
 END
 
-IDD_ATTACHKERNEL DIALOGEX 0, 0, 290, 76
+IDD_ATTACHKERNEL DIALOGEX 0, 0, 300, 228
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Attach to Kernel"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    LTEXT           "Connection (as windbg -k takes it):",IDC_STATIC,7,7,276,8
-    EDITTEXT        IDC_KERNELCONN,7,19,276,14,ES_AUTOHSCROLL
-    LTEXT           "e.g. net:port=50000,key=1.2.3.4   or   com:port=COM1,baud=115200",IDC_STATIC,7,37,276,8
-    DEFPUSHBUTTON   "  OK",IDOK,86,55,56,14,BS_CENTER | BS_FLAT | WS_DISABLED
-    PUSHBUTTON      "  Cancel",IDCANCEL,148,55,54,14,BS_FLAT
+    CONTROL         "",IDC_KERNEL_TABS,"SysTabControl32",WS_TABSTOP,7,7,286,152
+    LTEXT           "Connection string:",IDC_STATIC,7,166,286,8
+    EDITTEXT        IDC_KERNELCONN,7,177,286,14,ES_AUTOHSCROLL | ES_READONLY
+    LTEXT           "",IDC_KERNEL_STATUS,7,194,286,8
+    DEFPUSHBUTTON   "  OK",IDOK,90,207,56,14,BS_CENTER | BS_FLAT | WS_DISABLED
+    PUSHBUTTON      "  Cancel",IDCANCEL,154,207,56,14,BS_FLAT
+END
+
+IDD_KERNEL_NET DIALOGEX 0, 0, 276, 130
+STYLE DS_SETFONT | DS_FIXEDSYS | DS_CONTROL | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "&Port:",IDC_STATIC,7,10,60,8
+    EDITTEXT        IDC_NET_PORT,70,8,50,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "(49152 - 65535, as on the target)",IDC_STATIC,126,10,140,8
+    LTEXT           "&Key:",IDC_STATIC,7,29,60,8
+    EDITTEXT        IDC_NET_KEY,70,27,140,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "&Generate",IDC_NET_GENKEY,214,27,52,14,BS_FLAT
+    LTEXT           "&Target (optional):",IDC_STATIC,7,48,60,8
+    EDITTEXT        IDC_NET_TARGET,70,46,196,14,ES_AUTOHSCROLL
+    LTEXT           "The target computer's host name or IP address; empty: any target with the key.",IDC_STATIC,70,63,196,16
+    LTEXT           "On the target, run as administrator, then restart it:",IDC_STATIC,7,90,259,8
+    EDITTEXT        IDC_KERNEL_SETUP,7,101,259,14,ES_AUTOHSCROLL | ES_READONLY
+END
+
+IDD_KERNEL_COM DIALOGEX 0, 0, 276, 130
+STYLE DS_SETFONT | DS_FIXEDSYS | DS_CONTROL | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Connect through:",IDC_STATIC,7,9,60,8
+    CONTROL         "&Serial port",IDC_COM_SERIAL,"Button",BS_AUTORADIOBUTTON | WS_GROUP | WS_TABSTOP,70,8,60,10
+    CONTROL         "Named pipe (&virtual machine)",IDC_COM_PIPE,"Button",BS_AUTORADIOBUTTON,134,8,132,10
+    LTEXT           "P&ort:",IDC_STATIC,7,27,60,8
+    COMBOBOX        IDC_COM_PORT,70,25,60,100,CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP | WS_GROUP
+    LTEXT           "&Baud rate:",IDC_STATIC,150,27,44,8
+    COMBOBOX        IDC_COM_BAUD,196,25,70,100,CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Pipe:",IDC_STATIC,7,47,60,8
+    EDITTEXT        IDC_COM_PIPENAME,70,45,196,14,ES_AUTOHSCROLL
+    LTEXT           "&Resets:",IDC_STATIC,7,66,60,8
+    EDITTEXT        IDC_COM_RESETS,70,64,30,14,ES_AUTOHSCROLL | ES_NUMBER
+    CONTROL         "Re&connect if the pipe closes",IDC_COM_RECONNECT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,110,66,156,10
+    LTEXT           "On the target, run as administrator, then restart it:",IDC_STATIC,7,90,259,8
+    EDITTEXT        IDC_KERNEL_SETUP,7,101,259,14,ES_AUTOHSCROLL | ES_READONLY
+END
+
+IDD_KERNEL_USB DIALOGEX 0, 0, 276, 130
+STYLE DS_SETFONT | DS_FIXEDSYS | DS_CONTROL | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "&Target name:",IDC_STATIC,7,10,60,8
+    EDITTEXT        IDC_USB_TARGET,70,8,196,14,ES_AUTOHSCROLL
+    LTEXT           "The name the target's USB debugging port was given with bcdedit. The two computers are connected with a USB debug cable (USB 2.0) or a USB 3.0 A-A crossover cable.",IDC_STATIC,70,26,196,32
+    LTEXT           "On the target, run as administrator, then restart it:",IDC_STATIC,7,90,259,8
+    EDITTEXT        IDC_KERNEL_SETUP,7,101,259,14,ES_AUTOHSCROLL | ES_READONLY
+END
+
+IDD_KERNEL_CUSTOM DIALOGEX 0, 0, 276, 130
+STYLE DS_SETFONT | DS_FIXEDSYS | DS_CONTROL | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "&Connection string, as windbg -k takes it:",IDC_STATIC,7,9,259,8
+    EDITTEXT        IDC_CUSTOM_CONN,7,20,259,14,ES_AUTOHSCROLL
+    LTEXT           "For example:",IDC_STATIC,7,42,259,8
+    LTEXT           "net:port=50000,key=1a2b.3c4d.5e6f.7g8h,target=10.0.0.5\ncom:port=COM1,baud=115200\ncom:pipe,port=\\\\.\\pipe\\com_1,resets=0,reconnect\nusb:targetname=mytarget",IDC_STATIC,15,53,251,40
 END
 
 IDD_INPUT DIALOGEX 0, 0, 240, 62

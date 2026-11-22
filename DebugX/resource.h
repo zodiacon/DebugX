@@ -53,6 +53,26 @@
 #define IDI_WINDOW_CLOSE                238
 #define IDI_ICON3                       239
 #define IDI_WINDOW_CLOSEALL             239
+#define IDD_KERNEL_NET                  250
+#define IDD_KERNEL_COM                  251
+#define IDD_KERNEL_USB                  252
+#define IDD_KERNEL_CUSTOM               253
+#define IDC_KERNEL_TABS                 1043
+#define IDC_KERNEL_STATUS               1044
+#define IDC_KERNEL_SETUP                1045
+#define IDC_NET_PORT                    1046
+#define IDC_NET_KEY                     1047
+#define IDC_NET_GENKEY                  1048
+#define IDC_NET_TARGET                  1049
+#define IDC_COM_SERIAL                  1050
+#define IDC_COM_PIPE                    1051
+#define IDC_COM_PORT                    1052
+#define IDC_COM_BAUD                    1053
+#define IDC_COM_PIPENAME                1054
+#define IDC_COM_RESETS                  1055
+#define IDC_COM_RECONNECT               1056
+#define IDC_USB_TARGET                  1061
+#define IDC_CUSTOM_CONN                 1062
 #define IDC_EXEPATH                     1000
 #define IDC_PROCLIST                    1000
 #define IDC_BROWSE                      1001
@@ -133,6 +153,7 @@
 #define ID_OPTIONS_SYMBOLPATHS          32812
 #define ID_DEBUG_RELOADSYMBOLS          32813
 #define ID_FILE_OPENSOURCE              32814
+#define ID_FILE_RUNASADMINISTRATOR      32892
 #define ID_DEBUG_SETNEXTSTATEMENT       32815
 #define ID_DEBUG_RESTART                32816
 #define ID_EDIT_FINDNEXT                32817
@@ -175,9 +196,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        250
-#define _APS_NEXT_COMMAND_VALUE         32892
-#define _APS_NEXT_CONTROL_VALUE         1043
+#define _APS_NEXT_RESOURCE_VALUE        254
+#define _APS_NEXT_COMMAND_VALUE         32893
+#define _APS_NEXT_CONTROL_VALUE         1063
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
