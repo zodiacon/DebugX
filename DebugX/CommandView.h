@@ -48,6 +48,8 @@ public:
 
 private:
 	void DoExecuteCommand(PCWSTR = nullptr);
+	// the edit gets the focus when it is enabled again -- see UpdateControls
+	void RestoreFocus(bool commandFromHere);
 	DebugEngine::Task<void> RunCommand(CString command);
 	void AppendDmlText(CString& dml);
 	void AppendText(std::wstring_view text);
@@ -83,5 +85,8 @@ private:
 	int m_CommandHistoryIndex = 0;
 	CString m_PromptText;
 	bool m_IsBusy{ false };
+	// a command was run from here: the edit gets the focus back when it is enabled again (the command has run, and the
+	// target has stopped) -- the edit loses it when it is disabled while the command runs
+	bool m_RestoreFocus{ false };
 	Lifetime m_Lifetime;
 };

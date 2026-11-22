@@ -60,10 +60,29 @@ void CCommandView::UpdateControls() {
 		SetBusy(busy);
 
 	auto ready = !busy && session.IsBroken();
+	bool enabled = false;
 	if (ready != (m_CommandEdit.IsWindowEnabled() != FALSE)) {
 		m_CommandEdit.EnableWindow(ready);
 		m_Execute.EnableWindow(ready);
+		enabled = ready;
 	}
+	if (!session.HasTarget())
+		m_RestoreFocus = false;		// (the command ended the session: not for the next one)
+	if (ready && (enabled || m_RestoreFocus))
+		RestoreFocus(std::exchange(m_RestoreFocus, false));
+}
+
+void CCommandView::RestoreFocus(bool commandFromHere) {
+	// not taken from another window the user has gone to meanwhile, nor from another program (the target stopped while
+	// the user was elsewhere), nor given to a view that cannot be seen (another document's tab is in front)
+	auto foreground = ::GetForegroundWindow();
+	if (!IsWindowVisible() || (foreground != GetAncestor(m_hWnd, GA_ROOT) && foreground != GetAncestor(m_hWnd, GA_ROOTOWNER)))
+		return;
+	// from nowhere: where it went when the edit was disabled while it had it (a command ran, or a session started from
+	// a dialog that is gone); from this view, for a command run here (the output's link that ran it)
+	auto focus = ::GetFocus();
+	if (focus == nullptr || focus == m_CommandEdit || (commandFromHere && (focus == m_hWnd || IsChild(focus))))
+		m_CommandEdit.SetFocus();
 }
 
 LRESULT CCommandView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
@@ -183,6 +202,7 @@ void CCommandView::DoExecuteCommand(PCWSTR command) {
 	m_CommandHistory.push_back(cmd);
 	m_CommandHistoryIndex = (int)m_CommandHistory.size();
 	m_CommandEdit.SetWindowText(L"");
+	m_RestoreFocus = true;
 	m_CommandEdit.EnableWindow(FALSE);
 	m_Execute.EnableWindow(FALSE);
 	RunCommand(cmd);
@@ -194,9 +214,8 @@ Task<void> CCommandView::RunCommand(CString command) {
 	if (!*alive)
 		co_return;
 
+	// (the focus comes back to the edit when it is enabled: now, or when the target stops)
 	UpdateControls();
-	if (m_CommandEdit.IsWindowEnabled())
-		m_CommandEdit.SetFocus();
 }
 
 void CCommandView::AppendText(std::wstring_view text) {
