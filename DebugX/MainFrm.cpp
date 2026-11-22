@@ -282,6 +282,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	if (AppSettings::Get().HexDisplay())
 		DebugManager::Debugger().SetDisplayRadix(16);
 	UISetCheck(ID_OPTIONS_HEXDISPLAY, AppSettings::Get().HexDisplay() != 0);
+	UISetCheck(ID_OPTIONS_CONFIRMEXIT, AppSettings::Get().ConfirmExit() != 0);
 	ApplySavedEventFilters();
 	ApplySavedSymbolPaths();
 
@@ -312,7 +313,56 @@ void CMainFrame::SaveState() {
 	SaveLayout();
 }
 
+bool CMainFrame::ConfirmExit() {
+	auto& session = DebugManager::Session();
+	const auto target = session.Target();
+	// (a dump, the local kernel, nothing: exiting loses nothing that cannot be had again as it was)
+	if (m_ExitConfirmed || !AppSettings::Get().ConfirmExit() || (target & TargetType::Live) != TargetType::Live)
+		return true;
+
+	const bool kernel = (target & TargetType::Kernel) == TargetType::Kernel;
+	CString name = m_TargetName.IsEmpty() ? CString(kernel ? L"the kernel" : L"the process") : m_TargetName;
+	CString main;
+	main.Format(L"Exit while debugging %s?", (PCWSTR)name);
+	PCWSTR content = kernel
+		? L"The kernel debugging session ends; the target computer goes on running."
+		: L"DebugX detaches from the process, which goes on running (without its breakpoints).";
+
+	const TASKDIALOG_BUTTON buttons[] = { { IDOK, L"E&xit" } };
+	TASKDIALOGCONFIG config{ sizeof(config) };
+	config.hwndParent = m_hWnd;
+	config.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW;
+	config.dwCommonButtons = TDCBF_CANCEL_BUTTON;
+	config.pszWindowTitle = L"DebugX";
+	config.pszMainIcon = TD_WARNING_ICON;
+	config.pszMainInstruction = main;
+	config.pszContent = content;
+	config.cButtons = _countof(buttons);
+	config.pButtons = buttons;
+	config.nDefaultButton = IDOK;
+	config.pszVerificationText = L"&Don't ask again (Options > Ask Before Exiting While Debugging)";
+	int button = IDCANCEL;
+	BOOL dontAsk = FALSE;
+	if (FAILED(::TaskDialogIndirect(&config, &button, nullptr, &dontAsk)) || button != IDOK)
+		return false;
+	if (dontAsk) {
+		AppSettings::Get().ConfirmExit(0);
+		UISetCheck(ID_OPTIONS_CONFIRMEXIT, FALSE);
+	}
+	return true;
+}
+
+LRESULT CMainFrame::OnToggleConfirmExit(WORD, WORD id, HWND, BOOL&) {
+	auto ask = !AppSettings::Get().ConfirmExit();
+	AppSettings::Get().ConfirmExit(ask ? 1 : 0);
+	UISetCheck(id, ask);
+	return 0;
+}
+
 LRESULT CMainFrame::OnClose(UINT, WPARAM, LPARAM, BOOL& bHandled) {
+	// a live target: asked first (the window stays if not)
+	if (!ConfirmExit())
+		return 0;
 	SaveState();
 
 	// the target is detached when the debugger is destroyed, see OnFinalMessage
@@ -333,6 +383,8 @@ bool CMainFrame::RelaunchElevated() {
 	if (!SecurityHelper::RunElevated(nullptr, true))
 		return false;
 
+	// (the user was asked already, where it was asked for)
+	m_ExitConfirmed = true;
 	PostMessage(WM_CLOSE);
 	return true;
 }
@@ -1229,17 +1281,22 @@ Task<void> CMainFrame::ApplySavedEventFilters() {
 	co_await dbg.SetEventFilters(EventFilterText::Load(text, defaults));
 }
 
+LRESULT CMainFrame::OnDebugToggleBreakpoint(WORD, WORD, HWND, BOOL&) {
+	// F9: on the line with the caret in a source file, as in other debuggers (and in the Disassembly window, on the
+	// instruction); anywhere else there is no line to put it on (Ctrl+B, Add Breakpoint, asks where)
+	auto pane = m_Dock.ActivePane();
+	const auto id = ActivePaneId();
+	if (!DebugManager::Session().HasTarget() || !pane || !pane->hWnd || !(SourceDocuments::IsSourceId(id) || id == L"disassembly")) {
+		::MessageBeep(MB_ICONWARNING);
+		return 0;
+	}
+	::SendMessage(pane->hWnd, WM_COMMAND, ID_DISASM_TOGGLEBREAKPOINT, 0);
+	return 0;
+}
+
 LRESULT CMainFrame::OnDebugAddBreakpoint(WORD, WORD, HWND, BOOL&) {
 	if (!DebugManager::Session().HasTarget())
 		return 0;
-
-	// F9 in a source file is on the line with the caret, as in other debuggers
-	// (and in the Disassembly window, on the instruction)
-	if (SourceDocuments::IsSourceId(ActivePaneId()) || ActivePaneId() == L"disassembly") {
-		if (auto pane = m_Dock.ActivePane(); pane->hWnd)
-			::SendMessage(pane->hWnd, WM_COMMAND, ID_DISASM_TOGGLEBREAKPOINT, 0);
-		return 0;
-	}
 
 	CBreakpointDlg dlg;
 	if (dlg.DoModal(m_hWnd) == IDOK)
@@ -1729,6 +1786,7 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_VIEW_OUTPUT, IDI_OUTPUT },
 		{ ID_VIEW_MODULES, IDI_DLL },
 		{ ID_VIEW_REGISTERS, IDI_CPU },
+		{ ID_DEBUG_TOGGLEBREAKPOINT, IDI_BREAKPOINT },
 		{ ID_DEBUG_ADDBREAKPOINT, IDI_BREAKPOINT },
 		{ ID_VIEW_CALLSTACK, IDI_CALLSTACK },
 		{ ID_VIEW_BREAKPOINTS, IDI_BREAKPOINTS },
@@ -1873,6 +1931,7 @@ void CMainFrame::UpdateUI(bool force) {
 	for (auto& info : PaneRegistry::Get().Panes())
 		UIEnable(info.Command, PaneRegistry::IsAvailable(info, target), force);
 	UIEnable(ID_DEBUG_ADDBREAKPOINT, attached, force);
+	UIEnable(ID_DEBUG_TOGGLEBREAKPOINT, attached, force);
 	UIEnable(ID_DEBUG_EXCEPTIONS, !session.IsRunning(), force);
 	UpdateStatusParts();
 }

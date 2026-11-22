@@ -20,6 +20,7 @@ struct AppSettings : Settings {
 		SETTING_STRING(RecentTargets, L"");		// File > Recent Targets (RecentTargets.h), a line for each
 		SETTING(DebugChildProcesses, 0, SettingType::Int32);	// Options > Debug Child Processes
 		SETTING(HexDisplay, 0, SettingType::Int32);	// Options > Hexadecimal Display (Locals, Watch, the call tips)
+		SETTING(ConfirmExit, 1, SettingType::Int32);	// Options > Ask Before Exiting While Debugging (the exit question's "Don't ask again" clears it)
 		SETTING_STRING(ProcessServer, L"tcp:server=,port=5005");	// the last Connect to Process Server options
 		SETTING(LayoutMode, 0, SettingType::Int32);	// the window layout in use (layout.json) is the one for: 0 user mode, 1 kernel mode
 		// Options > Code Font / UI Font (AppFonts): "face;size in tenths of a point;weight;italic"; empty: the default
@@ -37,6 +38,7 @@ struct AppSettings : Settings {
 	DEF_SETTING_STRING(RecentTargets)
 	DEF_SETTING(DebugChildProcesses, int)
 	DEF_SETTING(HexDisplay, int)
+	DEF_SETTING(ConfirmExit, int)
 	DEF_SETTING_STRING(ProcessServer)
 	DEF_SETTING(LayoutMode, int)
 	DEF_SETTING_STRING(CodeFont)

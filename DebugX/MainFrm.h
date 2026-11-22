@@ -79,6 +79,7 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOVER, OnDebugStepOver)
 		COMMAND_ID_HANDLER(ID_DEBUG_STEPOUT, OnDebugStepOut)
 		COMMAND_ID_HANDLER(ID_DEBUG_ADDBREAKPOINT, OnDebugAddBreakpoint)
+		COMMAND_ID_HANDLER(ID_DEBUG_TOGGLEBREAKPOINT, OnDebugToggleBreakpoint)
 		COMMAND_ID_HANDLER(ID_DEBUG_SHOWNEXT, OnDebugShowNext)
 		COMMAND_ID_HANDLER(ID_DEBUG_DELETEALLBREAKPOINTS, OnDeleteAllBreakpoints)
 		COMMAND_ID_HANDLER(ID_DEBUG_ENABLEALLBREAKPOINTS, OnEnableAllBreakpoints)
@@ -129,6 +130,7 @@ public:
 		COMMAND_ID_HANDLER(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, OnToggleDml)
 		COMMAND_ID_HANDLER(ID_OPTIONS_DEBUGCHILDPROCESSES, OnToggleChildProcesses)
 		COMMAND_ID_HANDLER(ID_OPTIONS_HEXDISPLAY, OnToggleHexDisplay)
+		COMMAND_ID_HANDLER(ID_OPTIONS_CONFIRMEXIT, OnToggleConfirmExit)
 		COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
 		CHAIN_MSG_MAP(CAutoUpdateUI<CMainFrame>)
 		CHAIN_MSG_MAP(CFrameWindowImpl<CMainFrame>)
@@ -235,7 +237,9 @@ private:
 	LRESULT OnDebugStepOver(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStepInto(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStepOut(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	// Ctrl+B: the Add Breakpoint dialog; F9: a breakpoint on the active source or Disassembly window's caret line, toggled
 	LRESULT OnDebugAddBreakpoint(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnDebugToggleBreakpoint(WORD, WORD, HWND, BOOL&);
 	// Show Next Statement: the thread's frame again, and its line in the source (with the focus), else its instruction
 	// in the Disassembly window (also when that is the window in use)
 	LRESULT OnDebugShowNext(WORD, WORD, HWND, BOOL&);
@@ -274,6 +278,10 @@ private:
 	LRESULT OnToggleChildProcesses(WORD, WORD id, HWND, BOOL&);
 	// Options > Hexadecimal Display: integers in Locals, Watch and the call tips (SetDisplayRadix)
 	LRESULT OnToggleHexDisplay(WORD, WORD id, HWND, BOOL&);
+	// Options > Ask Before Exiting While Debugging
+	LRESULT OnToggleConfirmExit(WORD, WORD id, HWND, BOOL&);
+	// closing with a live target (a process, a kernel over a connection) asks first; true: exit
+	bool ConfirmExit();
 	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditFindAgain(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
@@ -289,6 +297,8 @@ private:
 	bool m_Restarting{ false };
 	// Attach to Kernel is waiting for the target to connect (Break and Stop give up waiting: CancelKernelConnection)
 	bool m_Connecting{ false };
+	// the exit was agreed to already (Run As Administrator asks for itself): OnClose does not ask
+	bool m_ExitConfirmed{ false };
 	// what is being debugged, for the title (set by each start: the program's or dump's file name, ...); empty: nothing
 	CString m_TargetName;
 	// the title without a target ("DebugX", with " (Administrator)" when elevated)

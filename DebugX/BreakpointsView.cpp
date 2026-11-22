@@ -186,7 +186,7 @@ LRESULT CBreakpointsView::OnKeyDown(int, LPNMHDR hdr, BOOL& handled) {
 	return 0;
 }
 
-// the frame has the command (and its dialog), also for the menu and F9
+// the frame has the command (and its dialog), also for the menu and Ctrl+B
 void CBreakpointsView::AddBreakpoint() {
 	::PostMessage(::GetAncestor(m_hWnd, GA_ROOTOWNER), WM_COMMAND, ID_DEBUG_ADDBREAKPOINT, 0);
 }

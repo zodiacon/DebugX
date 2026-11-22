@@ -134,9 +134,10 @@ BEGIN
         MENUITEM "Step &Out\tShift+F11",        ID_DEBUG_STEPOUT
         MENUITEM "Run to &Cursor\tCtrl+F10",    ID_DEBUG_RUNTOCURSOR
         MENUITEM "Set &Next Statement\tCtrl+Shift+F10", ID_DEBUG_SETNEXTSTATEMENT
-        MENUITEM "Show Nex&t Statement\tAlt+Num *",  ID_DEBUG_SHOWNEXT
+        MENUITEM "Show Next State&ment\tAlt+Num *",  ID_DEBUG_SHOWNEXT
         MENUITEM SEPARATOR
-        MENUITEM "Add &Breakpoint...\tF9",      ID_DEBUG_ADDBREAKPOINT
+        MENUITEM "&Toggle Breakpoint\tF9",      ID_DEBUG_TOGGLEBREAKPOINT
+        MENUITEM "Add &Breakpoint...\tCtrl+B",  ID_DEBUG_ADDBREAKPOINT
         MENUITEM "Delete All Breakpoints\tCtrl+Shift+F9", ID_DEBUG_DELETEALLBREAKPOINTS
         MENUITEM "Enable All Breakpoints",      ID_DEBUG_ENABLEALLBREAKPOINTS
         MENUITEM "Disable All Breakpoints",     ID_DEBUG_DISABLEALLBREAKPOINTS
@@ -150,6 +151,7 @@ BEGIN
         MENUITEM "&Debugger Markup Language",   ID_OPTIONS_DEBUGGERMARKUPLANGUAGE
         MENUITEM "Debug &Child Processes",      ID_OPTIONS_DEBUGCHILDPROCESSES
         MENUITEM "&Hexadecimal Display",        ID_OPTIONS_HEXDISPLAY
+        MENUITEM "Ask Before &Exiting While Debugging", ID_OPTIONS_CONFIRMEXIT
         MENUITEM SEPARATOR
         MENUITEM "&Code Font...",               ID_OPTIONS_CODEFONT
         MENUITEM "&UI Font...",                 ID_OPTIONS_UIFONT
@@ -536,7 +538,8 @@ BEGIN
     VK_F10,         ID_DEBUG_SETNEXTSTATEMENT, VIRTKEY, SHIFT, CONTROL
     VK_CANCEL,      ID_DEBUG_BREAK,         VIRTKEY, CONTROL
     VK_F6,          ID_DEBUG_ATTACHTOPROCESS, VIRTKEY 
-    VK_F9,          ID_DEBUG_ADDBREAKPOINT, VIRTKEY 
+    VK_F9,          ID_DEBUG_TOGGLEBREAKPOINT, VIRTKEY
+    "B",            ID_DEBUG_ADDBREAKPOINT, VIRTKEY, CONTROL
     VK_F10,         ID_DEBUG_RUNTOCURSOR,   VIRTKEY, CONTROL
     "O",            ID_FILE_OPENSOURCE,     VIRTKEY, SHIFT, CONTROL
     "E",            ID_DEBUG_EXCEPTIONS,    VIRTKEY, CONTROL, ALT
