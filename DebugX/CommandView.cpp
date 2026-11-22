@@ -26,22 +26,16 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Text->SetMarginWidthN(1, 0);
 	m_Text->SetMarginWidthN(2, 0);
 	m_Text->SetWrapMode(Wrap::None);
-	m_Text->StyleSetFont(static_cast<int>(StylesCommon::Default), "Consolas");
-	m_Text->StyleSetSizeFractional(static_cast<int>(StylesCommon::Default), 900);
+	AppFonts::ApplyCodeFont(m_Text.Call());
 	ApplyOutputColors();
 
-	CFontHandle font;
-	font.CreatePointFont(90, L"Consolas");
-	CFontHandle uiFont;
-	uiFont.CreatePointFont(90, L"Segoe UI");
-
 	m_CommandEdit.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_BORDER);
-	m_CommandEdit.SetFont(font);
+	m_CommandEdit.SetFont(AppFonts::CodeFont());
 	m_CommandEdit.SetLimitText(512);
 	m_Prompt.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | SS_SUNKEN | SS_RIGHT);
-	m_Prompt.SetFont(font);
+	m_Prompt.SetFont(AppFonts::CodeFont());
 	m_Execute.Create(*this, nullptr, L"Exec", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, ExecuteId);
-	m_Execute.SetFont(uiFont);		// a UI font, like the Memory pane's "Go" button, not the command/output Consolas
+	m_Execute.SetFont(AppFonts::UiFont());		// the UI font, like the Memory pane's "Go" button, not the code font
 
 	m_CommandHistory.reserve(64);
 
@@ -86,11 +80,14 @@ LRESULT CCommandView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 		return 0;
 
 	if (m_Text) {
-		int cmdHeight = 20, buttonWidth = 60, promptWidth = 60;
+		// (as big as the fonts need)
+		int cmdHeight = std::max({ 20, AppFonts::TextHeight(AppFonts::CodeFont()) + 6, AppFonts::TextHeight(AppFonts::UiFont()) + 6 });
+		int buttonWidth = std::max(60, AppFonts::TextWidth(AppFonts::UiFont(), L"Exec") + 28);
+		int promptWidth = std::max(60, AppFonts::TextWidth(AppFonts::CodeFont(), L"0:000> ") + 8);
 		m_Text.MoveWindow(0, 0, cx, cy - cmdHeight);
 		m_Prompt.MoveWindow(0, cy - cmdHeight + 1, promptWidth, cmdHeight - 2);
 		m_CommandEdit.MoveWindow(2 + promptWidth, cy - cmdHeight, cx - promptWidth - buttonWidth - 4, cmdHeight);
-		m_Execute.MoveWindow(cx - buttonWidth + 2, cy - 20, buttonWidth - 4, 20);
+		m_Execute.MoveWindow(cx - buttonWidth + 2, cy - cmdHeight, buttonWidth - 4, cmdHeight);
 	}
 	return 0;
 }
@@ -124,6 +121,21 @@ LRESULT CCommandView::OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&) {
 	// the scroll bars follow the visual style
 	::SetWindowTheme(m_Text, WTLHelper::IsDarkMode() ? L"DarkMode_Explorer" : L"Explorer", nullptr);
 	m_Text.Invalidate();
+	return 0;
+}
+
+LRESULT CCommandView::OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&) {
+	if (static_cast<AppFonts::Kind>(wParam) == AppFonts::Kind::Code) {
+		AppFonts::ApplyCodeFont(m_Text.Call());
+		ApplyOutputColors();		// (StyleClearAll: the font to every style)
+		m_CommandEdit.SetFont(AppFonts::CodeFont());
+		m_Prompt.SetFont(AppFonts::CodeFont());
+	}
+	else
+		m_Execute.SetFont(AppFonts::UiFont());
+	CRect rc;
+	GetClientRect(&rc);
+	SendMessage(WM_SIZE, SIZE_RESTORED, MAKELPARAM(rc.Width(), rc.Height()));
 	return 0;
 }
 

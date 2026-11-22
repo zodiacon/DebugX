@@ -3,6 +3,7 @@
 #include "VirtualListView.h"
 #include "PaneBase.h"
 #include "Lifetime.h"
+#include "AppFonts.h"
 
 //
 // A pane that is a list of what the target has (threads, modules, registers, ...): a virtual list view that fills
@@ -29,6 +30,7 @@ public:
 	BEGIN_MSG_MAP(CListPane)
 		MESSAGE_HANDLER(WM_CREATE, OnCreate)
 		MESSAGE_HANDLER(WM_DESTROY, OnDestroy)
+		MESSAGE_HANDLER(AppFonts::FontsChangedMessage, OnFontsChanged)
 		CHAIN_MSG_MAP(CPaneBase<T>)
 		CHAIN_MSG_MAP(BaseFrame)
 		CHAIN_MSG_MAP(CVirtualListView<T>)
@@ -70,8 +72,22 @@ protected:
 		this->m_hWndClient = m_List.Create(*this, CWindow::rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS
 			| LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS);
 		m_List.SetExtendedListViewStyle(pT->ExtendedStyle());
+		m_List.SetFont(AppFonts::UiFont());		// (before InitList: an editor it makes takes the list's font)
 		pT->InitList();
 		this->InitPane();
+		return 0;
+	}
+
+	LRESULT OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
+		handled = FALSE;
+		if (static_cast<AppFonts::Kind>(wParam) != AppFonts::Kind::Ui)
+			return 0;
+		m_List.SetFont(AppFonts::UiFont());
+		// and what the pane put on the list (an in-place editor); the header has taken it from the list
+		HWND header = m_List.GetHeader();
+		for (CWindow child = m_List.GetWindow(GW_CHILD); child; child = child.GetWindow(GW_HWNDNEXT))
+			if (child != header)
+				child.SetFont(AppFonts::UiFont());
 		return 0;
 	}
 

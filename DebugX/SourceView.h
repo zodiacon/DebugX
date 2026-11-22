@@ -35,6 +35,7 @@ public:
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		MESSAGE_HANDLER(WTLHelper::ThemeChangedMessage, OnThemeChanged)
+		MESSAGE_HANDLER(AppFonts::FontsChangedMessage, OnFontsChanged)
 		NOTIFY_HANDLER(TextId, SCN_MARGINCLICK, OnMarginClick)
 		NOTIFY_HANDLER(TextId, SCN_DWELLSTART, OnDwellStart)
 		NOTIFY_HANDLER(TextId, SCN_DWELLEND, OnDwellEnd)
@@ -90,6 +91,9 @@ private:
 	LRESULT OnSize(UINT, WPARAM, LPARAM lParam, BOOL&);
 	LRESULT OnSetFocus(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&);
+	LRESULT OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&);
+	// room for the widest line number
+	void UpdateNumberMargin();
 	LRESULT OnMarginClick(int, LPNMHDR, BOOL&);
 	LRESULT OnDwellStart(int, LPNMHDR, BOOL&);
 	LRESULT OnDwellEnd(int, LPNMHDR, BOOL&);

@@ -24,6 +24,7 @@
 #include "RecentTargets.h"
 #include "SavedBreakpoints.h"
 #include "InputDlg.h"
+#include "AppFonts.h"
 #include <TlHelp32.h>
 #include <format>
 
@@ -249,6 +250,12 @@ LRESULT CMainFrame::OnDebugDetach(WORD, WORD, HWND, BOOL&) {
 	if (DebugManager::Session().HasTarget())
 		DebugManager::Debugger().Detach();
 
+	return 0;
+}
+
+LRESULT CMainFrame::OnChooseFont(WORD, WORD id, HWND, BOOL&) {
+	// (the windows that use the font take it again from AppFonts::FontsChangedMessage)
+	AppFonts::Choose(id == ID_OPTIONS_CODEFONT ? AppFonts::Kind::Code : AppFonts::Kind::Ui, m_hWnd);
 	return 0;
 }
 

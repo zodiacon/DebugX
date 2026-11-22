@@ -359,6 +359,7 @@
     <ClCompile Include="UserProcessesView.cpp" />
     <ClCompile Include="HandlesView.cpp" />
     <ClCompile Include="AnalysisView.cpp" />
+    <ClCompile Include="AppFonts.cpp" />
     <ClCompile Include="IrpsView.cpp" />
     <ClCompile Include="ObjectsView.cpp" />
     <ClCompile Include="DriversView.cpp" />
@@ -410,6 +411,7 @@
     <ClInclude Include="UserProcessesView.h" />
     <ClInclude Include="HandlesView.h" />
     <ClInclude Include="AnalysisView.h" />
+    <ClInclude Include="AppFonts.h" />
     <ClInclude Include="IrpsView.h" />
     <ClInclude Include="ObjectsView.h" />
     <ClInclude Include="DriversView.h" />

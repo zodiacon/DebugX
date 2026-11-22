@@ -7,6 +7,7 @@
 #include "MainFrm.h"
 #include "AppSettings.h"
 #include "ScintillaCtrl.h"
+#include "AppFonts.h"
 
 CAppModule _Module;
 AppSettings g_Settings;
@@ -53,6 +54,7 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPTSTR lp
 		WTLHelper::InitDarkMode();
 	else
 		WTLHelper::InitDarkMode(AppSettings::Get().DarkMode() ? DarkModeKind::Dark : DarkModeKind::Classic);
+	AppFonts::Load();
 
 	int nRet = Run(lpstrCmdLine, nCmdShow);
 

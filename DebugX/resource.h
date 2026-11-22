@@ -154,6 +154,8 @@
 #define ID_DEBUG_RELOADSYMBOLS          32813
 #define ID_FILE_OPENSOURCE              32814
 #define ID_FILE_RUNASADMINISTRATOR      32892
+#define ID_OPTIONS_CODEFONT             32893
+#define ID_OPTIONS_UIFONT               32894
 #define ID_DEBUG_SETNEXTSTATEMENT       32815
 #define ID_DEBUG_RESTART                32816
 #define ID_EDIT_FINDNEXT                32817
@@ -197,7 +199,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        254
-#define _APS_NEXT_COMMAND_VALUE         32893
+#define _APS_NEXT_COMMAND_VALUE         32895
 #define _APS_NEXT_CONTROL_VALUE         1063
 #define _APS_NEXT_SYMED_VALUE           101
 #endif

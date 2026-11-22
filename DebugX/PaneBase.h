@@ -2,6 +2,7 @@
 
 #include <string>
 #include "DebugManager.h"
+#include "AppFonts.h"		// (the panes handle its FontsChangedMessage)
 
 struct IPane;
 // (PaneRegistry.cpp) a pane that goes away must not be asked for its state any more

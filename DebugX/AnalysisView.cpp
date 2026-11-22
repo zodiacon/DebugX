@@ -12,8 +12,7 @@ LRESULT CAnalysisView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Text->SetWrapMode(Wrap::None);
 	m_Text->SetScrollWidthTracking(true);
 	m_Text->SetMarginWidthN(1, 0);
-	m_Text->StyleSetFont(static_cast<int>(StylesCommon::Default), "Consolas");
-	m_Text->StyleSetSizeFractional(static_cast<int>(StylesCommon::Default), 900);
+	AppFonts::ApplyCodeFont(m_Text.Call());
 	ApplyColors();
 	SetText(L"Debug > Analyze runs !analyze -v on the target: when it is a dump, or it stopped on an exception.");
 	return 0;
@@ -35,6 +34,14 @@ LRESULT CAnalysisView::OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&) {
 	ApplyColors();
 	::SetWindowTheme(m_Text, WTLHelper::IsDarkMode() ? L"DarkMode_Explorer" : L"Explorer", nullptr);
 	m_Text.Invalidate();
+	return 0;
+}
+
+LRESULT CAnalysisView::OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&) {
+	if (static_cast<AppFonts::Kind>(wParam) == AppFonts::Kind::Code) {
+		AppFonts::ApplyCodeFont(m_Text.Call());
+		ApplyColors();		// (StyleClearAll: the font to every style)
+	}
 	return 0;
 }
 

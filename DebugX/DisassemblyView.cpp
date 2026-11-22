@@ -1,7 +1,6 @@
 #include "pch.h"
 #include "DisassemblyView.h"
 #include "DebugManager.h"
-#include "InputDlg.h"
 #include <format>
 #include <scintilla/ILexer.h>
 #include <lexilla/Lexilla.h>
@@ -11,6 +10,12 @@ using namespace DebugEngine;
 using namespace Scintilla;
 
 LRESULT CDisassemblyView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
+	m_AddressEdit.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, 0, AddressId);
+	m_AddressEdit.SetFont(AppFonts::UiFont());
+	m_AddressEdit.SetCueBannerText(L"Address or symbol (0x7ff6`1234, kernel32!CreateFileW, @rsp, ...)", TRUE);
+	m_Go.Create(*this, nullptr, L"Go", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, GoId);
+	m_Go.SetFont(AppFonts::UiFont());
+
 	m_Text.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL |
 		WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0, TextId);
 	m_Text.InitCall();
@@ -18,8 +23,7 @@ LRESULT CDisassemblyView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Text->SetReadOnly(true);
 	m_Text->SetUndoCollection(false);
 	m_Text->SetWrapMode(Wrap::None);
-	m_Text->StyleSetFont(static_cast<int>(StylesCommon::Default), "Consolas");
-	m_Text->StyleSetSizeFractional(static_cast<int>(StylesCommon::Default), 900);
+	AppFonts::ApplyCodeFont(m_Text.Call());
 
 	if (auto lexer = ::CreateLexer("asm")) {
 		m_Text->SetILexer(lexer);
@@ -103,8 +107,14 @@ LRESULT CDisassemblyView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
 
 LRESULT CDisassemblyView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	auto cx = GET_X_LPARAM(lParam), cy = GET_Y_LPARAM(lParam);
-	if (cx && cy)
-		m_Text.MoveWindow(0, 0, cx, cy);
+	if (cx == 0 || cy == 0)
+		return 0;
+	// (as the Memory pane's address bar; as big as the UI font needs)
+	int barHeight = std::max(24, AppFonts::TextHeight(AppFonts::UiFont()) + 10);
+	int buttonWidth = std::max(50, AppFonts::TextWidth(AppFonts::UiFont(), L"Go") + 28), gap = 4;
+	m_AddressEdit.MoveWindow(gap, 2, cx - gap - buttonWidth - 4, barHeight - 4);
+	m_Go.MoveWindow(cx - buttonWidth, 2, buttonWidth, barHeight - 4);
+	m_Text.MoveWindow(0, barHeight, cx, cy - barHeight);
 	return 0;
 }
 
@@ -117,6 +127,21 @@ LRESULT CDisassemblyView::OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&) {
 	ApplyColors();
 	::SetWindowTheme(m_Text, WTLHelper::IsDarkMode() ? L"DarkMode_Explorer" : L"Explorer", nullptr);
 	m_Text.Invalidate();
+	return 0;
+}
+
+LRESULT CDisassemblyView::OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&) {
+	if (static_cast<AppFonts::Kind>(wParam) == AppFonts::Kind::Code) {
+		AppFonts::ApplyCodeFont(m_Text.Call());
+		ApplyColors();		// (StyleClearAll: the font to every style)
+	}
+	else {
+		m_AddressEdit.SetFont(AppFonts::UiFont());
+		m_Go.SetFont(AppFonts::UiFont());
+		CRect rc;
+		GetClientRect(&rc);
+		SendMessage(WM_SIZE, SIZE_RESTORED, MAKELPARAM(rc.Width(), rc.Height()));
+	}
 	return 0;
 }
 
@@ -155,6 +180,7 @@ void CDisassemblyView::ApplyColors() {
 }
 
 void CDisassemblyView::OnTargetEnded() {
+	ClearGoTo();
 	m_SourceFiles.clear();
 	m_LineAddresses.clear();
 	m_Breakpoints.clear();
@@ -191,8 +217,8 @@ Task<void> CDisassemblyView::Refresh() {
 		m_Breakpoints.clear();
 		m_ShownGoTo = 0;
 		auto text = ToUtf8(DebugManager::Session().Target() == TargetType::LocalKernel
-			? L"; A local kernel has no current instruction: the system goes on running.\n; Go to Address (Ctrl+G, or right-click) shows the code at an address or a symbol (nt!NtCreateFile, ...)."
-			: L"; The current thread has no instruction pointer here.\n; Go to Address (Ctrl+G, or right-click) shows the code at an address or a symbol.");
+			? L"; A local kernel has no current instruction: the system goes on running.\n; Type an address or a symbol (nt!NtCreateFile, ...) in the box above (Ctrl+G) to see the code there."
+			: L"; The current thread has no instruction pointer here.\n; Type an address or a symbol in the box above (Ctrl+G) to see the code there.");
 		m_Text->SetReadOnly(false);
 		m_Text->SetText(text.c_str());
 		m_Text->SetReadOnly(true);
@@ -372,15 +398,41 @@ LRESULT CDisassemblyView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) 
 		RequestRefresh();
 	}
 	else if (id == ID_EDIT_GOTO)
-		GoToAddress();
+		FocusAddressBar();
 	else
 		RunCommand(id, address);
 	return 0;
 }
 
 LRESULT CDisassemblyView::OnGoTo(WORD, WORD, HWND, BOOL&) {
+	FocusAddressBar();
+	return 0;
+}
+
+LRESULT CDisassemblyView::OnGoClicked(WORD, WORD, HWND, BOOL&) {
 	GoToAddress();
 	return 0;
+}
+
+LRESULT CDisassemblyView::OnAddressChar(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
+	if (wParam == VK_RETURN)
+		GoToAddress();
+	else if (wParam == VK_ESCAPE)
+		m_Text.SetFocus();
+	else
+		handled = FALSE;
+	return 0;
+}
+
+void CDisassemblyView::FocusAddressBar() {
+	m_AddressEdit.SetFocus();
+	m_AddressEdit.SetSel(0, -1);
+}
+
+void CDisassemblyView::ClearGoTo() {
+	m_GoToAddress = 0;
+	if (m_AddressEdit.IsWindow())
+		m_AddressEdit.SetWindowText(L"");
 }
 
 Task<void> CDisassemblyView::GoToAddress() {
@@ -390,20 +442,31 @@ Task<void> CDisassemblyView::GoToAddress() {
 		::MessageBeep(MB_ICONWARNING);
 		co_return;
 	}
-	CInputDlg dlg(L"Go to Address", L"Address or expression (0x7ff6`1234, kernel32!CreateFileW, @rsp, ...):", m_GoToExpression.c_str());
-	if (dlg.DoModal(m_hWnd) != IDOK)
+	CString text;
+	m_AddressEdit.GetWindowText(text);
+	text.Trim();
+	if (text.IsEmpty()) {
+		// back to the current instruction (or the scope frame's)
+		if (m_GoToAddress) {
+			m_GoToAddress = 0;
+			m_ShownGoTo = 0;
+			RequestRefresh();
+		}
+		m_Text.SetFocus();
 		co_return;
+	}
 
-	std::wstring expression((PCWSTR)dlg.GetText());
+	std::wstring expression(text);
 	ULONG64 address = 0;
 	auto hr = co_await DebugManager::Debugger().Evaluate(expression.c_str(), address);
 	if (!*alive)
 		co_return;
 	if (FAILED(hr) || address == 0) {
 		AtlMessageBox(m_hWnd, std::format(L"\"{}\" is not an address (0x{:08X})", expression, static_cast<unsigned>(hr)).c_str(), IDS_TITLE, MB_ICONERROR);
+		if (*alive)
+			FocusAddressBar();
 		co_return;
 	}
-	m_GoToExpression = std::move(expression);
 	m_GoToAddress = address;
 	m_ShownGoTo = 0;
 	RequestRefresh();

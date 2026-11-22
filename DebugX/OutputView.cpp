@@ -21,8 +21,7 @@ LRESULT COutputView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_hWndClient = m_Edit.Create(*this, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPSIBLINGS |
 		ES_MULTILINE | ES_READONLY | ES_NOHIDESEL | ES_AUTOVSCROLL | ES_AUTOHSCROLL);
 	m_Edit.SetLimitText(0);
-	m_Font.CreatePointFont(90, L"Consolas");
-	m_Edit.SetFont(m_Font);
+	m_Edit.SetFont(AppFonts::CodeFont());
 
 	// everything so far (the window may be made long after the target started), then what comes
 	auto& session = DebugManager::Session();
@@ -40,6 +39,12 @@ LRESULT COutputView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 LRESULT COutputView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
 	DebugManager::Session().RemoveObserver(this);
 	handled = FALSE;
+	return 0;
+}
+
+LRESULT COutputView::OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&) {
+	if (static_cast<AppFonts::Kind>(wParam) == AppFonts::Kind::Code)
+		m_Edit.SetFont(AppFonts::CodeFont());
 	return 0;
 }
 

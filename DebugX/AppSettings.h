@@ -21,6 +21,9 @@ struct AppSettings : Settings {
 		SETTING(DebugChildProcesses, 0, SettingType::Int32);	// Options > Debug Child Processes
 		SETTING_STRING(ProcessServer, L"tcp:server=,port=5005");	// the last Connect to Process Server options
 		SETTING(LayoutMode, 0, SettingType::Int32);	// the window layout in use (layout.json) is the one for: 0 user mode, 1 kernel mode
+		// Options > Code Font / UI Font (AppFonts): "face;size in tenths of a point;weight;italic"; empty: the default
+		SETTING_STRING(CodeFont, L"");
+		SETTING_STRING(UiFont, L"");
 	END_SETTINGS
 
 	DEF_SETTING(DarkMode, int)
@@ -34,4 +37,6 @@ struct AppSettings : Settings {
 	DEF_SETTING(DebugChildProcesses, int)
 	DEF_SETTING_STRING(ProcessServer)
 	DEF_SETTING(LayoutMode, int)
+	DEF_SETTING_STRING(CodeFont)
+	DEF_SETTING_STRING(UiFont)
 };

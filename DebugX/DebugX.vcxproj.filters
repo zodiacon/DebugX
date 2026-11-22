@@ -24,6 +24,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="AppFonts.cpp" />
     <ClCompile Include="AnalysisView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -149,6 +150,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AppFonts.h" />
     <ClInclude Include="AnalysisView.h">
       <Filter>Views</Filter>
     </ClInclude>

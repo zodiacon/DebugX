@@ -41,8 +41,7 @@ LRESULT CSourceView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Text->SetScrollWidthTracking(true);
 	// (the mouse resting on a name shows its value)
 	m_Text->SetMouseDwellTime(500);
-	m_Text->StyleSetFont(static_cast<int>(StylesCommon::Default), "Consolas");
-	m_Text->StyleSetSizeFractional(static_cast<int>(StylesCommon::Default), 1000);
+	AppFonts::ApplyCodeFont(m_Text.Call());
 
 	m_IsCode = IsCodeFile(m_Path);
 	if (m_IsCode) {
@@ -121,10 +120,22 @@ bool CSourceView::LoadFile() {
 	m_Text->SetReadOnly(true);
 	m_Text->EmptyUndoBuffer();
 
-	// room for the widest line number
+	UpdateNumberMargin();
+	return ok;
+}
+
+void CSourceView::UpdateNumberMargin() {
 	auto digits = std::to_string(m_Text->LineCount());
 	m_Text->SetMarginWidthN(MarginNumbers, m_Text->TextWidth(static_cast<int>(StylesCommon::LineNumber), ("_" + digits).c_str()) + 4);
-	return ok;
+}
+
+LRESULT CSourceView::OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&) {
+	if (static_cast<AppFonts::Kind>(wParam) == AppFonts::Kind::Code) {
+		AppFonts::ApplyCodeFont(m_Text.Call());
+		ApplyColors();		// (StyleClearAll: the font to every style)
+		UpdateNumberMargin();
+	}
+	return 0;
 }
 
 LRESULT CSourceView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {

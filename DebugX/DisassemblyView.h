@@ -6,13 +6,16 @@
 #include "Lifetime.h"
 #include "PaneBase.h"
 #include "ScintillaCtrl.h"
+#include "AppFonts.h"
 #include "resource.h"
 
 // A window of instructions around the current thread's instruction pointer (or wherever "Go to
 // Address" last sent it): a read-only CScintillaCtrl with an "asm" Lexilla lexer, a breakpoint glyph
 // (click the margin, or right-click for the menu) and an arrow on the current instruction. Refreshes,
-// like the other live panes, whenever the target breaks (CPaneBase); "Go to Address" and "Run to
-// Cursor" are on the right-click menu, there being nowhere else for them yet.
+// like the other live panes, whenever the target breaks (CPaneBase); "Run to Cursor" is on the
+// right-click menu. Go to Address is the address bar above the code (an address, a symbol, any
+// expression the engine evaluates; Enter or Go -- empty: back to the current instruction), which
+// Ctrl+G and the right-click menu move to.
 // With Show Source Lines (right-click; on by default, kept with the pane), each source line the instructions come from
 // is shown before them, as a comment.
 class CDisassemblyView :
@@ -21,10 +24,10 @@ class CDisassemblyView :
 public:
 	using BaseFrame = CFrameWindowImpl<CDisassemblyView, CWindow, CControlWinTraits>;
 
-	CDisassemblyView() : m_Text(this, 2) {
+	CDisassemblyView() : m_Text(this, 2), m_AddressEdit(this, 3) {
 	}
 
-	enum { TextId = 150 };
+	enum { TextId = 150, AddressId, GoId };
 	enum { MarkerBreakpoint, MarkerCurrent, MarkerFrame };
 	enum { MarginSymbols };
 
@@ -34,16 +37,20 @@ public:
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		MESSAGE_HANDLER(WTLHelper::ThemeChangedMessage, OnThemeChanged)
+		MESSAGE_HANDLER(AppFonts::FontsChangedMessage, OnFontsChanged)
 		NOTIFY_HANDLER(TextId, SCN_MARGINCLICK, OnMarginClick)
 		// (F9, Ctrl+F10 and Ctrl+Shift+F10 come from the frame, for the line the caret is on)
 		COMMAND_ID_HANDLER(ID_DISASM_TOGGLEBREAKPOINT, OnCaretCommand)
 		COMMAND_ID_HANDLER(ID_DEBUG_RUNTOCURSOR, OnCaretCommand)
 		COMMAND_ID_HANDLER(ID_DEBUG_SETNEXTSTATEMENT, OnCaretCommand)
 		COMMAND_ID_HANDLER(ID_EDIT_GOTO, OnGoTo)
+		COMMAND_HANDLER(GoId, BN_CLICKED, OnGoClicked)
 		CHAIN_MSG_MAP(CPaneBase<CDisassemblyView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(2)
 		MESSAGE_HANDLER(WM_CONTEXTMENU, OnTextContextMenu)
+	ALT_MSG_MAP(3)
+		MESSAGE_HANDLER(WM_CHAR, OnAddressChar)
 	END_MSG_MAP()
 
 	HWND Create(HWND hParent) override {
@@ -56,11 +63,11 @@ public:
 	// ISessionObserver
 	// (a stop, a step, another thread or frame: back to where the code is running)
 	void OnContextChanged() override {
-		m_GoToAddress = 0;
+		ClearGoTo();
 		RequestRefresh();
 	}
 	void OnScopeChanged() override {
-		m_GoToAddress = 0;
+		ClearGoTo();
 		RequestRefresh();
 	}
 	// (code patched in place)
@@ -89,11 +96,19 @@ private:
 	LRESULT OnSize(UINT, WPARAM, LPARAM lParam, BOOL&);
 	LRESULT OnSetFocus(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&);
+	LRESULT OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&);
 	LRESULT OnMarginClick(int, LPNMHDR, BOOL&);
 	LRESULT OnTextContextMenu(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnCaretCommand(WORD, WORD id, HWND, BOOL&);
 	LRESULT OnGoTo(WORD, WORD, HWND, BOOL&);
+	LRESULT OnGoClicked(WORD, WORD, HWND, BOOL&);
+	LRESULT OnAddressChar(UINT, WPARAM, LPARAM, BOOL&);
+	// Ctrl+G, the menu: to the address bar, its text selected
+	void FocusAddressBar();
+	// the address bar's expression, evaluated; empty: back to where the code runs
 	DebugEngine::Task<void> GoToAddress();
+	// back to where the code runs (a stop, a step, another thread or frame): the address bar is emptied
+	void ClearGoTo();
 
 	void ApplyColors();
 	// a command of the menu (ID_DISASM_TOGGLEBREAKPOINT, ID_DEBUG_RUNTOCURSOR, ID_DEBUG_SETNEXTSTATEMENT) on an instruction
@@ -108,11 +123,12 @@ private:
 	const std::vector<std::wstring>& SourceLines(const std::wstring& path);
 
 	CContainedWindowT<CScintillaCtrl> m_Text;
+	CContainedWindowT<CEdit> m_AddressEdit;
+	CButton m_Go;
 	std::vector<ULONG64> m_LineAddresses;		// parallel to the document's lines
 	std::vector<DebugEngine::BreakpointInfo> m_Breakpoints;
 	ULONG64 m_GoToAddress{ 0 };		// where Go to Address sent the view; 0: where the scope frame is
 	ULONG64 m_ShownGoTo{ 0 };		// the m_GoToAddress the text is for
-	std::wstring m_GoToExpression;	// what was typed for it last
 	bool m_ShowSource{ true };
 	std::map<std::wstring, std::vector<std::wstring>> m_SourceFiles;
 	Lifetime m_Lifetime;

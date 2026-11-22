@@ -25,6 +25,7 @@ public:
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		MESSAGE_HANDLER(WTLHelper::ThemeChangedMessage, OnThemeChanged)
+		MESSAGE_HANDLER(AppFonts::FontsChangedMessage, OnFontsChanged)
 		COMMAND_ID_HANDLER(ID_DEBUG_ANALYZE, OnAnalyze)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(1)
@@ -42,6 +43,7 @@ private:
 	LRESULT OnSize(UINT, WPARAM, LPARAM lParam, BOOL&);
 	LRESULT OnSetFocus(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&);
+	LRESULT OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&);
 	LRESULT OnAnalyze(WORD, WORD, HWND, BOOL&);
 
 	DebugEngine::Task<void> Analyze();

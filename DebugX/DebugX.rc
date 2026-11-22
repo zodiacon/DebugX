@@ -146,6 +146,9 @@ BEGIN
         MENUITEM "&Debugger Markup Language",   ID_OPTIONS_DEBUGGERMARKUPLANGUAGE
         MENUITEM "Debug &Child Processes",      ID_OPTIONS_DEBUGCHILDPROCESSES
         MENUITEM SEPARATOR
+        MENUITEM "&Code Font...",               ID_OPTIONS_CODEFONT
+        MENUITEM "&UI Font...",                 ID_OPTIONS_UIFONT
+        MENUITEM SEPARATOR
         MENUITEM "&Symbol and Source Paths...", ID_OPTIONS_SYMBOLPATHS
     END
     POPUP "&Window"

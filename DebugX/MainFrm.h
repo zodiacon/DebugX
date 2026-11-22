@@ -113,6 +113,8 @@ public:
 		COMMAND_RANGE_HANDLER(ID_WINDOW_DELETELAYOUT1, ID_WINDOW_DELETELAYOUT20, OnWindowDeleteLayout)
 		COMMAND_ID_HANDLER(ID_OPTIONS_ALWAYSONTOP, OnAlwaysOnTop)
 		COMMAND_ID_HANDLER(ID_OPTIONS_DARKMODE, OnToggleDarkMode)
+		COMMAND_ID_HANDLER(ID_OPTIONS_CODEFONT, OnChooseFont)
+		COMMAND_ID_HANDLER(ID_OPTIONS_UIFONT, OnChooseFont)
 		COMMAND_ID_HANDLER(ID_OPTIONS_DEBUGGERMARKUPLANGUAGE, OnToggleDml)
 		COMMAND_ID_HANDLER(ID_OPTIONS_DEBUGCHILDPROCESSES, OnToggleChildProcesses)
 		COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
@@ -201,6 +203,7 @@ private:
 	LRESULT OnAttachProcess(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnAlwaysOnTop(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnToggleDarkMode(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
+	LRESULT OnChooseFont(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugBreak(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugGo(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnDebugStop(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);

@@ -36,6 +36,7 @@ public:
 		MESSAGE_HANDLER(WM_SIZE, OnSize)
 		MESSAGE_HANDLER(WM_SETFOCUS, OnSetFocus)
 		MESSAGE_HANDLER(WTLHelper::ThemeChangedMessage, OnThemeChanged)
+		MESSAGE_HANDLER(AppFonts::FontsChangedMessage, OnFontsChanged)
 		COMMAND_HANDLER(GoId, BN_CLICKED, OnGo)
 		COMMAND_ID_HANDLER(ID_EDIT_GOTO, OnGoTo)
 		NOTIFY_CODE_HANDLER(NM_RCLICK, OnHexRightClick)
@@ -80,6 +81,7 @@ private:
 	LRESULT OnCreate(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnDestroy(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnSize(UINT, WPARAM, LPARAM lParam, BOOL&);
+	LRESULT OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&);
 	LRESULT OnSetFocus(UINT, WPARAM, LPARAM, BOOL&);
 	LRESULT OnGo(WORD, WORD, HWND, BOOL&);
 	// the display format: bytes, words, double or quad words; 16 or 32 bytes a line

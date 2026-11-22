@@ -4,24 +4,22 @@
 #include <format>
 #include "InputDlg.h"
 #include "ScintillaCtrl.h"
+#include "AppFonts.h"
 
 using namespace DebugEngine;
 
 LRESULT CMemoryView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
-	CFontHandle font;
-	font.CreatePointFont(90, L"Segoe UI");
-
 	m_AddressEdit.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_BORDER, 0, AddressId);
-	m_AddressEdit.SetFont(font);
+	m_AddressEdit.SetFont(AppFonts::UiFont());
 	m_Expression = DebugManager::Debugger().StackPointerExpression().c_str();	// the current stack pointer; shown until "Go" changes it
 	m_AddressEdit.SetWindowText(m_Expression);
 	m_Go.Create(*this, nullptr, L"Go", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, GoId);
-	m_Go.SetFont(font);
+	m_Go.SetFont(AppFonts::UiFont());
 
 	m_Hex.Create(*this, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_TABSTOP);
 	m_Hex.SetReadOnly(true);
 	m_Hex.SetInsertMode(false);
-	m_Hex.SetFont(L"Consolas", 90);
+	m_Hex.SetFont(AppFonts::Spec(AppFonts::Kind::Code).Face.c_str(), AppFonts::Spec(AppFonts::Kind::Code).PointSize10);
 	::SetWindowSubclass(m_Hex, HexSubclassProc, 0, 0);
 
 	// (the other formats: text)
@@ -30,8 +28,7 @@ LRESULT CMemoryView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_Formatted->SetUndoCollection(false);
 	m_Formatted->SetWrapMode(Scintilla::Wrap::None);
 	m_Formatted->SetMarginWidthN(1, 0);
-	m_Formatted->StyleSetFont(static_cast<int>(Scintilla::StylesCommon::Default), "Consolas");
-	m_Formatted->StyleSetSizeFractional(static_cast<int>(Scintilla::StylesCommon::Default), 900);
+	AppFonts::ApplyCodeFont(m_Formatted.Call());
 	ApplyFormattedColors();
 
 	InitPane();
@@ -58,11 +55,30 @@ LRESULT CMemoryView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	if (cx == 0 || cy == 0)
 		return 0;
 
-	int barHeight = 24, buttonWidth = 50, labelWidth = 4;
+	// (as big as the UI font needs)
+	int barHeight = std::max(24, AppFonts::TextHeight(AppFonts::UiFont()) + 10);
+	int buttonWidth = std::max(50, AppFonts::TextWidth(AppFonts::UiFont(), L"Go") + 28), labelWidth = 4;
 	m_AddressEdit.MoveWindow(labelWidth, 2, cx - labelWidth - buttonWidth - 4, barHeight - 4);
 	m_Go.MoveWindow(cx - buttonWidth, 2, buttonWidth, barHeight - 4);
 	m_Hex.MoveWindow(0, barHeight, cx, cy - barHeight);
 	m_Formatted.MoveWindow(0, barHeight, cx, cy - barHeight);
+	return 0;
+}
+
+LRESULT CMemoryView::OnFontsChanged(UINT, WPARAM wParam, LPARAM, BOOL&) {
+	if (static_cast<AppFonts::Kind>(wParam) == AppFonts::Kind::Code) {
+		auto& spec = AppFonts::Spec(AppFonts::Kind::Code);
+		m_Hex.SetFont(spec.Face.c_str(), spec.PointSize10);
+		AppFonts::ApplyCodeFont(m_Formatted.Call());
+		ApplyFormattedColors();		// (StyleClearAll: the font to every style)
+	}
+	else {
+		m_AddressEdit.SetFont(AppFonts::UiFont());
+		m_Go.SetFont(AppFonts::UiFont());
+		CRect rc;
+		GetClientRect(&rc);
+		SendMessage(WM_SIZE, SIZE_RESTORED, MAKELPARAM(rc.Width(), rc.Height()));
+	}
 	return 0;
 }
 
