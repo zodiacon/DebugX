@@ -134,6 +134,9 @@ private:
 	void InitMenu(HMENU menu);
 	// saves what a close saves, starts DebugX again elevated and closes this one; false if it was not started (UAC declined)
 	bool RelaunchElevated();
+	// Gives up a kernel connection that waits for its target, by starting DebugX again (asked first): no interrupt ends
+	// DbgEng's wait for a kernel to connect, nor does EndSession from another thread, and there is one engine per process.
+	void CancelKernelConnection();
 	void SaveState();
 	void ApplyTheme();
 	void SaveLayout();
@@ -250,6 +253,8 @@ private:
 	std::optional<Launch> m_Launch;
 	FindOptions m_Find;
 	bool m_Restarting{ false };
+	// Attach to Kernel is waiting for the target to connect (Break and Stop give up waiting: CancelKernelConnection)
+	bool m_Connecting{ false };
 	// the program whose breakpoints are kept (SavedBreakpoints::KeyOf): one that was run or attached to; empty: none
 	std::wstring m_BreakpointsKey;
 	bool m_AnalyzeOnBreak{ false };

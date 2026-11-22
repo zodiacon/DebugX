@@ -1007,7 +1007,8 @@ Task<HRESULT> DebuggerX::Impl::AttachKernel(PCWSTR connectOptions) {
 	auto hr = co_await Run([this, options = std::wstring(connectOptions)] {
 		m_spControl->AddEngineOptions(DEBUG_ENGOPT_INITIAL_BREAK);
 		HR(m_spClient->AttachKernelWide(DEBUG_ATTACH_KERNEL_CONNECTION, options.c_str()));
-		// waits for the target to connect; Break (SetInterrupt) ends the wait
+		// waits for the target to connect, for ever if it does not: no interrupt (active, passive or exit) ends this wait, nor
+		// does EndSession(DEBUG_END_REENTRANT) from another thread, and a timeout is E_NOTIMPL (all three engines)
 		auto hr = m_spControl->WaitForEvent(0, INFINITE);
 		UpdateStatus();
 		if (FAILED(hr))

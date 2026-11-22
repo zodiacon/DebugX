@@ -227,6 +227,30 @@ bool CMainFrame::RelaunchElevated() {
 	return true;
 }
 
+void CMainFrame::CancelKernelConnection() {
+	if (AtlMessageBox(*this, L"The debugger engine cannot stop waiting for the kernel to connect: DebugX has to start again to "
+		L"give up the connection.\n\nRestart DebugX?", IDS_TITLE, MB_ICONQUESTION | MB_OKCANCEL) != IDOK || !m_Connecting)
+		return;		// (or the target connected meanwhile)
+
+	// saved before the new instance starts, which reads them
+	SaveState();
+	AppSettings::Get().Save();
+	WCHAR path[MAX_PATH];
+	::GetModuleFileName(nullptr, path, _countof(path));
+	STARTUPINFO si{ sizeof(si) };
+	PROCESS_INFORMATION pi;
+	// (with this one's elevation, if it has it)
+	if (!::CreateProcess(path, nullptr, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) {
+		AtlMessageBox(*this, L"DebugX could not be started again.", IDS_TITLE, MB_ICONERROR);
+		return;
+	}
+	::CloseHandle(pi.hThread);
+	::CloseHandle(pi.hProcess);
+	// Not a close: the debug thread is inside the engine's wait, which a shutdown would wait for (and then leave the
+	// engine as it is, in the middle of it). The kernel connection's socket goes with the process.
+	::TerminateProcess(::GetCurrentProcess(), 0);
+}
+
 LRESULT CMainFrame::OnRunAsAdministrator(WORD, WORD, HWND, BOOL&) {
 	if (DebugManager::Session().HasTarget()
 		&& AtlMessageBox(*this, L"Running as administrator ends the debugging session. Continue?", IDS_TITLE,
@@ -554,7 +578,9 @@ LRESULT CMainFrame::OnToggleDarkMode(WORD, WORD, HWND, BOOL&) {
 // (the commands below can also come from the keyboard, whatever the menu last showed: they check for themselves)
 LRESULT CMainFrame::OnDebugBreak(WORD, WORD, HWND, BOOL&) {
 	auto& session = DebugManager::Session();
-	if (session.IsRunning() || session.IsBusy())
+	if (m_Connecting)
+		CancelKernelConnection();
+	else if (session.IsRunning() || session.IsBusy())
 		DebugManager::Debugger().Break();
 
 	return 0;
@@ -568,7 +594,9 @@ LRESULT CMainFrame::OnDebugGo(WORD, WORD, HWND, BOOL&) {
 }
 
 LRESULT CMainFrame::OnDebugStop(WORD, WORD, HWND, BOOL&) {
-	if (DebugManager::Session().HasTarget())
+	if (m_Connecting)
+		CancelKernelConnection();
+	else if (DebugManager::Session().HasTarget())
 		DebugManager::Debugger().Stop();
 
 	return 0;
@@ -1163,10 +1191,17 @@ Task<void> CMainFrame::AttachKernel(CString connection) {
 	auto& dbg = DebugManager::Debugger();
 
 	m_Launch.reset();		// (no Restart for it)
+	// (until the target connects -- with no machine there, for ever; Break or Stop gives up, CancelKernelConnection)
+	m_Connecting = true;
+	UpdateUI();
+	::SetWindowText(m_hWndStatusBar, (L"Waiting for the kernel to connect (" + connection + L")... Stop gives up").GetString());
 	auto hr = co_await dbg.AttachKernel(connection);
 	if (!*alive)
 		co_return;
 
+	m_Connecting = false;
+	UpdateUI();
+	::SetWindowText(m_hWndStatusBar, L"Ready");
 	if (FAILED(hr)) {
 		CString text;
 		text.Format(L"Failed to attach to the kernel with \"%s\" (0x%08X)", (PCWSTR)connection, static_cast<unsigned>(hr));
@@ -1504,7 +1539,7 @@ void CMainFrame::UpdateUI(bool force) {
 
 	UIEnable(ID_DEBUG_GO, canRun, force);
 	UIEnable(ID_DEBUG_BREAK, session.IsRunning() || session.IsBusy(), force);
-	UIEnable(ID_DEBUG_STOP, attached, force);
+	UIEnable(ID_DEBUG_STOP, attached || m_Connecting, force);
 	UIEnable(ID_DEBUG_DETACH, session.HasTarget() && !isDump, force);
 	UIEnable(ID_DEBUG_SAVEDUMP, (target & TargetType::Live) == TargetType::Live && session.IsBroken() && !session.IsBusy(), force);
 	UIEnable(ID_DEBUG_ANALYZE, session.HasTarget() && !session.IsRunning() && !session.IsBusy(), force);

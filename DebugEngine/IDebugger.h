@@ -361,7 +361,7 @@ namespace DebugEngine {
 			co_return E_NOTIMPL;
 		}
 		// a kernel debugging connection, as windbg -k takes it: "net:port=50000,key=a.b.c.d", "com:port=COM1,baud=115200", ...
-		// The task completes once the target has connected (Break gives up waiting).
+		// The task completes once the target has connected -- not before: nothing interrupts DbgEng's wait for it.
 		virtual Task<HRESULT> AttachKernel(PCWSTR connectOptions) {
 			co_return E_NOTIMPL;
 		}
