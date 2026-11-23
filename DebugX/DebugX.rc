@@ -86,6 +86,7 @@ BEGIN
         MENUITEM "&Command\tAlt+1",                    ID_VIEW_COMMAND
         MENUITEM "&Output",                     ID_VIEW_OUTPUT
         MENUITEM "Anal&ysis",                   ID_VIEW_ANALYSIS
+        MENUITEM "&Assistant (AI)",             ID_VIEW_ASSISTANT
         MENUITEM "&Threads\tAlt+8",                    ID_VIEW_THREADS
         MENUITEM "&Processes",                  ID_VIEW_USERPROCESSES
         MENUITEM "&Handles",                    ID_VIEW_HANDLES
@@ -157,6 +158,7 @@ BEGIN
         MENUITEM "&UI Font...",                 ID_OPTIONS_UIFONT
         MENUITEM SEPARATOR
         MENUITEM "&Symbol and Source Paths...", ID_OPTIONS_SYMBOLPATHS
+        MENUITEM "&MCP Server (AI Assistants)...", ID_OPTIONS_MCPSERVER
     END
     POPUP "&Window"
     BEGIN
@@ -446,6 +448,47 @@ BEGIN
     PUSHBUTTON      "  Cancel",IDCANCEL,173,193,54,14,BS_FLAT
 END
 
+IDD_MCPSERVER DIALOGEX 0, 0, 330, 190
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "MCP Server"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Lets AI assistants (Claude Code, other MCP clients) look into what DebugX is debugging: threads, call stacks, memory, locals, debugger commands; and run, step and set breakpoints as their user allows. Local connections only.",IDC_STATIC,7,7,316,26
+    CONTROL         "&Enable the MCP server",IDC_MCP_ENABLE,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,38,150,10
+    LTEXT           "&Port:",IDC_STATIC,7,56,22,8
+    EDITTEXT        IDC_MCP_PORT,32,54,40,12,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "",IDC_MCP_STATUS,80,56,243,8
+    LTEXT           "&Token (a client sends it with each request; whoever has it can do whatever the debugger can):",IDC_STATIC,7,74,316,8
+    EDITTEXT        IDC_MCP_TOKEN,7,86,250,12,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "&New Token",IDC_MCP_NEWTOKEN,263,85,60,14,BS_FLAT
+    LTEXT           "To add it to &Claude Code, run this in a terminal (copy it with the button below):",IDC_STATIC,7,106,316,8
+    EDITTEXT        IDC_MCP_COMMAND,7,118,316,44,ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL
+    PUSHBUTTON      "C&opy Command",IDC_MCP_COPY,7,169,70,14,BS_FLAT
+    DEFPUSHBUTTON   "  OK",IDOK,207,169,56,14,BS_CENTER | BS_FLAT
+    PUSHBUTTON      "  Cancel",IDCANCEL,267,169,56,14,BS_FLAT
+END
+
+IDD_ASSISTANTSETTINGS DIALOGEX 0, 0, 320, 182
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Assistant Settings"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "&Model:",IDC_STATIC,7,9,40,8
+    COMBOBOX        IDC_AI_MODEL,52,7,140,80,CBS_DROPDOWN | CBS_AUTOHSCROLL | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "&Effort:",IDC_STATIC,200,9,26,8
+    COMBOBOX        IDC_AI_EFFORT,228,7,85,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Effort is how much the model thinks before it answers: more is slower and costs more. Medium suits most questions.",IDC_STATIC,7,25,306,16
+    LTEXT           "Anthropic API &key (from console.anthropic.com):",IDC_STATIC,7,48,306,8
+    EDITTEXT        IDC_AI_KEY,7,60,306,12,ES_AUTOHSCROLL | ES_PASSWORD
+    LTEXT           "",IDC_AI_KEYSTATUS,7,76,306,8
+    CONTROL         "&Remove the stored key",IDC_AI_FORGETKEY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,88,200,10
+    LTEXT           "The key is kept in Windows Credential Manager, for your account only.",IDC_STATIC,7,102,306,8
+    CONTROL         "&Let it run, step, set breakpoints and run commands without asking",IDC_AI_ALLOWCONTROL,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,120,306,10
+    LTEXT           "Your questions, and what the tools read of the target (stacks, memory, values, source lines), are sent to Anthropic's API.",IDC_STATIC,7,136,306,16
+    DEFPUSHBUTTON   "  OK",IDOK,197,161,56,14,BS_CENTER | BS_FLAT
+    PUSHBUTTON      "  Cancel",IDCANCEL,257,161,56,14,BS_FLAT
+END
+
 IDD_EXCEPTIONS DIALOGEX 0, 0, 400, 280
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Exception Settings"
@@ -466,15 +509,17 @@ BEGIN
     PUSHBUTTON      "  Cancel",IDCANCEL,201,258,54,14,BS_FLAT
 END
 
-IDD_PROCSELECT DIALOGEX 0, 0, 309, 254
-STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+IDD_PROCSELECT DIALOGEX 0, 0, 400, 270
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME
 CAPTION "Select Process to Attach"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    DEFPUSHBUTTON   "Attach",IDOK,96,235,50,14,WS_DISABLED
-    PUSHBUTTON      "Cancel",IDCANCEL,162,235,50,14
-    CONTROL         "",IDC_PROCLIST,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP,7,0,295,219
-    PUSHBUTTON      "",IDC_REFRESH,282,227,26,24,BS_ICON
+    LTEXT           "&Filter:",IDC_STATIC,7,9,24,8
+    EDITTEXT        IDC_PROCFILTER,34,7,359,12,ES_AUTOHSCROLL
+    CONTROL         "",IDC_PROCLIST,"SysListView32",LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | LVS_OWNERDATA | WS_BORDER | WS_TABSTOP,7,24,386,214
+    PUSHBUTTON      "",IDC_REFRESH,7,243,26,22,BS_ICON
+    DEFPUSHBUTTON   "Attach",IDOK,281,249,54,14,WS_DISABLED
+    PUSHBUTTON      "Cancel",IDCANCEL,339,249,54,14
 END
 
 

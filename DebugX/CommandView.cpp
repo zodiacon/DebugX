@@ -36,7 +36,7 @@ LRESULT CCommandView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_CommandEdit.SetLimitText(512);
 	m_Prompt.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | SS_SUNKEN | SS_RIGHT);
 	m_Prompt.SetFont(AppFonts::CodeFont());
-	m_Execute.Create(*this, nullptr, L"Exec", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, ExecuteId);
+	m_Execute.Create(*this, nullptr, L"Exec", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT, 0, ExecuteId);
 	m_Execute.SetFont(AppFonts::UiFont());		// the UI font, like the Memory pane's "Go" button, not the code font
 
 

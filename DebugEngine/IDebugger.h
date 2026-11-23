@@ -367,6 +367,12 @@ namespace DebugEngine {
 		}
 		// a command in the engine's own language, as typed in the Command view; its output comes as Output notifications
 		virtual Task<HRESULT> ExecuteCommand(PCWSTR command) = 0;
+		// A command as ExecuteCommand, whose output is returned instead (no Output notifications for it). A command that runs
+		// the target (g) completes when it stops again, as with ExecuteCommand; what is output while it runs is not returned.
+		// A command the engine rejects still succeeds: the output says why.
+		virtual Task<HRESULT> ExecuteCommandCaptured(PCWSTR command, std::wstring& output) {
+			co_return E_NOTIMPL;
+		}
 		virtual Task<HRESULT> OutputPrompt() = 0;
 		// Ends the session and terminates the target. A running target is interrupted first.
 		virtual Task<HRESULT> Stop() = 0;
@@ -423,6 +429,11 @@ namespace DebugEngine {
 		// (only the nonvolatile ones are reliable in a frame other than 0)
 		virtual Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers) = 0;
 		virtual Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames = 128) = 0;
+		// the stack of any thread (the engine's id, ThreadInfo::Id), from where it is (frame 0); the current thread and scope
+		// frame stay as they are, and nobody is told of a change (no ContextChanged)
+		virtual Task<HRESULT> GetThreadStackTrace(ULONG threadId, std::vector<StackFrameInfo>& frames, ULONG maxFrames = 128) {
+			co_return E_NOTIMPL;
+		}
 		// the thread by the engine's id (ThreadInfo::Id)
 		virtual Task<HRESULT> SetCurrentThread(ULONG threadId) = 0;
 		// the process by the engine's id (ProcessInfo::Id); its current thread becomes the current one. ContextChanged follows

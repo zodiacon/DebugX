@@ -70,6 +70,8 @@ namespace {
 		{ "procs", ProcessSuite },
 		{ "remote", RemoteSuite },
 		{ "script", ScriptSuite },
+		{ "mcp", McpSuite },
+		{ "assistant", AssistantSuite },
 	};
 
 	// dbgeng.dll is delay-loaded: whichever is loaded first is the one the engine uses
@@ -138,6 +140,9 @@ namespace {
 					break;
 				case DebuggerNotificationType::ScopeChanged:
 					g_Events.Scopes.push_back(static_cast<ScopeData*>(data)->FrameIndex);
+					break;
+				case DebuggerNotificationType::StatusChanged:
+					g_Events.Status = *static_cast<ExecutionStatus*>(data);
 					break;
 			}
 			}, std::make_unique<CountingDispatcher>(std::move(windowDispatcher), posts));

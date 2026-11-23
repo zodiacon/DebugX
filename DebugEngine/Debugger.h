@@ -44,6 +44,7 @@ namespace DebugEngine {
 		Task<HRESULT> AttachLocalKernel() override;
 		Task<HRESULT> AttachKernel(PCWSTR connectOptions) override;
 		Task<HRESULT> ExecuteCommand(PCWSTR command) override;
+		Task<HRESULT> ExecuteCommandCaptured(PCWSTR command, std::wstring& output) override;
 		Task<HRESULT> OutputPrompt() override;
 		Task<HRESULT> Stop() override;
 		Task<HRESULT> Detach() override;
@@ -73,6 +74,7 @@ namespace DebugEngine {
 
 		Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers) override;
 		Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames = 128) override;
+		Task<HRESULT> GetThreadStackTrace(ULONG threadId, std::vector<StackFrameInfo>& frames, ULONG maxFrames = 128) override;
 		Task<HRESULT> SetCurrentThread(ULONG threadId) override;
 		Task<HRESULT> SetCurrentProcess(ULONG processId) override;
 		// ~f, ~u

@@ -93,6 +93,18 @@ public:
 
 	// from DebugManager, for every notification of the debugger
 	void OnNotification(DebugEngine::DebuggerNotificationType type, void* data);
+	// a line of DebugX's own in the log (what an MCP client asked for, ...)
+	void Log(std::wstring line) {
+		AddLogLine(std::move(line));
+	}
+
+	// what is being debugged, as the window's title says it (the frame sets it at each start); empty: not known
+	const std::wstring& TargetName() const {
+		return m_TargetName;
+	}
+	void SetTargetName(std::wstring name) {
+		m_TargetName = std::move(name);
+	}
 
 private:
 	template<typename F>
@@ -111,4 +123,5 @@ private:
 	ULONG m_CurrentFrame{ 0 };
 	std::deque<std::wstring> m_Log;
 	std::wstring m_PartialLine;		// text of the target that has not reached the end of its line
+	std::wstring m_TargetName;
 };

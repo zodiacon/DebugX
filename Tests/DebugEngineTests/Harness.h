@@ -23,6 +23,7 @@ struct Notifications {
 	std::vector<ULONG> Exceptions;	// Exception codes
 	int MemoryChanged{ 0 };
 	int ContextChanged{ 0 };
+	DebugEngine::ExecutionStatus Status{ DebugEngine::ExecutionStatus::NoDebuggee };	// the last StatusChanged's
 };
 extern Notifications g_Events;
 
@@ -55,3 +56,5 @@ DebugEngine::Task<void> ValueSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> ProcessSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> RemoteSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> ScriptSuite(DebugEngine::DebuggerX& dbg);
+DebugEngine::Task<void> McpSuite(DebugEngine::DebuggerX& dbg);
+DebugEngine::Task<void> AssistantSuite(DebugEngine::DebuggerX& dbg);

@@ -8,6 +8,7 @@
 #include "Lifetime.h"
 #include "PaneBase.h"
 #include "ScintillaCtrl.h"
+#include "ThemedBackground.h"
 #include "resource.h"
 
 // A live view of target memory: an address/expression box ("Go", or Enter) reads a fixed-size chunk
@@ -21,6 +22,7 @@
 // signed decimal integers, floats, doubles, ASCII or UTF-16 text -- as dd, df, dD, da, du show them.
 class CMemoryView :
 	public CFrameWindowImpl<CMemoryView, CWindow, CControlWinTraits>,
+	public CThemedBackground<CMemoryView>,
 	public CPaneBase<CMemoryView> {
 public:
 	using BaseFrame = CFrameWindowImpl<CMemoryView, CWindow, CControlWinTraits>;
@@ -41,6 +43,7 @@ public:
 		COMMAND_ID_HANDLER(ID_EDIT_GOTO, OnGoTo)
 		NOTIFY_CODE_HANDLER(NM_RCLICK, OnHexRightClick)
 		CHAIN_MSG_MAP(CPaneBase<CMemoryView>)
+		CHAIN_MSG_MAP(CThemedBackground<CMemoryView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(1)
 		MESSAGE_HANDLER(WM_CHAR, OnAddressChar)

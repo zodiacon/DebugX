@@ -8,6 +8,7 @@
 #include "ScintillaCtrl.h"
 #include "AppFonts.h"
 #include "AppMessages.h"
+#include "ThemedBackground.h"
 #include "resource.h"
 
 // A window of instructions around the current thread's instruction pointer (or wherever "Go to
@@ -21,6 +22,7 @@
 // is shown before them, as a comment.
 class CDisassemblyView :
 	public CFrameWindowImpl<CDisassemblyView, CWindow, CControlWinTraits>,
+	public CThemedBackground<CDisassemblyView>,
 	public CPaneBase<CDisassemblyView> {
 public:
 	using BaseFrame = CFrameWindowImpl<CDisassemblyView, CWindow, CControlWinTraits>;
@@ -48,6 +50,7 @@ public:
 		COMMAND_HANDLER(GoId, BN_CLICKED, OnGoClicked)
 		MESSAGE_HANDLER(WM_GOTODISASSEMBLY, OnGoToMessage)
 		CHAIN_MSG_MAP(CPaneBase<CDisassemblyView>)
+		CHAIN_MSG_MAP(CThemedBackground<CDisassemblyView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(2)
 		MESSAGE_HANDLER(WM_CONTEXTMENU, OnTextContextMenu)

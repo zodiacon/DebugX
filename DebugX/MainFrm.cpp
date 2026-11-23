@@ -25,6 +25,7 @@
 #include "SavedBreakpoints.h"
 #include "InputDlg.h"
 #include "AppFonts.h"
+#include "McpServerDlg.h"
 #include <TlHelp32.h>
 #include <format>
 
@@ -151,6 +152,7 @@ LRESULT CMainFrame::OnSize(UINT, WPARAM, LPARAM, BOOL& handled) {
 
 void CMainFrame::SetTargetName(CString name) {
 	m_TargetName = name;
+	DebugManager::Session().SetTargetName((PCWSTR)name);
 	UpdateTitle();
 }
 
@@ -228,7 +230,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	};
 	// the panes of the View menu, in its order and groups (the icons are the panes' own; Memory 2-4 stay in the menu)
 	static const UINT paneCommands[] = {
-		ID_VIEW_COMMAND, ID_VIEW_OUTPUT, ID_VIEW_ANALYSIS, 0,
+		ID_VIEW_COMMAND, ID_VIEW_OUTPUT, ID_VIEW_ANALYSIS, ID_VIEW_ASSISTANT, 0,
 		ID_VIEW_THREADS, ID_VIEW_USERPROCESSES, ID_VIEW_HANDLES, 0,
 		ID_VIEW_PROCESSES, ID_VIEW_KERNELTHREADS, ID_VIEW_DRIVERS, ID_VIEW_OBJECTS, ID_VIEW_IRPS, 0,
 		ID_VIEW_MODULES, ID_VIEW_REGISTERS, ID_VIEW_CALLSTACK, ID_VIEW_BREAKPOINTS, ID_VIEW_MEMORY,
@@ -285,6 +287,7 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 	UISetCheck(ID_OPTIONS_CONFIRMEXIT, AppSettings::Get().ConfirmExit() != 0);
 	ApplySavedEventFilters();
 	ApplySavedSymbolPaths();
+	ApplyMcpSettings(false);
 
 	ApplyTheme();
 	// (the panes and the saved layout come after WM_CREATE: see InitDock)
@@ -294,6 +297,8 @@ LRESULT CMainFrame::OnCreate(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/
 }
 
 LRESULT CMainFrame::OnDestroy(UINT /*uMsg*/, WPARAM /*wParam*/, LPARAM /*lParam*/, BOOL& bHandled) {
+	// (its clients' connections are closed; a tool still running in the debugger finishes on its own)
+	m_Mcp.reset();
 	DebugManager::Session().RemoveObserver(this);
 	m_Sources.Term();
 	AppSettings::Get().Save();
@@ -359,6 +364,75 @@ LRESULT CMainFrame::OnToggleConfirmExit(WORD, WORD id, HWND, BOOL&) {
 	return 0;
 }
 
+std::wstring CMainFrame::McpStatus() const {
+	if (m_Mcp && m_Mcp->IsRunning())
+		return L"Running: " + m_Mcp->Url();
+	if (!m_McpError.empty())
+		return m_McpError;
+	return L"Not running.";
+}
+
+void CMainFrame::ApplyMcpSettings(bool report) {
+	auto& settings = AppSettings::Get();
+	const auto port = static_cast<unsigned short>(settings.McpPort());
+	auto token = settings.McpToken();
+	if (!settings.McpServer()) {
+		if (m_Mcp)
+			DebugManager::Session().Log(L"MCP server stopped");
+		m_Mcp.reset();
+		m_McpError.clear();
+		return;
+	}
+	if (token.empty()) {
+		auto made = DebugX::Mcp::McpServer::NewToken();
+		token.assign(made.begin(), made.end());
+		settings.McpToken(token);
+	}
+	// (running as it should: the clients keep their connections)
+	if (m_Mcp && m_Mcp->IsRunning() && m_Mcp->Port() == port && m_McpToken == token)
+		return;
+
+	if (!m_Mcp)
+		m_Mcp = std::make_unique<DebugX::Mcp::McpServer>(m_McpHost);
+	auto hr = m_Mcp->Start(port, std::string(CW2A(token.c_str(), CP_UTF8)));
+	if (FAILED(hr)) {
+		m_Mcp.reset();
+		m_McpError = hr == HRESULT_FROM_WIN32(WSAEADDRINUSE) || hr == HRESULT_FROM_WIN32(WSAEACCES)
+			? std::format(L"Port {} is taken (another program, or another DebugX, has it): choose another.", port)
+			: std::format(L"The MCP server could not start (error 0x{:08X}).", static_cast<unsigned>(hr));
+		::SetWindowText(m_hWndStatusBar, m_McpError.c_str());
+		DebugManager::Session().Log(L"MCP server: " + m_McpError);
+		if (report)
+			AtlMessageBox(*this, m_McpError.c_str(), IDS_TITLE, MB_ICONWARNING);
+		return;
+	}
+	m_McpToken = token;
+	m_McpError.clear();
+	auto text = L"MCP server listening on " + m_Mcp->Url();
+	// (at startup the status bar keeps saying which engine is in use)
+	if (report)
+		::SetWindowText(m_hWndStatusBar, text.c_str());
+	DebugManager::Session().Log(std::move(text));
+}
+
+LRESULT CMainFrame::OnMcpServer(WORD, WORD, HWND, BOOL&) {
+	auto& settings = AppSettings::Get();
+	auto token = settings.McpToken();
+	if (token.empty()) {
+		// (shown, and kept if OK is pressed: the command to copy has one)
+		auto made = DebugX::Mcp::McpServer::NewToken();
+		token.assign(made.begin(), made.end());
+	}
+	CMcpServerDlg dlg(settings.McpServer() != 0, settings.McpPort(), token, McpStatus());
+	if (dlg.DoModal(m_hWnd) != IDOK)
+		return 0;
+	settings.McpServer(dlg.Enabled() ? 1 : 0);
+	settings.McpPort(dlg.Port());
+	settings.McpToken(dlg.Token());
+	ApplyMcpSettings(true);
+	return 0;
+}
+
 LRESULT CMainFrame::OnClose(UINT, WPARAM, LPARAM, BOOL& bHandled) {
 	// a live target: asked first (the window stays if not)
 	if (!ConfirmExit())
@@ -380,8 +454,12 @@ bool CMainFrame::RelaunchElevated() {
 	// saved before the new instance starts, which reads them (closing this one saves them again, the same)
 	SaveState();
 	AppSettings::Get().Save();
-	if (!SecurityHelper::RunElevated(nullptr, true))
+	// (the new instance starts its MCP server on the same port: this one lets go of it first)
+	m_Mcp.reset();
+	if (!SecurityHelper::RunElevated(nullptr, true)) {
+		ApplyMcpSettings(false);
 		return false;
+	}
 
 	// (the user was asked already, where it was asked for)
 	m_ExitConfirmed = true;
@@ -397,6 +475,8 @@ void CMainFrame::CancelKernelConnection() {
 	// saved before the new instance starts, which reads them
 	SaveState();
 	AppSettings::Get().Save();
+	// (the new instance starts its MCP server on the same port)
+	m_Mcp.reset();
 	WCHAR path[MAX_PATH];
 	::GetModuleFileName(nullptr, path, _countof(path));
 	STARTUPINFO si{ sizeof(si) };
@@ -1780,6 +1860,7 @@ void CMainFrame::InitMenu(HMENU menu) {
 		{ ID_VIEW_OBJECTS, IDI_STRUCT },
 		{ ID_VIEW_IRPS, IDI_EVENT },
 		{ ID_VIEW_ANALYSIS, IDI_FIND },
+		{ ID_VIEW_ASSISTANT, IDI_HELP },
 		{ ID_VIEW_MEMORY2, IDI_MEMORY },
 		{ ID_VIEW_MEMORY3, IDI_MEMORY },
 		{ ID_VIEW_MEMORY4, IDI_MEMORY },

@@ -13,7 +13,7 @@ LRESULT CDisassemblyView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_AddressEdit.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, 0, AddressId);
 	m_AddressEdit.SetFont(AppFonts::UiFont());
 	m_AddressEdit.SetCueBannerText(L"Address or symbol (0x7ff6`1234, kernel32!CreateFileW, @rsp, ...)", TRUE);
-	m_Go.Create(*this, nullptr, L"Go", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, GoId);
+	m_Go.Create(*this, nullptr, L"Go", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT, 0, GoId);
 	m_Go.SetFont(AppFonts::UiFont());
 
 	m_Text.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL |

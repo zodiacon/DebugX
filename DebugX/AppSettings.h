@@ -26,6 +26,16 @@ struct AppSettings : Settings {
 		// Options > Code Font / UI Font (AppFonts): "face;size in tenths of a point;weight;italic"; empty: the default
 		SETTING_STRING(CodeFont, L"");
 		SETTING_STRING(UiFont, L"");
+		// Options > MCP Server (DebugX.Mcp): on or off, its port on 127.0.0.1, and the bearer token its clients send (made
+		// the first time it is turned on)
+		SETTING(McpServer, 0, SettingType::Int32);
+		SETTING(McpPort, 47011, SettingType::Int32);
+		SETTING_STRING(McpToken, L"");
+		// the Assistant pane: the Claude model, its effort, and whether its tools that change the session (run, step,
+		// breakpoints, commands) run without asking. (The API key is in Windows Credential Manager: ApiKey.h.)
+		SETTING_STRING(AssistantModel, L"claude-opus-5-5");
+		SETTING_STRING(AssistantEffort, L"medium");
+		SETTING(AssistantAllowControl, 0, SettingType::Int32);
 	END_SETTINGS
 
 	DEF_SETTING(DarkMode, int)
@@ -43,4 +53,10 @@ struct AppSettings : Settings {
 	DEF_SETTING(LayoutMode, int)
 	DEF_SETTING_STRING(CodeFont)
 	DEF_SETTING_STRING(UiFont)
+	DEF_SETTING(McpServer, int)
+	DEF_SETTING(McpPort, int)
+	DEF_SETTING_STRING(McpToken)
+	DEF_SETTING_STRING(AssistantModel)
+	DEF_SETTING_STRING(AssistantEffort)
+	DEF_SETTING(AssistantAllowControl, int)
 };

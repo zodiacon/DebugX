@@ -330,6 +330,11 @@
     <ClCompile Include="ExceptionSettingsDlg.cpp" />
     <ClCompile Include="EventFilterText.cpp" />
     <ClCompile Include="SymbolPathsDlg.cpp" />
+    <ClCompile Include="McpHost.cpp" />
+    <ClCompile Include="McpServerDlg.cpp" />
+    <ClCompile Include="ApiKey.cpp" />
+    <ClCompile Include="AssistantSettingsDlg.cpp" />
+    <ClCompile Include="AssistantView.cpp" />
     <ClCompile Include="InputDlg.cpp" />
     <ClCompile Include="CommandLine.cpp" />
     <ClCompile Include="RecentTargets.cpp" />
@@ -386,6 +391,12 @@
     <ClInclude Include="ExceptionSettingsDlg.h" />
     <ClInclude Include="EventFilterText.h" />
     <ClInclude Include="SymbolPathsDlg.h" />
+    <ClInclude Include="McpHost.h" />
+    <ClInclude Include="McpServerDlg.h" />
+    <ClInclude Include="ApiKey.h" />
+    <ClInclude Include="ThemedBackground.h" />
+    <ClInclude Include="AssistantSettingsDlg.h" />
+    <ClInclude Include="AssistantView.h" />
     <ClInclude Include="InputDlg.h" />
     <ClInclude Include="CommandLine.h" />
     <ClInclude Include="RecentTargets.h" />
@@ -471,6 +482,9 @@
     </ProjectReference>
     <ProjectReference Include="..\DebugX.Kernel\DebugX.Kernel.vcxproj">
       <Project>{99987ebf-80e1-45a4-8847-a771e4e6090f}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\DebugX.Mcp\DebugX.Mcp.vcxproj">
+      <Project>{6d9b2687-52ca-4382-8b99-676b31417599}</Project>
     </ProjectReference>
     <ProjectReference Include="..\wtlhelper\WTLDock\WTLDock.vcxproj">
       <Project>{ea1678ad-f74b-43e4-b44a-c56901c33c19}</Project>

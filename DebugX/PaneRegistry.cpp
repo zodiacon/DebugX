@@ -8,6 +8,7 @@
 #include "ObjectsView.h"
 #include "IrpsView.h"
 #include "AnalysisView.h"
+#include "AssistantView.h"
 #include "KernelProcessesView.h"
 #include "KernelThreadsView.h"
 #include "ModulesView.h"
@@ -34,6 +35,7 @@ namespace {
 		{ L"command", L"Command", IDI_COMMAND, ID_VIEW_COMMAND, PaneKind::Document, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, nullptr, Make<CCommandView> },
 		{ L"output", L"Output", IDI_OUTPUT, ID_VIEW_OUTPUT, PaneKind::Tool, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, nullptr, Make<COutputView> },
 		{ L"analysis", L"Analysis", IDI_FIND, ID_VIEW_ANALYSIS, PaneKind::Tool, DockSide::Bottom, { 800, 300 }, TargetType::Unknown, false, L"output", Make<CAnalysisView> },
+		{ L"assistant", L"Assistant", IDI_HELP, ID_VIEW_ASSISTANT, PaneKind::Tool, DockSide::Right, { 520, 400 }, TargetType::Unknown, false, nullptr, Make<CAssistantView> },
 		{ L"callstack", L"Call Stack", IDI_CALLSTACK, ID_VIEW_CALLSTACK, PaneKind::Tool, DockSide::Left, { 560, 300 }, TargetType::Unknown, true, nullptr, Make<CCallStackView> },
 		{ L"registers", L"Registers", IDI_CPU, ID_VIEW_REGISTERS, PaneKind::Tool, DockSide::Right, { 440, 300 }, TargetType::Unknown, true, nullptr, Make<CRegistersView> },
 		{ L"threads", L"Threads", IDI_THREADS, ID_VIEW_THREADS, PaneKind::Tool, DockSide::Right, { 420, 300 }, TargetType::User, true, L"registers", Make<CUserThreadsView> },

@@ -32,6 +32,10 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+  <!-- (nlohmann-json, for the mcp suite: vcpkg's static triplet) -->
+  <PropertyGroup Label="Vcpkg">
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
@@ -52,7 +56,7 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)DebugEngine;$(SolutionDir)DebugX.Kernel;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)DebugEngine;$(SolutionDir)DebugX.Kernel;$(SolutionDir)DebugX.Mcp;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
@@ -99,6 +103,8 @@
     <ClCompile Include="ProcessTests.cpp" />
     <ClCompile Include="RemoteTests.cpp" />
     <ClCompile Include="ScriptTests.cpp" />
+    <ClCompile Include="McpTests.cpp" />
+    <ClCompile Include="AssistantTests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\DebugEngine\DebugEngine.vcxproj">
@@ -107,6 +113,10 @@
     <!-- (the kernel suite finds processes and threads with its analyzers, as the Processes pane does) -->
     <ProjectReference Include="..\..\DebugX.Kernel\DebugX.Kernel.vcxproj">
       <Project>{99987EBF-80E1-45A4-8847-A771E4E6090F}</Project>
+    </ProjectReference>
+    <!-- (the mcp suite talks to the MCP server over HTTP, as a client does) -->
+    <ProjectReference Include="..\..\DebugX.Mcp\DebugX.Mcp.vcxproj">
+      <Project>{6D9B2687-52CA-4382-8B99-676B31417599}</Project>
     </ProjectReference>
     <!-- (the programs the tests debug, built next to the runner in Tests\) -->
     <ProjectReference Include="..\Targets\loop\loop.vcxproj">

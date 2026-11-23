@@ -73,6 +73,22 @@
 #define IDC_COM_RECONNECT               1056
 #define IDC_USB_TARGET                  1061
 #define IDC_CUSTOM_CONN                 1062
+#define IDD_MCPSERVER                   254
+#define IDC_MCP_ENABLE                  1063
+#define IDC_MCP_PORT                    1064
+#define IDC_MCP_TOKEN                   1065
+#define IDC_MCP_NEWTOKEN                1066
+#define IDC_MCP_COMMAND                 1067
+#define IDC_MCP_COPY                    1068
+#define IDC_MCP_STATUS                  1069
+#define IDD_ASSISTANTSETTINGS           255
+#define IDC_AI_MODEL                    1070
+#define IDC_AI_EFFORT                   1071
+#define IDC_AI_KEY                      1072
+#define IDC_AI_KEYSTATUS                1073
+#define IDC_AI_FORGETKEY                1074
+#define IDC_AI_ALLOWCONTROL             1075
+#define IDC_PROCFILTER                  1076
 #define IDC_EXEPATH                     1000
 #define IDC_PROCLIST                    1000
 #define IDC_BROWSE                      1001
@@ -163,6 +179,8 @@
 #define ID_OPTIONS_HEXDISPLAY           32899
 #define ID_DEBUG_TOGGLEBREAKPOINT       32900
 #define ID_OPTIONS_CONFIRMEXIT          32901
+#define ID_OPTIONS_MCPSERVER            32902
+#define ID_VIEW_ASSISTANT               32903
 #define ID_DEBUG_SETNEXTSTATEMENT       32815
 #define ID_DEBUG_RESTART                32816
 #define ID_EDIT_FINDNEXT                32817
@@ -205,9 +223,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        254
-#define _APS_NEXT_COMMAND_VALUE         32902
-#define _APS_NEXT_CONTROL_VALUE         1063
+#define _APS_NEXT_RESOURCE_VALUE        256
+#define _APS_NEXT_COMMAND_VALUE         32904
+#define _APS_NEXT_CONTROL_VALUE         1077
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

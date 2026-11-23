@@ -17,9 +17,48 @@ The UI is a docking layout, similar to Visual Studio's. Besides the Command wind
 
 It has a default window layout for user mode and one for kernel mode, and comes in light and dark themes.
 
+You can ask questions about the target in plain language, for example: "which threads are waiting in mymodule, and on
+what?" Ask in DebugX's own Assistant pane (Claude, with your Anthropic API key), or from an AI client such as Claude Code
+through DebugX's MCP server (see below).
+
 DebugX uses the Windows Kits debugger's engine (from the Debugging Tools for Windows) if it is installed, and
 System32's otherwise. Install the Debugging Tools to get symbol servers and the debugger extensions (`!analyze`,
 `!process`, ...): System32's engine has neither.
+
+## AI assistance
+
+### The Assistant pane
+
+**View > Assistant** opens a conversation with Claude about the target. Enter sends a message, Shift+Enter starts a new
+line, Stop (or Esc) ends a turn, and New starts a new conversation. The first time, **Settings** asks for an Anthropic API
+key from console.anthropic.com. DebugX keeps the key in Windows Credential Manager, or uses `ANTHROPIC_API_KEY` if that is
+set. Settings also chooses the model (Claude Opus 5.5 by default) and its effort.
+
+The assistant looks into the target with the tools listed below. The answer streams into the pane, with dimmed summaries
+of the model's reasoning, each tool call, and the start of each result. Symbols and addresses are links to the Disassembly
+pane. Before running, stepping, setting breakpoints or running a debugger command, the assistant asks, unless Settings
+allows it. Your questions, and what the tools read of the target, are sent to Anthropic's API.
+
+### MCP server
+
+Turn it on in **Options > MCP Server**. DebugX then listens on `http://127.0.0.1:47011/mcp` (the port can be changed)
+for MCP's Streamable HTTP transport. Each request must carry the bearer token the dialog shows. The dialog has the
+command that adds DebugX to Claude Code:
+
+```
+claude mcp add --transport http --scope user debugx http://127.0.0.1:47011/mcp --header "Authorization: Bearer <token>"
+```
+
+The client then has tools for what is being debugged:
+
+- the session, threads, and one thread's or all threads' call stacks (filtered by module or function, threads with the
+  same stack grouped)
+- modules, registers, locals, and C++ expressions (as `dx` evaluates them)
+- memory (read and search), disassembly, source, breakpoints, handles, `!analyze -v`, and any debugger command
+- go, step, run to a location, break, wait for the target to stop, and set or remove breakpoints
+
+Every tool call is logged in the Output pane. The token lets a client do anything the debugger can, and DebugX may run
+elevated, so keep the token private (**New Token** replaces it).
 
 ## Building
 
@@ -45,8 +84,8 @@ Steps:
 2. Install the vcpkg packages, as static libraries, for each platform you build:
 
    ```
-   vcpkg install detours wil scintilla lexilla --triplet x64-windows-static
-   vcpkg install detours wil scintilla lexilla --triplet x86-windows-static
+   vcpkg install detours wil scintilla lexilla nlohmann-json --triplet x64-windows-static
+   vcpkg install detours wil scintilla lexilla nlohmann-json --triplet x86-windows-static
    ```
 
 3. Open `DebugX.sln` in Visual Studio and build. NuGet restores the other packages (the DbgEng headers and libraries,

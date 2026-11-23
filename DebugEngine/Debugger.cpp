@@ -154,6 +154,7 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> AttachLocalKernel();
 	Task<HRESULT> AttachKernel(PCWSTR connectOptions);
 	Task<HRESULT> ExecuteCommand(PCWSTR command);
+	Task<HRESULT> ExecuteCommandCaptured(PCWSTR command, std::wstring& output);
 	Task<HRESULT> OutputPrompt();
 	Task<HRESULT> Stop();
 	Task<HRESULT> Detach();
@@ -169,6 +170,7 @@ struct DebuggerX::Impl : CComObjectRoot,
 	Task<HRESULT> SetEventFilters(std::vector<EventFilter> filters);
 	Task<HRESULT> GetRegisters(std::vector<RegisterInfo>& registers);
 	Task<HRESULT> GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames);
+	Task<HRESULT> GetThreadStackTrace(ULONG threadId, std::vector<StackFrameInfo>& frames, ULONG maxFrames);
 	Task<HRESULT> SetCurrentThread(ULONG threadId);
 	Task<HRESULT> SetCurrentProcess(ULONG processId);
 	Task<HRESULT> SetThreadFrozen(ULONG threadId, bool frozen);
@@ -281,6 +283,28 @@ private:
 	void PostScopeChanged();
 	// the index of the current scope frame (debug thread)
 	HRESULT GetScopeFrameIndex(ULONG& index);
+	// the current thread's stack (debug thread)
+	HRESULT StackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames);
+	// While the debugger switches the engine's current thread (or process) itself, to look at the threads: nobody is told,
+	// and the frame the user chose -- switching threads puts the scope back to frame 0 -- is restored at the end (unannounced:
+	// as far as anybody can tell, it never changed). The thread and process themselves are the caller's to restore.
+	struct InternalSwitch {
+		explicit InternalSwitch(Impl* self) : Self(self) {
+			++Self->m_InternalSwitch;
+			if (FAILED(Self->GetScopeFrameIndex(Frame)))
+				Frame = 0;
+		}
+		~InternalSwitch() {
+			if (Frame)
+				Self->m_spSymbols->SetScopeFrameByIndex(Frame);
+			--Self->m_InternalSwitch;
+		}
+		InternalSwitch(const InternalSwitch&) = delete;
+		InternalSwitch& operator=(const InternalSwitch&) = delete;
+
+		Impl* Self;
+		ULONG Frame{ 0 };
+	};
 	// (debug thread) the symbols of the process's executable, loaded now: a `file:line` (a breakpoint, g) is looked up
 	// only in symbols that are loaded, and the System32 dbgeng has not loaded any at the initial break
 	void LoadExecutableSymbols();
@@ -1035,6 +1059,18 @@ Task<HRESULT> DebuggerX::Impl::ExecuteCommand(PCWSTR command) {
 		});
 }
 
+Task<HRESULT> DebuggerX::Impl::ExecuteCommandCaptured(PCWSTR command, std::wstring& output) {
+	co_return co_await Run([this, cmd = std::wstring(command), &output] {
+		output = ExecuteCaptured(cmd);
+		// (a command that runs the target, or ends the session, is followed through as ExecuteCommand's is; anything else
+		// leaves no prompt behind in the Command view)
+		UpdateStatus();
+		if (IsExecuting(m_Status) || m_Status == DEBUG_STATUS_NO_DEBUGGEE)
+			DoPostCommand();
+		return S_OK;
+		});
+}
+
 Task<HRESULT> DebuggerX::Impl::OutputPrompt() {
 	co_return co_await Run([this] {
 		return m_spControl->OutputPrompt(DEBUG_OUTCTL_THIS_CLIENT, nullptr);
@@ -1143,22 +1179,7 @@ Task<HRESULT> DebuggerX::Impl::EnumProcesses(std::vector<ProcessInfo>& processes
 		ULONG currentProcess, currentThread = DEBUG_ANY_ID;
 		m_spSystem->GetCurrentProcessId(&currentProcess);
 		m_spSystem->GetCurrentThreadId(&currentThread);
-		// Switching threads puts the scope back to frame 0: the frame the user chose is restored afterwards (unannounced:
-		// as far as anybody can tell, it never changed).
-		struct Switching {
-			Switching(Impl* self) : Self(self) {
-				++Self->m_InternalSwitch;
-				if (FAILED(Self->GetScopeFrameIndex(Frame)))
-					Frame = 0;
-			}
-			~Switching() {
-				if (Frame)
-					Self->m_spSymbols->SetScopeFrameByIndex(Frame);
-				--Self->m_InternalSwitch;
-			}
-			Impl* Self;
-			ULONG Frame{ 0 };
-		} switching(this);
+		InternalSwitch switching(this);
 		WCHAR exe[MAX_PATH * 2];
 		ULONG64 d;
 		for (ULONG i = 0; i < count; i++) {
@@ -1404,22 +1425,39 @@ Task<HRESULT> DebuggerX::Impl::GetRegisters(std::vector<RegisterInfo>& registers
 		});
 }
 
+HRESULT DebuggerX::Impl::StackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames) {
+	std::vector<DEBUG_STACK_FRAME> raw(maxFrames);
+	ULONG filled = 0;
+	HR(m_spControl->GetStackTrace(0, 0, 0, raw.data(), maxFrames, &filled));
+	frames.reserve(filled);
+	WCHAR name[512];
+	for (ULONG i = 0; i < filled; i++) {
+		auto& f = raw[i];
+		StackFrameInfo fi{ f.FrameNumber, f.InstructionOffset, f.ReturnOffset, f.FrameOffset, f.StackOffset, {} };
+		ULONG64 displacement = 0;
+		if (SUCCEEDED(m_spSymbols->GetNameByOffsetWide(f.InstructionOffset, name, _countof(name), nullptr, &displacement)))
+			fi.Symbol = displacement ? std::format(L"{}+0x{:X}", name, displacement) : std::wstring(name);
+		frames.push_back(std::move(fi));
+	}
+	return S_OK;
+}
+
 Task<HRESULT> DebuggerX::Impl::GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames) {
 	co_return co_await Run([this, &frames, maxFrames] {
-		std::vector<DEBUG_STACK_FRAME> raw(maxFrames);
-		ULONG filled = 0;
-		HR(m_spControl->GetStackTrace(0, 0, 0, raw.data(), maxFrames, &filled));
-		frames.reserve(filled);
-		WCHAR name[512];
-		for (ULONG i = 0; i < filled; i++) {
-			auto& f = raw[i];
-			StackFrameInfo fi{ f.FrameNumber, f.InstructionOffset, f.ReturnOffset, f.FrameOffset, f.StackOffset, {} };
-			ULONG64 displacement = 0;
-			if (SUCCEEDED(m_spSymbols->GetNameByOffsetWide(f.InstructionOffset, name, _countof(name), nullptr, &displacement)))
-				fi.Symbol = displacement ? std::format(L"{}+0x{:X}", name, displacement) : std::wstring(name);
-			frames.push_back(std::move(fi));
-		}
-		return S_OK;
+		return StackTrace(frames, maxFrames);
+		});
+}
+
+Task<HRESULT> DebuggerX::Impl::GetThreadStackTrace(ULONG threadId, std::vector<StackFrameInfo>& frames, ULONG maxFrames) {
+	co_return co_await Run([this, threadId, &frames, maxFrames]() -> HRESULT {
+		ULONG current = DEBUG_ANY_ID;
+		HR(m_spSystem->GetCurrentThreadId(&current));
+		InternalSwitch switching(this);
+		// (the current thread too: its stack from frame 0, whatever the scope frame is)
+		HR(m_spSystem->SetCurrentThreadId(threadId));
+		auto hr = StackTrace(frames, maxFrames);
+		m_spSystem->SetCurrentThreadId(current);
+		return hr;
 		});
 }
 
@@ -2196,6 +2234,10 @@ Task<HRESULT> DebuggerX::ExecuteCommand(PCWSTR command) {
 	return m_Impl->ExecuteCommand(command);
 }
 
+Task<HRESULT> DebuggerX::ExecuteCommandCaptured(PCWSTR command, std::wstring& output) {
+	return m_Impl->ExecuteCommandCaptured(command, output);
+}
+
 Task<HRESULT> DebuggerX::OutputPrompt() {
 	return m_Impl->OutputPrompt();
 }
@@ -2271,6 +2313,10 @@ Task<HRESULT> DebuggerX::GetRegisters(std::vector<RegisterInfo>& registers) {
 
 Task<HRESULT> DebuggerX::GetStackTrace(std::vector<StackFrameInfo>& frames, ULONG maxFrames) {
 	return m_Impl->GetStackTrace(frames, maxFrames);
+}
+
+Task<HRESULT> DebuggerX::GetThreadStackTrace(ULONG threadId, std::vector<StackFrameInfo>& frames, ULONG maxFrames) {
+	return m_Impl->GetThreadStackTrace(threadId, frames, maxFrames);
 }
 
 Task<HRESULT> DebuggerX::SetCurrentThread(ULONG threadId) {

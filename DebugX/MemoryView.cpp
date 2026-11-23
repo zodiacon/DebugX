@@ -13,7 +13,7 @@ LRESULT CMemoryView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 	m_AddressEdit.SetFont(AppFonts::UiFont());
 	m_Expression = DebugManager::Debugger().StackPointerExpression().c_str();	// the current stack pointer; shown until "Go" changes it
 	m_AddressEdit.SetWindowText(m_Expression);
-	m_Go.Create(*this, nullptr, L"Go", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT | WS_BORDER, 0, GoId);
+	m_Go.Create(*this, nullptr, L"Go", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | BS_FLAT, 0, GoId);
 	m_Go.SetFont(AppFonts::UiFont());
 
 	m_Hex.Create(*this, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | WS_TABSTOP);

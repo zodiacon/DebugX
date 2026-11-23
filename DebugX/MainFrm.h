@@ -12,6 +12,7 @@
 #include "AppMessages.h"
 #include "DefaultLayouts.h"
 #include "CommandLine.h"
+#include "McpHost.h"
 
 class CMainFrame :
 	public CFrameWindowImpl<CMainFrame>,
@@ -63,6 +64,7 @@ public:
 		COMMAND_ID_HANDLER(ID_DEBUG_LOADSCRIPT, OnScript)
 		COMMAND_ID_HANDLER(ID_DEBUG_UNLOADSCRIPT, OnScript)
 		COMMAND_ID_HANDLER(ID_VIEW_ANALYSIS, OnViewPane)
+		COMMAND_ID_HANDLER(ID_VIEW_ASSISTANT, OnViewPane)
 		COMMAND_ID_HANDLER(ID_APP_EXIT, OnFileExit)
 		COMMAND_ID_HANDLER(ID_FILE_RUNASADMINISTRATOR, OnRunAsAdministrator)
 		COMMAND_ID_HANDLER(ID_FILE_OPEN, OnOpenDumpFile)
@@ -131,6 +133,7 @@ public:
 		COMMAND_ID_HANDLER(ID_OPTIONS_DEBUGCHILDPROCESSES, OnToggleChildProcesses)
 		COMMAND_ID_HANDLER(ID_OPTIONS_HEXDISPLAY, OnToggleHexDisplay)
 		COMMAND_ID_HANDLER(ID_OPTIONS_CONFIRMEXIT, OnToggleConfirmExit)
+		COMMAND_ID_HANDLER(ID_OPTIONS_MCPSERVER, OnMcpServer)
 		COMMAND_ID_HANDLER(ID_APP_ABOUT, OnAppAbout)
 		CHAIN_MSG_MAP(CAutoUpdateUI<CMainFrame>)
 		CHAIN_MSG_MAP(CFrameWindowImpl<CMainFrame>)
@@ -282,6 +285,13 @@ private:
 	LRESULT OnToggleConfirmExit(WORD, WORD id, HWND, BOOL&);
 	// closing with a live target (a process, a kernel over a connection) asks first; true: exit
 	bool ConfirmExit();
+	// Options > MCP Server: the dialog; the server is then started, restarted or stopped as the settings say
+	LRESULT OnMcpServer(WORD, WORD, HWND, BOOL&);
+	// The MCP server as AppSettings has it (McpServer, McpPort, McpToken): started (again, if it runs with other settings) or
+	// stopped. A server that cannot start says why in the status bar, and in a message box if 'report'.
+	void ApplyMcpSettings(bool report);
+	// what the MCP server is doing, for the dialog: where it listens, or why it does not
+	std::wstring McpStatus() const;
 	LRESULT OnEditFind(WORD /*wNotifyCode*/, WORD /*wID*/, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 	LRESULT OnEditFindAgain(WORD /*wNotifyCode*/, WORD wID, HWND /*hWndCtl*/, BOOL& /*bHandled*/);
 
@@ -311,5 +321,11 @@ private:
 	// the kind of target the window layout in use is for, and the last layout of the other kind (by LayoutModeName)
 	LayoutMode m_LayoutMode{ LayoutMode::User };
 	WTLDock::DockLayoutStore m_ModeLayouts;
+	// the MCP server (Options > MCP Server), and what it asks of DebugX; null: off. The token it was started with, and why
+	// the last start failed (empty: it did not)
+	McpHost m_McpHost;
+	std::unique_ptr<DebugX::Mcp::McpServer> m_Mcp;
+	std::wstring m_McpToken;
+	std::wstring m_McpError;
 	Lifetime m_Lifetime;
 };

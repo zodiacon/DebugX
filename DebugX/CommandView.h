@@ -5,9 +5,11 @@
 #include "Lifetime.h"
 #include "PaneBase.h"
 #include "ScintillaCtrl.h"
+#include "ThemedBackground.h"
 
 class CCommandView :
 	public CFrameWindowImpl<CCommandView, CWindow, CControlWinTraits>,
+	public CThemedBackground<CCommandView>,
 	public CGenericEditCommands<CCommandView>,
 	public IPane,
 	public ISessionObserver {
@@ -36,6 +38,7 @@ public:
 		COMMAND_HANDLER(ExecuteId, BN_CLICKED, OnExecuteCommand)
 		NOTIFY_HANDLER(TextId, SCN_HOTSPOTCLICK, OnHotspotClick)
 		CHAIN_MSG_MAP_ALT(CGenericEditCommands<CCommandView>, 1)
+		CHAIN_MSG_MAP(CThemedBackground<CCommandView>)
 		CHAIN_MSG_MAP(BaseFrame)
 	ALT_MSG_MAP(1)
 		MESSAGE_HANDLER(WM_KEYDOWN, OnEditKeyDown)

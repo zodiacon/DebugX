@@ -94,6 +94,17 @@
     <ClCompile Include="SymbolPathsDlg.cpp">
       <Filter>Views</Filter>
     </ClCompile>
+    <ClCompile Include="McpServerDlg.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="AssistantSettingsDlg.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="AssistantView.cpp">
+      <Filter>Views</Filter>
+    </ClCompile>
+    <ClCompile Include="McpHost.cpp" />
+    <ClCompile Include="ApiKey.cpp" />
     <ClCompile Include="SourceView.cpp">
       <Filter>Views</Filter>
     </ClCompile>
@@ -235,6 +246,18 @@
     <ClInclude Include="SymbolPathsDlg.h">
       <Filter>Views</Filter>
     </ClInclude>
+    <ClInclude Include="McpServerDlg.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="AssistantSettingsDlg.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="AssistantView.h">
+      <Filter>Views</Filter>
+    </ClInclude>
+    <ClInclude Include="McpHost.h" />
+    <ClInclude Include="ApiKey.h" />
+    <ClInclude Include="ThemedBackground.h" />
     <ClInclude Include="SourceView.h">
       <Filter>Views</Filter>
     </ClInclude>
@@ -412,7 +435,7 @@
       <Filter>Resource Files\Icons</Filter>
     </Image>
     <Image Include="res\memory.ico">
-      <Filter>Resource Files</Filter>
+      <Filter>Resource Files\Icons</Filter>
     </Image>
   </ItemGroup>
   <ItemGroup>
