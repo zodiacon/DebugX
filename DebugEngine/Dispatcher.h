@@ -18,7 +18,9 @@ namespace DebugEngine {
 		virtual bool Post(std::function<void()> func) = 0;
 	};
 
+#ifdef _WIN32
 	// A dispatcher on the calling thread: a message-only window whose messages run the functions, so it works under any
 	// message loop the thread runs, including a modal dialog's.
 	HRESULT CreateWindowDispatcher(std::unique_ptr<IDispatcher>& dispatcher);
+#endif
 }

@@ -3,7 +3,7 @@
 #include <deque>
 #include <string>
 #include <vector>
-#include "..\DebugEngine\IDebugger.h"
+#include "../DebugEngine/IDebugger.h"
 
 //
 // What the windows of the application want to know about the debugging session, as events: they implement the

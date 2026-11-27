@@ -5,8 +5,8 @@
 // IDebugger, the interface an engine implements (DebuggerX: DbgEng, Debugger.h).
 //
 // Nothing here is DbgEng's (no DbgEng.h, COM or DEBUG_* constants), so that another engine can implement it. It does use
-// the Windows base types (ULONG, ULONG64, BYTE, HRESULT, PCWSTR, HANDLE, DEFINE_ENUM_FLAG_OPERATORS); a build for another
-// platform supplies them. Some of the values (event filters, data breakpoint access, attach types, execution status) have
+// the Windows base types (ULONG, ULONG64, BYTE, HRESULT, PCWSTR, HANDLE, DEFINE_ENUM_FLAG_OPERATORS); on another platform
+// PlatformTypes.h supplies them (GdbEngine, Linux/). Some of the values (event filters, data breakpoint access, attach types, execution status) have
 // the numbers DbgEng gives them, as DebugX saves some of them in its settings; DbgEng's implementation checks that they
 // still do.
 //
@@ -16,6 +16,7 @@
 #include <vector>
 #include <memory>
 #include <functional>
+#include "PlatformTypes.h"
 #include "AsyncTask.h"
 #include "Dispatcher.h"
 

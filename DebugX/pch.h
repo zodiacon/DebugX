@@ -5,6 +5,11 @@
 
 #pragma once
 
+#ifndef _WIN32
+// (the Linux build compiles a few files of this project too, SessionModel.cpp: this is its stand-in for the rest of this header)
+#include "../Linux/Shared/SharedPch.h"
+#else
+
 // Change these values to use different versions
 // Windows 10 1703 (Creators Update) is the minimum: the docking framework needs per-monitor DPI
 #define WINVER		0x0A00
@@ -58,4 +63,5 @@ extern CAppModule _Module;
   #pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='amd64' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #else
   #pragma comment(linker, "/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+#endif
 #endif
