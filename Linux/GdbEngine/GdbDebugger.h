@@ -123,6 +123,7 @@ namespace GdbEngine {
 			std::string Class;		// done, running, connected, error, exit
 			MiValue Results;
 			std::string Console;	// its console output, if captured
+			std::string Log;		// what GDB logged while it ran (errors, warnings), whether it was captured or not
 			bool Ok() const {
 				return Class != "error";
 			}
@@ -140,6 +141,7 @@ namespace GdbEngine {
 			std::uint64_t Token;
 			int Flags;
 			std::string Console;
+			std::string Log;
 			std::function<void(MiResult&&)> Done;
 		};
 

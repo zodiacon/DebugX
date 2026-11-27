@@ -3,6 +3,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
@@ -12,6 +13,7 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QStandardPaths>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <fstream>
@@ -26,6 +28,13 @@ namespace {
 		return buttons;
 	}
 
+	// a form row whose field is a layout: QFormLayout gives its label no buddy then, and a label without one shows the '&'
+	void AddRow(QFormLayout* form, const QString& text, QWidget* buddy, QLayout* field) {
+		auto label = new QLabel(text, buddy->parentWidget());
+		label->setBuddy(buddy);
+		form->addRow(label, field);
+	}
+
 	QHBoxLayout* WithBrowse(QLineEdit* edit, QWidget* parent, std::function<void()> browse) {
 		auto row = new QHBoxLayout;
 		row->addWidget(edit);
@@ -34,6 +43,18 @@ namespace {
 		row->addWidget(button);
 		return row;
 	}
+}
+
+QString ResolveProgram(const QString& typed) {
+	auto text = typed.trimmed();
+	if (text.isEmpty())
+		return {};
+	if (text == "~" || text.startsWith("~/"))
+		text = QDir::homePath() + text.mid(1);
+	if (!text.contains('/'))
+		return QStandardPaths::findExecutable(text);
+	QFileInfo info(text);
+	return info.isFile() && info.isExecutable() ? info.absoluteFilePath() : QString();
 }
 
 //
@@ -48,13 +69,14 @@ RunExecutableDialog::RunExecutableDialog(QWidget* parent) : QDialog(parent) {
 	m_Arguments = new QLineEdit(this);
 	m_Folder = new QLineEdit(this);
 	m_Folder->setPlaceholderText(tr("(the program's folder)"));
-	form->addRow(tr("&Program:"), WithBrowse(m_Program, this, [this] {
-		auto file = QFileDialog::getOpenFileName(this, tr("Program"), QFileInfo(m_Program->text()).absolutePath());
+	m_Program->setPlaceholderText(tr("A path, or a program in PATH"));
+	AddRow(form, tr("&Program:"), m_Program, WithBrowse(m_Program, this, [this] {
+		auto file = QFileDialog::getOpenFileName(this, tr("Program"), QFileInfo(Program()).absolutePath());
 		if (!file.isEmpty())
 			m_Program->setText(file);
 	}));
 	form->addRow(tr("&Arguments:"), m_Arguments);
-	form->addRow(tr("&Working folder:"), WithBrowse(m_Folder, this, [this] {
+	AddRow(form, tr("&Working folder:"), m_Folder, WithBrowse(m_Folder, this, [this] {
 		auto folder = QFileDialog::getExistingDirectory(this, tr("Working Folder"), m_Folder->text());
 		if (!folder.isEmpty())
 			m_Folder->setText(folder);
@@ -66,8 +88,7 @@ RunExecutableDialog::RunExecutableDialog(QWidget* parent) : QDialog(parent) {
 	auto ok = buttons->button(QDialogButtonBox::Ok);
 	ok->setEnabled(false);
 	connect(m_Program, &QLineEdit::textChanged, this, [ok](const QString& text) {
-		QFileInfo info(text);
-		ok->setEnabled(info.isFile() && info.isExecutable());
+		ok->setEnabled(!ResolveProgram(text).isEmpty());
 	});
 }
 
@@ -78,7 +99,8 @@ void RunExecutableDialog::SetValues(const QString& program, const QString& argum
 }
 
 QString RunExecutableDialog::Program() const {
-	return QFileInfo(m_Program->text()).absoluteFilePath();
+	auto program = ResolveProgram(m_Program->text());
+	return program.isEmpty() ? m_Program->text().trimmed() : program;
 }
 
 QString RunExecutableDialog::Arguments() const {

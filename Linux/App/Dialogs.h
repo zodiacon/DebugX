@@ -10,6 +10,10 @@ class QCheckBox;
 class QComboBox;
 
 // File > Run Executable: the program, its arguments (as a shell splits them) and its working folder
+// a program as typed: a path (absolute, relative to the current folder, or ~/...), else a name looked up in PATH, as a
+// shell does; empty if there is no such executable
+QString ResolveProgram(const QString& typed);
+
 class RunExecutableDialog final : public QDialog {
 public:
 	explicit RunExecutableDialog(QWidget* parent = nullptr);

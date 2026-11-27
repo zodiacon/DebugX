@@ -68,7 +68,7 @@ namespace {
 	// what the debugger told the suite
 	struct Events {
 		ExecutionStatus Status{ ExecutionStatus::NoDebuggee };
-		std::wstring Output, Debuggee;
+		std::wstring Output, Debuggee, Errors;		// (Output has the errors too)
 		std::vector<ExceptionData> Exceptions;
 		std::vector<ULONG> Breakpoints;
 		std::vector<ULONG> Contexts;
@@ -86,6 +86,8 @@ namespace {
 						Debuggee += o.Text;
 					else
 						Output += o.Text;
+					if ((o.Mask & OutputDataMask::Error) == OutputDataMask::Error)
+						Errors += o.Text;
 					if (g_Verbose)
 						std::printf("%ls", o.Text.c_str());
 					break;
@@ -212,6 +214,15 @@ namespace {
 		CHECK_HR(co_await d.Stop());
 		CHECK(e.Status == ExecutionStatus::NoDebuggee);
 		CHECK(d.GetTargetType() == TargetType::Unknown);
+
+		// a program without symbols has no main: the initial break is at the first instruction (it used to run to the end)
+		CHECK_HR(co_await d.LaunchAndAttach(Target("loop-stripped").c_str()));
+		CHECK(e.Status == ExecutionStatus::Break);
+		CHECK(d.GetTargetType() == TargetType::LiveUser);
+		CHECK(co_await Pc(d) != 0);
+		CHECK(!d.IsBusy());
+		CHECK_HR(co_await d.Stop());
+		CHECK(e.Status == ExecutionStatus::NoDebuggee);
 	}
 
 	Task<void> BreakpointSuite(GdbDebugger& d, Events& e) {
@@ -332,7 +343,19 @@ namespace {
 		e.Output.clear();
 		CHECK_HR(co_await d.ExecuteCommand(L"print g_iter + 100"));
 		CHECK(e.Output.find(L"= 101") != std::wstring::npos);
+		e.Output.clear();
+		e.Errors.clear();
 		CHECK(FAILED(co_await d.ExecuteCommand(L"nosuchcommand")));
+		// once (GDB logs it, then its ^error repeats it), as an error, without GDB 17's emoji
+		auto count = [](const std::wstring& text, std::wstring_view what) {
+			size_t n = 0;
+			for (auto pos = text.find(what); pos != std::wstring::npos; pos = text.find(what, pos + 1))
+				n++;
+			return n;
+		};
+		CHECK(count(e.Output, L"Undefined command") == 1);
+		CHECK(count(e.Errors, L"Undefined command") == 1);
+		CHECK(e.Output.find(L'\u274C') == std::wstring::npos);
 		CHECK_HR(co_await d.ExecuteCommand(L"next"));		// (a run typed in: waits for the stop)
 		CHECK(e.Status == ExecutionStatus::Break);
 		CHECK_HR(co_await d.Stop());

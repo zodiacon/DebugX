@@ -300,7 +300,7 @@ namespace GdbEngine {
 
 	bool GdbDebugger::Send(std::string command, int flags, std::function<void(MiResult&&)> done) {
 		auto token = m_NextToken++;
-		m_Pending.push_back({ token, flags, {}, std::move(done) });
+		m_Pending.push_back({ token, flags, {}, {}, std::move(done) });
 		if (!m_Gdb.Write(std::to_string(token) + command)) {
 			m_Pending.pop_back();
 			return false;
@@ -353,7 +353,7 @@ namespace GdbEngine {
 				auto it = std::find_if(m_Pending.begin(), m_Pending.end(), [&](auto& p) { return p.Token == *record.Token; });
 				if (it == m_Pending.end())
 					break;
-				MiResult result{ record.Class, std::move(record.Results), std::move(it->Console) };
+				MiResult result{ record.Class, std::move(record.Results), std::move(it->Console), std::move(it->Log) };
 				auto done = std::move(it->Done);
 				m_Pending.erase(it);
 				if (result.Class == "running" && m_Status != ExecutionStatus::Go) {
@@ -368,16 +368,38 @@ namespace GdbEngine {
 				break;
 			}
 
-			case MiRecord::Kind::Console:
-			case MiRecord::Kind::Log:
-			case MiRecord::Kind::Target:
-				if (!m_Pending.empty() && (m_Pending.front().Flags & Capture)) {
-					if (record.Type != MiRecord::Kind::Log)
-						m_Pending.front().Console += record.Text;
-				}
+			case MiRecord::Kind::Log: {
+				// GDB 17 starts an error with an emoji (U+274C), a warning with another (U+26A0): left out, the error shown
+				// as one. (The command's ^error repeats the message: ExecuteCommand does not show it again.)
+				auto mask = OutputDataMask::Warning;
+				std::string_view text = record.Text;
+				auto strip = [&](std::string_view emoji) {
+					if (!text.starts_with(emoji))
+						return false;
+					text.remove_prefix(emoji.size());
+					if (text.starts_with("\xEF\xB8\x8F"))	// (the emoji presentation selector)
+						text.remove_prefix(3);
+					if (text.starts_with(' '))
+						text.remove_prefix(1);
+					return true;
+				};
+				if (strip("\xE2\x9D\x8C"))
+					mask = OutputDataMask::Error;
 				else
-					Output(record.Type == MiRecord::Kind::Console ? OutputDataMask::Normal :
-						record.Type == MiRecord::Kind::Target ? OutputDataMask::Debuggee : OutputDataMask::Warning, FromUtf8(record.Text));
+					strip("\xE2\x9A\xA0");
+				if (!m_Pending.empty())
+					m_Pending.front().Log += text;
+				if (m_Pending.empty() || !(m_Pending.front().Flags & Capture))
+					Output(mask, FromUtf8(std::string(text)));
+				break;
+			}
+
+			case MiRecord::Kind::Console:
+			case MiRecord::Kind::Target:
+				if (!m_Pending.empty() && (m_Pending.front().Flags & Capture))
+					m_Pending.front().Console += record.Text;
+				else
+					Output(record.Type == MiRecord::Kind::Console ? OutputDataMask::Normal : OutputDataMask::Debuggee, FromUtf8(record.Text));
 				break;
 
 			case MiRecord::Kind::Exec:
@@ -687,12 +709,17 @@ namespace GdbEngine {
 		bool initialBreak = (attach & AttachType::InvasiveNoInitialBreak) != AttachType::InvasiveNoInitialBreak;
 		auto gen = m_StopGeneration;
 		// the initial break is at main (--start: a temporary breakpoint of GDB's, which is DebugX's own, hidden), else at the
-		// first instruction (no main: a stripped or non-C program)
-		r = co_await Command(initialBreak ? "-exec-run --start" : "-exec-run", Capture | Internal);
-		if (!r.Ok() && initialBreak) {
-			gen = m_StopGeneration;
+		// first instruction (no main: a stripped or non-C program). Asked first: without a main, --start declines the
+		// breakpoint and runs anyway, to the end.
+		bool hasMain = false;
+		if (initialBreak)
+			hasMain = (co_await Command("-interpreter-exec console \"info address main\"", Capture | Internal)).Ok();
+		if (!initialBreak)
+			r = co_await Command("-exec-run", Capture | Internal);
+		else if (hasMain)
+			r = co_await Command("-exec-run --start", Capture | Internal);
+		else
 			r = co_await Command("-interpreter-exec console starti", Capture | Internal);
-		}
 		if (!r.Ok())
 			co_return Fail(r);
 		if (initialBreak)
@@ -800,7 +827,9 @@ namespace GdbEngine {
 		auto gen = m_StopGeneration;
 		auto r = co_await Command("-interpreter-exec console " + MiQuote(ToUtf8(command)), 0);
 		if (!r.Ok()) {
-			Output(OutputDataMask::Error, FromUtf8(r.Message() + "\n"));
+			// (GDB has usually logged the error already, in order with the rest of the output)
+			if (r.Log.find(r.Message()) == std::string::npos)
+				Output(OutputDataMask::Error, FromUtf8(r.Message() + "\n"));
 			co_return Fail(r);
 		}
 		// (a run waits for the stop, as a run of the GUI's does)

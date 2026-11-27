@@ -702,6 +702,11 @@ void MainWindow::StartFromCommandLine(const QStringList& arguments) {
 		Launch({ program.absoluteFilePath(), arguments.mid(1).join(' '), QDir::currentPath() });
 	else if (program.isFile())
 		OpenDumpFile(program.absoluteFilePath());
+	else if (auto path = ResolveProgram(arguments[0]); !path.isEmpty())
+		// (a name in PATH: debugx ls)
+		Launch({ path, arguments.mid(1).join(' '), QDir::currentPath() });
+	else
+		SetStatusMessage(tr("No program or core file '%1'").arg(arguments[0]));
 }
 
 void MainWindow::dragEnterEvent(QDragEnterEvent* event) {
