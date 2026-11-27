@@ -58,3 +58,4 @@ DebugEngine::Task<void> RemoteSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> ScriptSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> McpSuite(DebugEngine::DebuggerX& dbg);
 DebugEngine::Task<void> AssistantSuite(DebugEngine::DebuggerX& dbg);
+DebugEngine::Task<void> TtdSuite(DebugEngine::DebuggerX& dbg);

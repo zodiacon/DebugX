@@ -99,8 +99,10 @@ namespace DebugEngine {
 		LiveUser = Live | User,
 		LiveKernel = Live | Kernel,
 		LocalKernel = Kernel | 0x10,
+		Trace = 0x20,			// a Time Travel Debugging trace: replayed, forwards and backwards; read-only
 		DumpUser = Dump | User,
-		DumpKernel = Dump | Kernel
+		DumpKernel = Dump | Kernel,
+		TraceUser = Trace | User
 	};
 	DEFINE_ENUM_FLAG_OPERATORS(DebugEngine::TargetType);
 

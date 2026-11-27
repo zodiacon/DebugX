@@ -12,6 +12,7 @@ namespace DebugEngine {
 		// for the !-commands), else System32's
 		Automatic,
 		WindowsKits,
+		WinDbg,			// the WinDbg app's (the Microsoft.WinDbg package): the only one that replays TTD traces
 		System32,
 		Folder,			// the one in the folder given
 	};
@@ -19,6 +20,9 @@ namespace DebugEngine {
 	// the Windows Kits debugger's folder for this process's architecture (...\Debuggers\x64\), if it has a dbgeng.dll;
 	// empty if not
 	std::wstring WindowsKitsDebuggersFolder();
+	// the WinDbg app's engine folder for this process's architecture (...\Microsoft.WinDbg_<version>_..md64\), if the
+	// package is installed for this user; empty if not
+	std::wstring WinDbgEngineFolder();
 	// Loads the dbgeng.dll (with dbghelp.dll and the rest from its folder) and returns its full path; empty if it cannot be
 	// loaded. 'folder': for EngineSource::Folder.
 	std::wstring LoadEngine(EngineSource source, PCWSTR folder = nullptr);

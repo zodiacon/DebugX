@@ -1,5 +1,5 @@
 //
-// DebugEngineTests [suite...] [--engine kits|system|package]
+// DebugEngineTests [suite...] [--engine kits|windbg|system|package]
 //
 // Runs the DebugEngine tests (all suites, or the ones named) and returns the number of checks that failed. The engine is
 // the Windows Kits debugger's dbgeng.dll (what DebugX.exe loads when it is installed: it has symsrv.dll and the extension
@@ -72,6 +72,7 @@ namespace {
 		{ "script", ScriptSuite },
 		{ "mcp", McpSuite },
 		{ "assistant", AssistantSuite },
+		{ "ttd", TtdSuite },
 	};
 
 	// dbgeng.dll is delay-loaded: whichever is loaded first is the one the engine uses
@@ -79,11 +80,16 @@ namespace {
 		std::wstring path;
 		if (which == L"system")
 			path = DebugEngine::LoadEngine(EngineSource::System32);
+		else if (which == L"windbg")
+			path = DebugEngine::LoadEngine(EngineSource::WinDbg);
 		else if (which == L"kits")
 			path = DebugEngine::LoadEngine(EngineSource::WindowsKits);
 		else if (which == L"package")
 			// (x64\<configuration>\ is two folders down from the solution's)
 			path = DebugEngine::LoadEngine(EngineSource::Folder, (ExeDir() + L"..\\..\\DebugEngine\\amd64").c_str());
+		else if (auto attributes = ::GetFileAttributesW(which.c_str()); attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY))
+			// (a folder with a dbgeng.dll of its own)
+			path = DebugEngine::LoadEngine(EngineSource::Folder, which.c_str());
 		if (path.empty()) {
 			printf("cannot load the '%ls' dbgeng.dll (error %u)\n", which.c_str(), ::GetLastError());
 			return false;
@@ -183,7 +189,7 @@ int wmain(int argc, wchar_t* argv[]) {
 		if (arg == L"--engine" && i + 1 < argc)
 			engine = argv[++i];
 		else if (arg == L"--help" || arg == L"-?" || arg == L"/?") {
-			printf("DebugEngineTests [suite...] [--engine kits|system|package]\nsuites:");
+			printf("DebugEngineTests [suite...] [--engine kits|windbg|system|package]\nsuites:");
 			for (auto& s : Suites)
 				printf(" %s", s.Name);
 			printf("\nWithout --engine: once with each engine. The exit code is the number of failed checks.\n");

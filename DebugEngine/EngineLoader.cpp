@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "Debugger.h"
+#include <appmodel.h>
 
 using namespace DebugEngine;
 
@@ -66,6 +67,35 @@ std::wstring DebugEngine::WindowsKitsDebuggersFolder() {
 	return {};
 }
 
+std::wstring DebugEngine::WinDbgEngineFolder() {
+	// (the folder under the WinDbg package: its own name for the architecture)
+	constexpr PCWSTR PackageArchitecture =
+#if defined(_M_ARM64)
+		L"arm64";
+#elif defined(_M_X64)
+		L"amd64";
+#else
+		L"x86";
+#endif
+	UINT32 count = 0, bufferLength = 0;
+	if (::GetPackagesByPackageFamily(L"Microsoft.WinDbg_8wekyb3d8bbwe", &count, nullptr, &bufferLength, nullptr) != ERROR_INSUFFICIENT_BUFFER || count == 0)
+		return {};
+	std::vector<PWSTR> names(count);
+	std::vector<wchar_t> buffer(bufferLength);
+	if (::GetPackagesByPackageFamily(L"Microsoft.WinDbg_8wekyb3d8bbwe", &count, names.data(), &bufferLength, buffer.data()) != ERROR_SUCCESS)
+		return {};
+	for (UINT32 i = 0; i < count; i++) {
+		wchar_t path[MAX_PATH * 2];
+		UINT32 length = _countof(path);
+		if (::GetPackagePathByFullName(names[i], &length, path) != ERROR_SUCCESS)
+			continue;
+		auto folder = WithSlash(path) + PackageArchitecture + L"\\";
+		if (FileExists(folder + L"dbgeng.dll"))
+			return folder;
+	}
+	return {};
+}
+
 std::wstring DebugEngine::LoadEngine(EngineSource source, PCWSTR folder) {
 	// (already loaded -- by an earlier call, or as an import: that one it is)
 	if (auto loaded = ::GetModuleHandleW(L"dbgeng.dll"))
@@ -86,6 +116,10 @@ std::wstring DebugEngine::LoadEngine(EngineSource source, PCWSTR folder) {
 			if (engine || source == EngineSource::WindowsKits)
 				break;
 			[[fallthrough]];
+		case EngineSource::WinDbg:
+			if (auto winDbg = WinDbgEngineFolder(); !winDbg.empty())
+				engine = fromFolder(winDbg);
+			break;
 		case EngineSource::System32:
 			engine = ::LoadLibraryExW(L"dbgeng.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
 			break;

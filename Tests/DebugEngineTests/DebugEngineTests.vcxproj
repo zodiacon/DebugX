@@ -98,6 +98,7 @@
     <ClCompile Include="SourceTests.cpp" />
     <ClCompile Include="NextStatementTests.cpp" />
     <ClCompile Include="DumpTests.cpp" />
+    <ClCompile Include="TtdTests.cpp" />
     <ClCompile Include="KernelTests.cpp" />
     <ClCompile Include="ValueTests.cpp" />
     <ClCompile Include="ProcessTests.cpp" />

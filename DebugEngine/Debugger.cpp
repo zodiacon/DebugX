@@ -117,7 +117,10 @@ namespace {
 
 	bool IsExecuting(ULONG status) {
 		return status == DEBUG_STATUS_GO || status == DEBUG_STATUS_GO_HANDLED || status == DEBUG_STATUS_GO_NOT_HANDLED ||
-			status == DEBUG_STATUS_STEP_OVER || status == DEBUG_STATUS_STEP_INTO || status == DEBUG_STATUS_STEP_BRANCH;
+			status == DEBUG_STATUS_STEP_OVER || status == DEBUG_STATUS_STEP_INTO || status == DEBUG_STATUS_STEP_BRANCH ||
+			// (a TTD trace replays backwards too: g-, p-, t-)
+			status == DEBUG_STATUS_REVERSE_GO || status == DEBUG_STATUS_REVERSE_STEP_BRANCH ||
+			status == DEBUG_STATUS_REVERSE_STEP_OVER || status == DEBUG_STATUS_REVERSE_STEP_INTO;
 	}
 }
 
@@ -970,16 +973,20 @@ bool DebuggerX::Impl::DoPostCommand() {
 
 Task<HRESULT> DebuggerX::Impl::OpenDumpFile(PCWSTR filename) {
 	// (the coroutine's frame outlives the call on the debug thread)
-	ULONG debuggeeClass = DEBUG_CLASS_UNINITIALIZED;
-	auto hr = co_await Run([this, filename = std::wstring(filename), &debuggeeClass] {
+	ULONG debuggeeClass = DEBUG_CLASS_UNINITIALIZED, qualifier = 0;
+	auto hr = co_await Run([this, filename = std::wstring(filename), &debuggeeClass, &qualifier] {
 		HR(m_spClient->OpenDumpFileWide(filename.c_str(), 0));
 		HR(m_spControl->WaitForEvent(0, INFINITE));
-		ULONG qualifier;
 		HR(m_spControl->GetDebuggeeType(&debuggeeClass, &qualifier));
+		// (a TTD trace -- "IDNA", its old name -- replays: a `file:line` is looked up only in loaded symbols, and at the
+		// start of the trace none are)
+		if (debuggeeClass == DEBUG_CLASS_USER_WINDOWS && qualifier == DEBUG_USER_WINDOWS_IDNA)
+			LoadExecutableSymbols();
 		return S_OK;
 		});
 	if (SUCCEEDED(hr))
-		SetTargetType(debuggeeClass == DEBUG_CLASS_KERNEL ? TargetType::DumpKernel : TargetType::DumpUser);
+		SetTargetType(debuggeeClass == DEBUG_CLASS_KERNEL ? TargetType::DumpKernel :
+			qualifier == DEBUG_USER_WINDOWS_IDNA ? TargetType::TraceUser : TargetType::DumpUser);
 	co_return hr;
 }
 
