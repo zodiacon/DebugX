@@ -78,8 +78,7 @@ Steps:
    ```
 
    In an existing clone, run `git submodule update --init wtlhelper` instead. The `wtlhelper` submodule has WTL, the
-   docking framework, the hex control and the UI helper library. (The `imgui_bundle` and `hello_imgui` submodules are
-   not needed to build DebugX.)
+   docking framework, the hex control and the UI helper library.
 
 2. Install the vcpkg packages, as static libraries, for each platform you build:
 
@@ -97,8 +96,6 @@ Steps:
    ```
 
    The program is `x64\Release\DebugX.exe` (or `Release\DebugX.exe` for x86). Debug and Release build for x64 and x86.
-
-Ignore `CMakeLists.txt`: it is for an unrelated ImGui experiment, not for DebugX.
 
 ### Tests
 
