@@ -27,8 +27,18 @@ How to work:
 
 How to answer:
 - Lead with the finding, then the evidence: the threads, frames and values that show it. Be concise.
-- The answer is shown as plain text in a debugger pane, not rendered Markdown: no headings, tables or bold; short paragraphs, "- " lists, and `backticks` for code are fine.
-- Write symbols and addresses exactly as the tools show them (module!function+0x1a, 00007ff6`12345678): the user can click them to see the code.)SYS";
+- The answer is shown as Markdown (GitHub's) in a narrow debugger pane: short paragraphs, lists, `code` spans, fenced code blocks for code or output, a small table where it helps; headings only for a long answer.
+- Write symbols and addresses exactly as the tools show them, each in a code span (`module!function+0x1a`, `0x7ff612345678`): they become links the user can click to see the code.)SYS";
+
+	// what the summary of a long conversation (compaction) has to keep -- it replaces the default prompt. (No tools: with
+	// tools declared, the summarizing step might call one, and then there is no summary.)
+	const char* const CompactionInstructions = R"SUM(Summarize this debugging conversation so that it can go on from the summary alone. Keep:
+- what the user asked for, and what they want to find out or have done;
+- the target (process, dump or kernel) and the state it was left in: stopped or running, where, the current thread;
+- every finding, with the exact symbols, addresses, thread ids, values and source locations the tools showed;
+- what was ruled out, and what is still open;
+- what was changed in the session: breakpoints set or removed, the target run or stepped, memory or registers written.
+Write the summary only; do not call any tool.)SUM";
 
 	bool SupportsFallbacks(const std::string& model) {
 		// (server-side refusal fallbacks, fallbacks: "default": not Haiku, nor models older than these)
@@ -240,9 +250,12 @@ bool Assistant::Reset() {
 }
 
 std::vector<std::string> Assistant::Betas() const {
+	std::vector<std::string> betas{ "thinking-binding-controls-2026-08-01" };
+	if (m_Options.CompactAtTokens > 0)
+		betas.push_back("compact-2026-01-12");
 	if (SupportsFallbacks(m_Options.Model))
-		return { "server-side-fallback-2026-07-01" };
-	return {};
+		betas.push_back("server-side-fallback-2026-07-01");
+	return betas;
 }
 
 json Assistant::BuildRequest() const {
@@ -254,11 +267,22 @@ json Assistant::BuildRequest() const {
 		{ "system", json::array({ { { "type", "text" }, { "text", System } } }) },
 		{ "tools", ToolDeclarations() },
 		{ "messages", m_Messages },
-		{ "thinking", { { "type", "adaptive" }, { "display", "summarized" } } },
+		// (a thinking block whose history no longer matches is dropped rather than failing the request -- a safety net: the
+		// conversation is append-only)
+		{ "thinking", { { "type", "adaptive" }, { "display", "summarized" }, { "block_binding", { { "prefix_mismatch_behavior", "drop_block" } } } } },
 		{ "output_config", { { "effort", m_Options.Effort } } },
 		// (the conversation so far is cached, request after request)
 		{ "cache_control", { { "type", "ephemeral" } } },
 	};
+	if (m_Options.CompactAtTokens > 0) {
+		// A long conversation is summarized server-side once its input reaches the threshold: the answer then starts with a
+		// compaction block, which goes back with the rest (the API leaves out what came before it)
+		request["context_management"] = { { "edits", json::array({ {
+			{ "type", "compact_20260112" },
+			{ "trigger", { { "type", "input_tokens" }, { "value", std::max(m_Options.CompactAtTokens, 50000) } } },
+			{ "instructions", CompactionInstructions },
+		} }) } };
+	}
 	if (SupportsFallbacks(m_Options.Model))
 		request["fallbacks"] = "default";
 	return request;
@@ -275,6 +299,8 @@ void Assistant::OnUpdate(const MessageBuilder::Update& update) {
 				Emit(AssistantEvent::Kind::ThinkingStart);
 			else if (update.BlockType == "fallback")
 				Emit(AssistantEvent::Kind::Info, L"(the model declined; " + FromUtf8(update.Text.empty() ? "another model" : update.Text) + L" went on)");
+			else if (update.BlockType == "compaction")
+				Emit(AssistantEvent::Kind::Info, L"(the conversation so far was summarized, to keep it within the model's limits)");
 			break;
 		case Kind::Delta:
 			if (text)
@@ -341,6 +367,13 @@ Task<void> Assistant::Run() {
 			m_OutputTokens += number("output_tokens");
 			m_CacheReadTokens += number("cache_read_input_tokens");
 			m_CacheWriteTokens += number("cache_creation_input_tokens");
+			// (a compaction's own tokens are only in its iteration, not in the totals above)
+			if (usage.contains("iterations") && usage["iterations"].is_array())
+				for (auto& iteration : usage["iterations"])
+					if (iteration.is_object() && iteration.value("type", "") == "compaction") {
+						m_InputTokens += iteration.value("input_tokens", 0LL);
+						m_OutputTokens += iteration.value("output_tokens", 0LL);
+					}
 			Emit(AssistantEvent::Kind::Usage);
 		}
 

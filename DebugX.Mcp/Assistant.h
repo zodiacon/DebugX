@@ -25,6 +25,9 @@ namespace DebugX::Ai {
 		std::string Model{ "claude-opus-5-5" };
 		std::string Effort{ "medium" };		// low, medium, high, xhigh, max
 		int MaxTokens{ 64000 };
+		// a conversation whose input reaches this many tokens is summarized server-side (compaction; at least 50000);
+		// 0: never
+		int CompactAtTokens{ 150000 };
 	};
 
 	// what the conversation shows, as it happens

@@ -5,17 +5,14 @@
 #include "ApiKey.h"
 #include "AssistantSettingsDlg.h"
 #include "resource.h"
-#include <regex>
 #include <format>
 
-using namespace Scintilla;
 using DebugX::Ai::AssistantEvent;
 using DebugX::Ai::Approval;
+using DebugX::Ai::Transcript;
 
 namespace {
-	// a tool result shows its first lines; the model gets all of it
-	constexpr size_t PreviewLines = 6;
-	constexpr size_t MaxArgumentsShown = 240;
+	constexpr wchar_t Dot = 0x00B7;
 
 	std::wstring Tokens(long long count) {
 		if (count < 1000)
@@ -30,7 +27,7 @@ namespace {
 	}
 }
 
-CAssistantView::CAssistantView() : m_Text(this, 2), m_Input(this, 1) {
+CAssistantView::CAssistantView() : m_Input(this, 1) {
 }
 
 HWND CAssistantView::Create(HWND hParent) {
@@ -38,19 +35,11 @@ HWND CAssistantView::Create(HWND hParent) {
 }
 
 LRESULT CAssistantView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
-	m_Text.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_CLIPSIBLINGS | WS_CLIPCHILDREN, 0, TextId);
-	m_Text.InitCall();
-	m_Text->SetReadOnly(true);
-	m_Text->SetUndoCollection(false);
-	for (int margin = 0; margin < 3; margin++)
-		m_Text->SetMarginWidthN(margin, 0);
-	m_Text->SetMarginLeft(6);
-	m_Text->SetMarginRight(6);
-	m_Text->SetWrapMode(Wrap::Word);
-	m_Text->SetWrapIndentMode(WrapIndentMode::Fixed);
-	m_Text->UsePopUp(PopUp::Never);
-	m_Text->SetHotspotActiveUnderline(true);
-	ApplyStyles();
+	// (no link tooltips: a dbgx: link's address is not for reading)
+	m_View.Create(*this, rcDefault, nullptr, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | MDVS_NOLINKTIPS, 0, TextId);
+	// (a line break in a message is a line break, as in a chat)
+	m_View.SetParseFlags(MDVF_HARDBREAKS);
+	ApplyTextStyle();
 
 	m_Input.Create(*this, nullptr, nullptr, WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | WS_TABSTOP | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN,
 		0, InputId);
@@ -75,6 +64,7 @@ LRESULT CAssistantView::OnCreate(UINT, WPARAM, LPARAM, BOOL&) {
 }
 
 LRESULT CAssistantView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
+	KillTimer(RenderTimerId);
 	// (a request under way ends, and its thread is waited for)
 	m_Assistant.reset();
 	handled = FALSE;
@@ -83,7 +73,7 @@ LRESULT CAssistantView::OnDestroy(UINT, WPARAM, LPARAM, BOOL& handled) {
 
 LRESULT CAssistantView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 	int cx = GET_X_LPARAM(lParam), cy = GET_Y_LPARAM(lParam);
-	if (cx == 0 || cy == 0 || !m_Text)
+	if (cx == 0 || cy == 0 || !m_View)
 		return 0;
 	const int line = AppFonts::TextHeight(AppFonts::UiFont());
 	const int bar = line + 10;
@@ -101,7 +91,7 @@ LRESULT CAssistantView::OnSize(UINT, WPARAM, LPARAM lParam, BOOL&) {
 		if (dwp)
 			dwp = ::DeferWindowPos(dwp, h, nullptr, x, top, std::max(0, width), std::max(0, height), SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
 	};
-	place(m_Text, 0, 0, cx, textHeight);
+	place(m_View, 0, 0, cx, textHeight);
 	place(m_Settings, cx - settingsWidth - 2, y, settingsWidth, bar - 2);
 	place(m_New, cx - settingsWidth - newWidth - 6, y, newWidth, bar - 2);
 	place(m_Status, 6, y, cx - settingsWidth - newWidth - 16, bar - 2);
@@ -118,15 +108,19 @@ LRESULT CAssistantView::OnSetFocus(UINT, WPARAM, LPARAM, BOOL&) {
 	return 0;
 }
 
-LRESULT CAssistantView::OnThemeChanged(UINT, WPARAM, LPARAM, BOOL&) {
-	ApplyStyles();
-	::SetWindowTheme(m_Text, WTLHelper::IsDarkMode() ? L"DarkMode_Explorer" : L"Explorer", nullptr);
-	m_Text.Invalidate();
+LRESULT CAssistantView::OnTimer(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
+	if (wParam != RenderTimerId) {
+		handled = FALSE;
+		return 0;
+	}
+	KillTimer(RenderTimerId);
+	m_RenderPending = false;
+	Render();
 	return 0;
 }
 
 LRESULT CAssistantView::OnFontsChanged(UINT, WPARAM, LPARAM, BOOL&) {
-	ApplyStyles();
+	ApplyTextStyle();
 	for (HWND h : { m_Input.m_hWnd, m_Send.m_hWnd, m_New.m_hWnd, m_Settings.m_hWnd, m_Status.m_hWnd })
 		::SendMessage(h, WM_SETFONT, reinterpret_cast<WPARAM>(AppFonts::UiFont()), TRUE);
 	CRect rc;
@@ -135,178 +129,90 @@ LRESULT CAssistantView::OnFontsChanged(UINT, WPARAM, LPARAM, BOOL&) {
 	return 0;
 }
 
-void CAssistantView::ApplyStyles() {
-	const bool dark = WTLHelper::IsDarkMode();
-	auto color = [](COLORREF c) { return static_cast<Colour>(c); };
-	const auto fore = ::GetSysColor(COLOR_WINDOWTEXT), back = ::GetSysColor(COLOR_WINDOW), gray = ::GetSysColor(COLOR_GRAYTEXT);
-
-	// the code font for everything first (StyleClearAll copies the default style), then the conversation's own text in the
-	// UI font; tool calls and their results keep the code font
-	AppFonts::ApplyCodeFont(m_Text.Call());
-	m_Text->StyleSetFore(static_cast<int>(StylesCommon::Default), color(fore));
-	m_Text->StyleSetBack(static_cast<int>(StylesCommon::Default), color(back));
-	m_Text->StyleClearAll();
+void CAssistantView::ApplyTextStyle() {
 	auto& ui = AppFonts::Spec(AppFonts::Kind::Ui);
-	auto face = Narrow(ui.Face.empty() ? std::wstring(L"Segoe UI") : ui.Face);
-	for (int style : { StyleText, StyleUser, StyleThinking, StyleInfo, StyleError }) {
-		m_Text->StyleSetFont(style, face.c_str());
-		m_Text->StyleSetSizeFractional(style, ui.PointSize10 * 10);
-	}
-	m_Text->StyleSetBold(StyleUser, true);
-	m_Text->StyleSetFore(StyleUser, color(dark ? RGB(120, 185, 255) : RGB(0, 84, 166)));
-	m_Text->StyleSetItalic(StyleThinking, true);
-	m_Text->StyleSetFore(StyleThinking, color(gray));
-	m_Text->StyleSetFore(StyleToolCall, color(dark ? RGB(140, 200, 140) : RGB(0, 110, 50)));
-	m_Text->StyleSetFore(StyleToolResult, color(gray));
-	m_Text->StyleSetFore(StyleError, color(dark ? RGB(255, 120, 120) : RGB(190, 0, 0)));
-	m_Text->StyleSetItalic(StyleInfo, true);
-	m_Text->StyleSetFore(StyleInfo, color(gray));
-	m_Text->StyleSetFore(StyleLink, color(dark ? RGB(102, 178, 255) : RGB(0, 0, 238)));
-	m_Text->StyleSetUnderline(StyleLink, true);
-	m_Text->StyleSetHotSpot(StyleLink, true);
-	m_Text->SetCaretFore(color(fore));
-	m_Text->SetSelBack(true, color(::GetSysColor(COLOR_HIGHLIGHT)));
+	auto& code = AppFonts::Spec(AppFonts::Kind::Code);
+	MDVSTYLE style{};
+	style.mask = MDVSM_FONT | MDVSM_CODEFONT | MDVSM_FONTSIZE | MDVSM_SPACING | MDVSM_PADDING;
+	wcsncpy_s(style.szFont, ui.Face.empty() ? L"Segoe UI" : ui.Face.c_str(), _TRUNCATE);
+	wcsncpy_s(style.szCodeFont, code.Face.c_str(), _TRUNCATE);
+	// (points to DIPs)
+	style.fontSize = ui.PointSize10 / 10.0f * 96.0f / 72.0f;
+	style.spacing = 0.7f;
+	style.padding = 10;
+	m_View.SetTextStyle(style);
 }
 
 void CAssistantView::ShowWelcome() {
-	AppendLine(L"Ask about what is being debugged -- \"Which threads are waiting, and on what?\", \"Why did it crash?\", "
+	m_Transcript.AddNote(L"Ask about what is being debugged -- \"Which threads are waiting, and on what?\", \"Why did it crash?\", "
 		L"\"What does the third frame's this point to?\". The assistant looks into the target with the debugger's tools, and asks "
-		L"before it runs, steps or changes anything. What it reads of the target is sent to Anthropic's API.", StyleInfo);
+		L"before it runs, steps or changes anything. What it reads of the target is sent to Anthropic's API.");
 	if (ApiKey::Get().empty())
-		AppendLine(L"It needs an Anthropic API key first: Settings.", StyleInfo);
+		m_Transcript.AddNote(L"It needs an Anthropic API key first: Settings.");
+	Render();
 }
 
-void CAssistantView::Append(std::wstring_view text, int style) {
-	if (text.empty())
-		return;
-	// (the view follows the end while the caret is there; a click elsewhere stops it, Ctrl+End goes back)
-	const bool follow = m_Text->CurrentPos() == m_Text->Length() && m_Text->SelectionEmpty();
-	auto utf8 = ToUtf8(text);
-	const auto start = m_Text->Length();
-	m_Text->SetReadOnly(false);
-	m_Text->AppendText(static_cast<Position>(utf8.size()), utf8.c_str());
-	m_Text->SetReadOnly(true);
-	m_Text->StartStyling(start, 0);
-	m_Text->SetStyling(static_cast<Position>(utf8.size()), style);
-	if (follow) {
-		m_Text->DocumentEnd();
-		m_Text->ScrollCaret();
-	}
+void CAssistantView::Render() {
+	// The view parses the document again (and starts at its top): it goes back where it was -- to the end if the end was
+	// showing (the conversation is followed), else to the block at the top
+	bool follow = std::exchange(m_FollowNext, false);
+	SCROLLINFO si{ sizeof(si), SIF_ALL };
+	if (!follow)
+		follow = !m_View.GetScrollInfo(SB_VERT, &si) || si.nMax <= 0 || si.nPos + static_cast<int>(si.nPage) >= si.nMax - 8;
+	const auto top = m_View.GetTopOffset();
+	auto doc = m_Transcript.Markdown();
+	m_View.SetText(doc.c_str(), doc.size());
+	if (follow)
+		m_View.SendMessage(WM_VSCROLL, SB_BOTTOM);
+	else
+		m_View.ScrollToOffset(top);
 }
 
-void CAssistantView::AppendLine(std::wstring_view text, int style) {
-	EndLine();
-	Append(text, style);
-	Append(L"\n", style);
-}
-
-void CAssistantView::EndLine() {
-	auto length = m_Text->Length();
-	if (length > 0 && m_Text->CharAt(length - 1) != '\n')
-		Append(L"\n", StyleText);
-}
-
-void CAssistantView::MarkLinks(Position start) {
-	// module!function+0x10, 00007ff6`12345678, 0x7ff612345678
-	static const std::regex pattern(R"(([A-Za-z_][\w.\-]*![A-Za-z_?$@~][\w:<>~$@?]*(\+0x[0-9A-Fa-f]+)?)|\b[0-9A-Fa-f]{8}`[0-9A-Fa-f]{8}\b|\b0x[0-9A-Fa-f]{6,16}\b)");
-	const auto end = m_Text->Length();
-	if (end <= start)
-		return;
-	auto text = m_Text->StringOfRange(Span(start, end));
-	for (auto it = std::sregex_iterator(text.begin(), text.end(), pattern); it != std::sregex_iterator(); ++it) {
-		const auto position = start + static_cast<Position>(it->position());
-		const auto length = static_cast<Position>(it->length());
-		m_Text->StartStyling(position, 0);
-		m_Text->SetStyling(length, StyleLink);
-		m_Links.push_back({ position, position + length, FromUtf8(it->str()) });
+void CAssistantView::RenderSoon() {
+	if (!m_RenderPending) {
+		m_RenderPending = true;
+		SetTimer(RenderTimerId, RenderDelay);
 	}
 }
 
 void CAssistantView::OnEvent(const AssistantEvent& e) {
 	using Kind = AssistantEvent::Kind;
 	switch (e.Type) {
-		case Kind::User:
-			EndLine();
-			if (m_Text->Length() > 0)
-				Append(L"\n", StyleText);
-			AppendLine(L"> " + e.Text, StyleUser);
-			Append(L"\n", StyleText);
-			// (the user just sent it: follow the conversation from here)
-			m_Text->DocumentEnd();
-			m_Text->ScrollCaret();
-			break;
-
-		case Kind::TextStart:
-			EndLine();
-			m_BlockStart = m_Text->Length();
-			break;
-		case Kind::Text:
-			Append(e.Text, StyleText);
-			break;
-		case Kind::ThinkingStart:
-			EndLine();
-			m_BlockStart = m_Text->Length();
-			break;
-		case Kind::Thinking:
-			// (a block that says nothing shows nothing)
-			if (m_Text->Length() == m_BlockStart)
-				Append(L"(thinking) ", StyleThinking);
-			Append(e.Text, StyleThinking);
-			break;
-		case Kind::BlockEnd:
-			MarkLinks(m_BlockStart);
-			EndLine();
-			break;
-
-		case Kind::ToolCall: {
-			auto args = e.Text == L"{}" ? std::wstring() : e.Text;
-			if (args.size() > MaxArgumentsShown)
-				args = args.substr(0, MaxArgumentsShown) + L"...";
-			AppendLine(L"\u25B8 " + e.Name + (args.empty() ? L"" : L" " + args), StyleToolCall);
-			break;
-		}
-		case Kind::ToolResult: {
-			EndLine();
-			const auto start = m_Text->Length();
-			size_t lines = 0, pos = 0;
-			std::wstring preview;
-			while (pos < e.Text.size() && lines < PreviewLines) {
-				auto end = e.Text.find(L'\n', pos);
-				if (end == std::wstring::npos)
-					end = e.Text.size();
-				auto line = e.Text.substr(pos, end - pos);
-				if (!line.empty() && line.back() == L'\r')
-					line.pop_back();
-				preview += L"    " + line + L"\n";
-				lines++;
-				pos = end + 1;
-			}
-			Append(preview.empty() ? L"    (nothing)\n" : preview, e.Failed ? StyleError : StyleToolResult);
-			if (pos < e.Text.size()) {
-				const auto more = std::count(e.Text.begin() + pos, e.Text.end(), L'\n') + 1;
-				AppendLine(std::format(L"    ... ({} more line{})", more, more == 1 ? L"" : L"s"), StyleInfo);
-			}
-			MarkLinks(start);
-			break;
-		}
-
-		case Kind::Info:
-			AppendLine(e.Text, StyleInfo);
-			break;
-		case Kind::Error:
-			AppendLine(e.Text, StyleError);
-			break;
 		case Kind::Busy:
 			m_Busy = true;
 			UpdateControls();
-			break;
+			return;
 		case Kind::Idle:
 			m_Busy = false;
 			UpdateControls();
-			break;
+			// (the last of it, now)
+			KillTimer(RenderTimerId);
+			m_RenderPending = false;
+			Render();
+			return;
 		case Kind::Usage:
 			m_Usage = e;
 			UpdateStatus();
+			return;
+		default:
+			break;
+	}
+	if (!m_Transcript.Apply(e))
+		return;
+	switch (e.Type) {
+		case Kind::Text:
+		case Kind::Thinking:
+			// (a stream of pieces: a render in a moment, for all of them)
+			RenderSoon();
+			break;
+		case Kind::User:
+			// (the user just sent it: the conversation is followed from here)
+			m_FollowNext = true;
+			[[fallthrough]];
+		default:
+			KillTimer(RenderTimerId);
+			m_RenderPending = false;
+			Render();
 			break;
 	}
 }
@@ -386,10 +292,7 @@ void CAssistantView::Send() {
 void CAssistantView::NewConversation() {
 	if (m_Busy || !m_Assistant->Reset())
 		return;
-	m_Text->SetReadOnly(false);
-	m_Text->ClearAll();
-	m_Text->SetReadOnly(true);
-	m_Links.clear();
+	m_Transcript.Clear();
 	ShowWelcome();
 	m_Input.SetFocus();
 }
@@ -402,10 +305,11 @@ void CAssistantView::UpdateControls() {
 
 void CAssistantView::UpdateStatus() {
 	auto& settings = AppSettings::Get();
-	auto text = settings.AssistantModel() + L" \u00B7 " + settings.AssistantEffort() + L" effort";
+	const std::wstring dot = std::wstring(L" ") + Dot + L" ";
+	auto text = settings.AssistantModel() + dot + settings.AssistantEffort() + L" effort";
 	const auto in = m_Usage.InputTokens + m_Usage.CacheReadTokens + m_Usage.CacheWriteTokens;
 	if (in || m_Usage.OutputTokens)
-		text += std::format(L" \u00B7 {} tokens in ({} from the cache), {} out", Tokens(in), Tokens(m_Usage.CacheReadTokens), Tokens(m_Usage.OutputTokens));
+		text += dot + std::format(L"{} tokens in ({} from the cache), {} out", Tokens(in), Tokens(m_Usage.CacheReadTokens), Tokens(m_Usage.OutputTokens));
 	m_Status.SetWindowText(text.c_str());
 }
 
@@ -425,15 +329,42 @@ LRESULT CAssistantView::OnSettings(WORD, WORD, HWND, BOOL&) {
 	return 0;
 }
 
-LRESULT CAssistantView::OnHotspotClick(int, LPNMHDR hdr, BOOL&) {
-	auto data = reinterpret_cast<const NotificationData*>(hdr);
-	for (auto& link : m_Links) {
-		if (data->position >= link.Start && data->position < link.End) {
-			GoToDisassembly(m_hWnd, link.Expression.c_str());
-			break;
-		}
+LRESULT CAssistantView::OnLinkClick(int, LPNMHDR hdr, BOOL&) {
+	auto link = reinterpret_cast<const NMMDVLINK*>(hdr);
+	if (!link->pszUrl)
+		return 0;
+	std::wstring_view url(link->pszUrl);
+	// a symbol or an address: its code
+	if (auto expression = Transcript::LinkTarget(url); !expression.empty()) {
+		GoToDisassembly(m_hWnd, expression.c_str());
+		return 1;
 	}
+	// a web page the answer pointed to: the browser
+	if (url.starts_with(L"https://") || url.starts_with(L"http://")) {
+		::ShellExecuteW(m_hWnd, L"open", link->pszUrl, nullptr, nullptr, SW_SHOWNORMAL);
+		return 1;
+	}
+	// (a #link: the view scrolls)
 	return 0;
+}
+
+LRESULT CAssistantView::OnViewContextMenu(int, LPNMHDR hdr, BOOL&) {
+	auto menuInfo = reinterpret_cast<const NMMDVCONTEXTMENU*>(hdr);
+	enum { CmdCopy = 1, CmdSelectAll, CmdNew, CmdSettings };
+	CMenu menu;
+	menu.CreatePopupMenu();
+	menu.AppendMenu(menuInfo->hasSelection ? MF_STRING : MF_GRAYED, CmdCopy, L"&Copy\tCtrl+C");
+	menu.AppendMenu(MF_STRING, CmdSelectAll, L"Select &All");
+	menu.AppendMenu(MF_SEPARATOR);
+	menu.AppendMenu(m_Busy ? MF_GRAYED : MF_STRING, CmdNew, L"&New Conversation");
+	menu.AppendMenu(m_Busy ? MF_GRAYED : MF_STRING, CmdSettings, L"&Settings...");
+	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, menuInfo->pt.x, menuInfo->pt.y, m_hWnd)) {
+		case CmdCopy: m_View.Copy(); break;
+		case CmdSelectAll: m_View.SelectAll(); break;
+		case CmdNew: NewConversation(); break;
+		case CmdSettings: EditSettings(); break;
+	}
+	return 1;
 }
 
 LRESULT CAssistantView::OnInputChar(UINT, WPARAM wParam, LPARAM, BOOL& handled) {
@@ -452,29 +383,5 @@ LRESULT CAssistantView::OnInputKeyDown(UINT, WPARAM wParam, LPARAM, BOOL& handle
 		return 0;
 	}
 	handled = FALSE;
-	return 0;
-}
-
-LRESULT CAssistantView::OnTextContextMenu(UINT, WPARAM, LPARAM lParam, BOOL&) {
-	CPoint pt(GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
-	if (pt.x == -1 && pt.y == -1) {
-		auto pos = m_Text->CurrentPos();
-		pt.SetPoint(m_Text->PointXFromPosition(pos), m_Text->PointYFromPosition(pos));
-		m_Text.ClientToScreen(&pt);
-	}
-	enum { CmdCopy = 1, CmdSelectAll, CmdNew, CmdSettings };
-	CMenu menu;
-	menu.CreatePopupMenu();
-	menu.AppendMenu(m_Text->SelectionEmpty() ? MF_GRAYED : MF_STRING, CmdCopy, L"&Copy\tCtrl+C");
-	menu.AppendMenu(MF_STRING, CmdSelectAll, L"Select &All");
-	menu.AppendMenu(MF_SEPARATOR);
-	menu.AppendMenu(m_Busy ? MF_GRAYED : MF_STRING, CmdNew, L"&New Conversation");
-	menu.AppendMenu(m_Busy ? MF_GRAYED : MF_STRING, CmdSettings, L"&Settings...");
-	switch (menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, m_hWnd)) {
-		case CmdCopy: m_Text->Copy(); break;
-		case CmdSelectAll: m_Text->SelectAll(); break;
-		case CmdNew: NewConversation(); break;
-		case CmdSettings: EditSettings(); break;
-	}
 	return 0;
 }

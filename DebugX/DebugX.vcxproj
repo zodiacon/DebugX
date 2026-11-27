@@ -492,6 +492,9 @@
     <ProjectReference Include="..\wtlhelper\WTLHelper\WTLHelper.vcxproj">
       <Project>{ae53419f-a769-4548-8e15-e311904df7df}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\wtlhelper\MarkdownView\MarkdownView.vcxproj">
+      <Project>{8d13d037-b587-442b-ad17-f42acf5e7812}</Project>
+    </ProjectReference>
     <ProjectReference Include="..\wtlhelper\HexControl\HexControl.vcxproj">
       <Project>{ef5c2f6b-5fcd-446c-be8d-1485407cd65a}</Project>
     </ProjectReference>

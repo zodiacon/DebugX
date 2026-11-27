@@ -34,9 +34,10 @@ line, Stop (or Esc) ends a turn, and New starts a new conversation. The first ti
 key from console.anthropic.com. DebugX keeps the key in Windows Credential Manager, or uses `ANTHROPIC_API_KEY` if that is
 set. Settings also chooses the model (Claude Opus 5.5 by default) and its effort.
 
-The assistant looks into the target with the tools listed below. The answer streams into the pane, with dimmed summaries
-of the model's reasoning, each tool call, and the start of each result. Symbols and addresses are links to the Disassembly
-pane. Before running, stepping, setting breakpoints or running a debugger command, the assistant asks, unless Settings
+The assistant looks into the target with the tools listed below. The answer streams into the pane as formatted Markdown,
+with summaries of the model's reasoning, and each tool call as a line you can expand to see its whole result. Symbols and
+addresses are links to the Disassembly pane. A long conversation is summarized automatically once it gets large, so it can
+go on without growing without limit. Before running, stepping, setting breakpoints or running a debugger command, the assistant asks, unless Settings
 allows it. Your questions, and what the tools read of the target, are sent to Anthropic's API.
 
 ### MCP server

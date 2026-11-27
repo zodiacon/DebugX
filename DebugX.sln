@@ -19,6 +19,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "WTLHelper", "wtlhelper\WTLH
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "HexControl", "wtlhelper\HexControl\HexControl.vcxproj", "{EF5C2F6B-5FCD-446C-BE8D-1485407CD65A}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MarkdownView", "wtlhelper\MarkdownView\MarkdownView.vcxproj", "{8D13D037-B587-442B-AD17-F42ACF5E7812}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{7CDB509D-F712-4820-AA96-13FEC08B0B81}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DebugEngineTests", "Tests\DebugEngineTests\DebugEngineTests.vcxproj", "{C3700681-7EF5-4313-AA65-A0411DAC015B}"
@@ -129,6 +131,18 @@ Global
 		{AE53419F-A769-4548-8E15-E311904DF7DF}.ReleaseSigned|x86.ActiveCfg = Release|Win32
 		{AE53419F-A769-4548-8E15-E311904DF7DF}.Release|x86.Build.0 = Release|Win32
 		{AE53419F-A769-4548-8E15-E311904DF7DF}.ReleaseSigned|x86.Build.0 = Release|Win32
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.Debug|x64.ActiveCfg = Debug|x64
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.Debug|x64.Build.0 = Debug|x64
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.Debug|x86.ActiveCfg = Debug|Win32
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.Debug|x86.Build.0 = Debug|Win32
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.Release|x64.ActiveCfg = Release|x64
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.Release|x64.Build.0 = Release|x64
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.ReleaseSigned|x64.ActiveCfg = Release|x64
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.ReleaseSigned|x64.Build.0 = Release|x64
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.Release|x86.ActiveCfg = Release|Win32
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.Release|x86.Build.0 = Release|Win32
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.ReleaseSigned|x86.ActiveCfg = Release|Win32
+		{8D13D037-B587-442B-AD17-F42ACF5E7812}.ReleaseSigned|x86.Build.0 = Release|Win32
 		{EF5C2F6B-5FCD-446C-BE8D-1485407CD65A}.Debug|x64.ActiveCfg = Debug|x64
 		{EF5C2F6B-5FCD-446C-BE8D-1485407CD65A}.Debug|x64.Build.0 = Debug|x64
 		{EF5C2F6B-5FCD-446C-BE8D-1485407CD65A}.Debug|x86.ActiveCfg = Debug|Win32

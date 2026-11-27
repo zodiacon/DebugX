@@ -102,6 +102,11 @@ MessageBuilder::Update MessageBuilder::Apply(const std::string& event, const jso
 			block["signature"] = block.value("signature", "") + delta.value("signature", "");
 		else if (type == "input_json_delta")
 			m_PartialJson[index] += delta.value("partial_json", "");
+		else if (type == "compaction_delta") {
+			// (a compaction block's summary, whole -- or the block may come complete in its content_block_start)
+			if (delta.contains("content") && !delta["content"].is_null())
+				block["content"] = delta["content"];
+		}
 		else if (type == "citations_delta" && delta.contains("citation")) {
 			if (!block.contains("citations") || !block["citations"].is_array())
 				block["citations"] = json::array();

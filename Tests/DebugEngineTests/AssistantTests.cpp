@@ -8,6 +8,7 @@
 #include <thread>
 #include <nlohmann/json.hpp>
 #include "Assistant.h"
+#include "Transcript.h"
 
 using namespace DebugEngine;
 using namespace DebugX::Ai;
@@ -48,7 +49,7 @@ namespace {
 	};
 
 	// SSE text for a message, as the API streams it: each block started, its pieces, stopped; then the stop reason
-	std::string Stream(const std::vector<json>& blocks, const std::string& stopReason, json stopDetails = nullptr) {
+	std::string Stream(const std::vector<json>& blocks, const std::string& stopReason, json stopDetails = nullptr, json iterations = nullptr) {
 		std::string sse;
 		auto event = [&](const char* name, const json& data) {
 			sse += std::string("event: ") + name + "\r\ndata: " + data.dump() + "\r\n\r\n";
@@ -69,7 +70,11 @@ namespace {
 			}
 			else if (type == "tool_use")
 				start["input"] = json::object();
+			else if (type == "compaction")
+				start["content"] = nullptr;		// (the summary comes in a compaction_delta)
 			event("content_block_start", { { "type", "content_block_start" }, { "index", i }, { "content_block", start } });
+			if (type == "compaction")
+				event("content_block_delta", { { "type", "content_block_delta" }, { "index", i }, { "delta", { { "type", "compaction_delta" }, { "content", b["content"] } } } });
 			auto pieces = [&](const std::string& text, const char* deltaType, const char* field) {
 				for (size_t p = 0; p < text.size(); p += 5)
 					event("content_block_delta", { { "type", "content_block_delta" }, { "index", i }, { "delta", { { "type", deltaType }, { field, text.substr(p, 5) } } } });
@@ -87,7 +92,10 @@ namespace {
 		json delta = { { "stop_reason", stopReason } };
 		if (!stopDetails.is_null())
 			delta["stop_details"] = stopDetails;
-		event("message_delta", { { "type", "message_delta" }, { "delta", delta }, { "usage", { { "output_tokens", 50 } } } });
+		json usage = { { "output_tokens", 50 } };
+		if (!iterations.is_null())
+			usage["iterations"] = iterations;
+		event("message_delta", { { "type", "message_delta" }, { "delta", delta }, { "usage", usage } });
 		event("message_stop", { { "type", "message_stop" } });
 		return sse;
 	}
@@ -200,6 +208,54 @@ Task<void> AssistantSuite(DebuggerX& dbg) {
 		Check(echo.size() == 4 && echo[0]["type"] == "text" && echo[1]["type"] == "fallback" && echo[2]["thinking"] == "y" && echo[3]["id"] == "t1",
 			"EchoContent: before a fallback only the text and the boundary; after it, everything");
 		Check(EchoContent(json::array({ { { "type", "text" } } })).size() == 1, "EchoContent: no fallback, all of it");
+
+		// the transcript, as Markdown
+		auto md = Transcript::Linkify(L"It waits in procs!Worker+0x62, called from `KERNELBASE!ReadFile+0x80`; a std::vector<int> grows.\n"
+			L"```\nprocs!wmain <raw>\n```\nAt 0x7ff612345678.");
+		printf("  Linkify: %ls\n", md.c_str());
+		Check(md.find(L"[`procs!Worker+0x62`](dbgx:procs!Worker+0x62)") != std::wstring::npos
+			&& md.find(L"[`KERNELBASE!ReadFile+0x80`](dbgx:KERNELBASE!ReadFile+0x80)") != std::wstring::npos
+			&& md.find(L"[`0x7ff612345678`](dbgx:0x7ff612345678)") != std::wstring::npos,
+			"Linkify: symbols in prose and in code spans, and addresses, become links");
+		Check(md.find(L"std::vector&lt;int>") != std::wstring::npos && md.find(L"```\nprocs!wmain <raw>\n```") != std::wstring::npos,
+			"Linkify: '<' escaped in prose, a fenced code block left as it is");
+		auto templ = Transcript::Linkify(L"mod!ns::f<int>+0x1");
+		auto url = templ.substr(templ.find(L"](") + 2);
+		url.pop_back();
+		Check(Transcript::LinkTarget(url) == L"mod!ns::f<int>+0x1" && Transcript::LinkTarget(L"https://x").empty(),
+			"LinkTarget: the expression back from its link (and nothing from another URL)");
+
+		Transcript transcript;
+		transcript.Apply({ AssistantEvent::Kind::User, L"Why does it hang?" });
+		transcript.Apply({ AssistantEvent::Kind::ThinkingStart });
+		transcript.Apply({ AssistantEvent::Kind::Thinking, L"Look at the stacks." });
+		transcript.Apply({ AssistantEvent::Kind::BlockEnd });
+		transcript.Apply({ AssistantEvent::Kind::ToolCall, L"{\"filter\":\"a<b\"}", L"get_all_call_stacks" });
+		auto running = transcript.Markdown();
+		transcript.Apply({ AssistantEvent::Kind::ToolResult, L"line 1\n```inner```\nline 3", L"get_all_call_stacks" });
+		transcript.Apply({ AssistantEvent::Kind::ToolCall, L"{\"wait_seconds\":0}", L"go" });
+		transcript.Apply({ AssistantEvent::Kind::ToolResult, L"Not allowed by the user.", L"go", true });
+		transcript.Apply({ AssistantEvent::Kind::TextStart });
+		transcript.Apply({ AssistantEvent::Kind::Text, L"Done" });
+		auto streaming = transcript.Markdown();
+		transcript.Apply({ AssistantEvent::Kind::BlockEnd });
+		transcript.Apply({ AssistantEvent::Kind::Error, L"HTTP 500: *oops*" });
+		auto doc = transcript.Markdown();
+		std::wstring printable(doc);
+		for (auto& c : printable)
+			if (c > 127)
+				c = L'?';
+		printf("  --- transcript:\n%ls\n  ---\n", printable.c_str());
+		Check(doc.starts_with(L"**You:** Why does it hang?") && doc.find(L"> *Thinking:* Look at the stacks.") != std::wstring::npos,
+			"Transcript: the user's message, the reasoning as a quote");
+		Check(running.find(L"get_all_call_stacks") != std::wstring::npos && running.find(L"<details>") == std::wstring::npos,
+			"Transcript: a tool call that runs is a line");
+		Check(doc.find(L"<details><summary>") != std::wstring::npos && doc.find(L"a&lt;b") != std::wstring::npos
+			&& doc.find(L"````text\nline 1\n```inner```\nline 3\n````") != std::wstring::npos,
+			"Transcript: then a <details> with its result, in a fence longer than the result's backticks");
+		Check(doc.find(L"*Not allowed by the user.*") != std::wstring::npos, "Transcript: why a call failed, outside its <details>");
+		Check(streaming.ends_with(L"Done") && doc.find(L"> [!WARNING]\n> HTTP 500: \\*oops\\*") != std::wstring::npos,
+			"Transcript: the text while it streams; an error as a warning, its Markdown escaped");
 	}
 
 	// ---- a conversation on procs.exe, at its DebugBreak
@@ -220,7 +276,10 @@ Task<void> AssistantSuite(DebuggerX& dbg) {
 		{ { "type", "tool_use" }, { "id", "toolu_go" }, { "name", "go" }, { "input", { { "wait_seconds", 0 } } } } }, "tool_use") });
 	scripted.Scripts.push_back({ Stream({ { { "type", "tool_use" }, { "id", "toolu_bad" }, { "name", "get_call_stack" }, { "input", json::object() },
 		{ "raw", "{\"thread_id\": " } } }, "tool_use") });
-	scripted.Scripts.push_back({ Stream({ { { "type", "text" }, { "text", "The worker waits in procs!Worker+0x62, in ReadFile." } } }, "end_turn") });
+	// (the conversation reached the compaction threshold: the answer starts with the summary of what came before)
+	scripted.Scripts.push_back({ Stream({ { { "type", "compaction" }, { "content", "Summary: the user asked what the worker thread does." } },
+		{ { "type", "text" }, { "text", "The worker waits in procs!Worker+0x62, in ReadFile." } } }, "end_turn", nullptr,
+		json::array({ { { "type", "compaction" }, { "input_tokens", 1000 }, { "output_tokens", 200 } }, { { "type", "message" }, { "input_tokens", 100 }, { "output_tokens", 50 } } })) });
 	scripted.Scripts.push_back({ Stream({}, "refusal", { { "type", "refusal" }, { "category", "cyber" } }) });
 
 	Recorder recorder;
@@ -266,13 +325,25 @@ Task<void> AssistantSuite(DebuggerX& dbg) {
 		auto bad = recorder.Find(AssistantEvent::Kind::ToolResult, L"get_call_stack");
 		Check(bad && bad->Failed, "a call whose input is not valid JSON is not run");
 		auto usage = std::find_if(recorder.Events.rbegin(), recorder.Events.rend(), [](auto& e) { return e.Type == AssistantEvent::Kind::Usage; });
-		Check(usage != recorder.Events.rend() && usage->InputTokens == 300 && usage->OutputTokens == 150 && usage->CacheReadTokens == 120, "usage, added up");
+		Check(usage != recorder.Events.rend() && usage->InputTokens == 1300 && usage->OutputTokens == 350 && usage->CacheReadTokens == 120,
+			"usage, added up (with the compaction's own tokens)");
+		Check(recorder.Find(AssistantEvent::Kind::Info, nullptr, L"summarized"), "a compaction is shown");
+		auto& last = assistant.Messages()[5];
+		Check(last["role"] == "assistant" && last["content"][0]["type"] == "compaction"
+			&& last["content"][0]["content"] == "Summary: the user asked what the worker thread does." && last["content"][1]["type"] == "text",
+			"the compaction block (its summary from the compaction_delta) is kept first in the answer, to go back with the rest");
 
 		if (requests.size() == 4) {
 			auto& first = requests[1];
 			Check(first["model"] == "claude-opus-5-5" && first["stream"] == true && first["output_config"]["effort"] == "high"
-				&& first["thinking"]["type"] == "adaptive" && first["cache_control"]["type"] == "ephemeral" && first["fallbacks"] == "default"
-				&& scripted.Betas[1] == std::vector<std::string>{ "server-side-fallback-2026-07-01" }, "the request: model, effort, adaptive thinking, caching, fallbacks");
+				&& first["thinking"]["type"] == "adaptive" && first["thinking"]["block_binding"]["prefix_mismatch_behavior"] == "drop_block"
+				&& first["cache_control"]["type"] == "ephemeral" && first["fallbacks"] == "default"
+				&& scripted.Betas[1] == std::vector<std::string>{ "thinking-binding-controls-2026-08-01", "compact-2026-01-12", "server-side-fallback-2026-07-01" },
+				"the request: model, effort, adaptive thinking (drop on a mismatch), caching, fallbacks");
+			auto& edit = first["context_management"]["edits"][0];
+			Check(edit["type"] == "compact_20260112" && edit["trigger"]["type"] == "input_tokens" && edit["trigger"]["value"] == 150000
+				&& edit["instructions"].get<std::string>().find("do not call any tool") != std::string::npos,
+				"compaction: at 150K input tokens, with instructions that keep the findings and call no tool");
 			Check(first["tools"].size() == DebugX::Mcp::McpServer::ToolNames().size() && first["tools"][0].value("eager_input_streaming", false),
 				"every tool declared, inputs streamed eagerly");
 			auto state = first["messages"][0]["content"][0].value("text", "");

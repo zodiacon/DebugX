@@ -80,12 +80,14 @@
     <ClInclude Include="McpServer.h" />
     <ClInclude Include="McpTools.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="Transcript.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Assistant.cpp" />
     <ClCompile Include="ClaudeApi.cpp" />
     <ClCompile Include="McpServer.cpp" />
     <ClCompile Include="McpTools.cpp" />
+    <ClCompile Include="Transcript.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
