@@ -373,6 +373,7 @@ void MainWindow::ApplySettings() {
 	auto sources = settings.value("sourcePath").toString();
 	if (!sources.isEmpty())
 		Debugger().SetSourcePath(W(sources).c_str());
+	Debugger().SetDownloadSymbols(settings.value("downloadSymbols", true).toBool());
 }
 
 void MainWindow::SaveSettings() {
@@ -671,11 +672,13 @@ Task<void> MainWindow::EditPaths() {
 	co_await Debugger().GetSymbolPaths(symbols, sources);
 	if (!*alive)
 		co_return;
-	PathsDialog dlg(Q(symbols), Q(sources), this);
+	PathsDialog dlg(Q(symbols), Q(sources), Debugger().DownloadSymbols(), this);
 	if (dlg.exec() != QDialog::Accepted)
 		co_return;
 	QSettings().setValue("symbolPath", dlg.SymbolPath());
 	QSettings().setValue("sourcePath", dlg.SourcePath());
+	QSettings().setValue("downloadSymbols", dlg.DownloadSymbols());
+	Debugger().SetDownloadSymbols(dlg.DownloadSymbols());
 	co_await Debugger().SetSymbolPath(W(dlg.SymbolPath()).c_str());
 	co_await Debugger().SetSourcePath(W(dlg.SourcePath()).c_str());
 	if (*alive)

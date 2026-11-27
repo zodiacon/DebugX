@@ -281,17 +281,51 @@ namespace GdbEngine {
 			"-gdb-set disassembly-flavor intel",
 			"-gdb-set print object on",
 			"-gdb-set print static-members off",
-			// a debuginfod download can take minutes, and GDB would ask first; DebugX does not ask for it (yet)
-			"-gdb-set debuginfod enabled off",
 			"-enable-pretty-printing",
 		};
 		for (auto cmd : setup)
 			Send(cmd, Capture, nullptr);
+		// debuginfod: the servers (GDB itself knows only $DEBUGINFOD_URLS), and on or off -- GDB's default is to ask, which
+		// with no terminal means no
+		// (not quoted: -gdb-set keeps the quotes in the value, and every download fails with "Invalid argument")
+		if (auto urls = DebuginfodUrls(); !urls.empty())
+			Send("-gdb-set debuginfod urls " + urls, Capture, nullptr);
+		SetDownloadSymbols(m_DownloadSymbols);
 		Send("-inferior-tty-set " + MiQuote(m_Gdb.InferiorTty()), Capture, nullptr);
 		Send("-interpreter-exec console \"info signals\"", Capture, [this](MiResult&& r) {
 			m_DefaultFilters = ParseSignals(r.Console);
 		});
 		return S_OK;
+	}
+
+	void GdbDebugger::SetDownloadSymbols(bool download) {
+		m_DownloadSymbols = download;
+		// (before Create: sent by Create)
+		if (m_Dispatcher)
+			Send(std::format("-gdb-set debuginfod enabled {}", download ? "on" : "off"), Capture, nullptr);
+	}
+
+	std::string GdbDebugger::DebuginfodUrls() {
+		if (auto env = std::getenv("DEBUGINFOD_URLS"); env && *env)
+			return env;
+		// as /etc/profile.d/debuginfod.sh puts them together: each *.urls file of /etc/debuginfod, its words
+		std::string urls;
+		std::error_code ec;
+		std::vector<fs::path> files;
+		for (auto& entry : fs::directory_iterator("/etc/debuginfod", ec))
+			if (entry.path().extension() == ".urls")
+				files.push_back(entry.path());
+		std::sort(files.begin(), files.end());
+		for (auto& file : files) {
+			std::ifstream in(file);
+			std::string line, word;
+			while (std::getline(in, line)) {
+				std::istringstream words(line.substr(0, line.find('#')));
+				while (words >> word)
+					urls += (urls.empty() ? "" : " ") + word;
+			}
+		}
+		return urls;
 	}
 
 	//
@@ -651,9 +685,29 @@ namespace GdbEngine {
 		auto func = frame.Get("func");
 		if (func.empty() || func == "??")
 			return {};
+		// (GDB names the file only for a frame without debug information: else it is the one mapped there -- a library
+		// with its debug information is not the program)
 		auto from = frame.Get("from");
+		if (from.empty())
+			from = MappedFile(frame.GetNumber("addr"));
 		auto module = Basename(!from.empty() ? from : m_ExePath);
 		return module.empty() ? func : module + "!" + func;
+	}
+
+	std::string GdbDebugger::MappedFile(ULONG64 address) const {
+		if (!address || !m_Pid || !IsLive())
+			return {};
+		if (m_MappedAt != std::pair(m_Pid, m_StopGeneration)) {
+			m_Mapped.clear();
+			for (auto& r : ReadMaps(m_Pid))
+				if (!r.Path.empty() && r.Path[0] == '/')
+					m_Mapped.emplace_back(r.Start, r.End, r.Path);
+			m_MappedAt = { m_Pid, m_StopGeneration };
+		}
+		for (auto& [start, end, path] : m_Mapped)
+			if (address >= start && address < end)
+				return path;
+		return {};
 	}
 
 	std::string GdbDebugger::QuoteLocation(std::wstring_view location) const {
@@ -1703,6 +1757,8 @@ namespace GdbEngine {
 			commands.push_back(std::format("-interpreter-exec console \"info line *0x{:x}\"", offset));
 		auto results = co_await Commands(std::move(commands));
 		std::vector<size_t> which;
+		// for each file, an address where one of its lines starts
+		std::map<std::wstring, ULONG64> lineStarts;
 		for (size_t i = 0; i < results.size(); i++) {
 			// Line 9 of "loop.cpp" starts at address 0x1149 <Work(int)+12> and ends at 0x1150 <Work(int)+19>.
 			auto& text = results[i].Console;
@@ -1715,21 +1771,30 @@ namespace GdbEngine {
 			locations[i].Line = static_cast<ULONG>(ParseNumber(text.substr(5), 0, 10));
 			locations[i].File = FromUtf8(text.substr(of + 5, close - of - 5));
 			which.push_back(i);
+			if (auto at = text.find("address 0x"); at != std::string::npos)
+				lineStarts.emplace(locations[i].File, ParseNumber(text.substr(at + 8)));
 		}
-		// where the files are on this machine (GDB's source path, else where they were compiled)
-		std::map<std::wstring, std::wstring> found;
-		for (auto i : which)
-			found[locations[i].File];
-		if (found.empty())
+		if (which.empty())
 			co_return S_OK;
-		// (the files' full names come from the list of them)
-		auto files = co_await Command("-file-list-exec-source-files");
-		for (auto& [_, f] : files.Results["files"].Items) {
-			auto file = FromUtf8(f.Get("file"));
-			auto full = FromUtf8(f.Get("fullname"));
-			if (found.contains(file) && !full.empty() && found[file].empty() && fs::exists(ToUtf8(full)))
-				found[file] = full;
+		// where the files are on this machine (GDB's source path, else where they were compiled): the full name GDB gives
+		// with the source of one instruction of each. (Not -file-list-exec-source-files: it reads all the debug
+		// information there is -- libc's, with libc6-dbg, took half a minute a stop -- and with debuginfod on, tries to
+		// download every source file it does not have.)
+		std::vector<std::wstring> names;
+		commands.clear();
+		for (auto& [file, address] : lineStarts) {
+			names.push_back(file);
+			commands.push_back(std::format("-data-disassemble -s 0x{:x} -e 0x{:x} -- 1", address, address + 1));
 		}
+		auto sources = co_await Commands(std::move(commands));
+		std::map<std::wstring, std::wstring> found;
+		for (size_t i = 0; i < sources.size() && i < names.size(); i++)
+			for (auto& [_, line] : sources[i].Results["asm_insns"].Items) {
+				auto full = FromUtf8(line.Get("fullname"));
+				if (!full.empty() && fs::exists(ToUtf8(full)))
+					found[names[i]] = full;
+				break;
+			}
 		for (auto i : which) {
 			auto& loc = locations[i];
 			loc.Path = found[loc.File];

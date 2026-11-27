@@ -1,5 +1,6 @@
 #include "Dialogs.h"
 #include "Common.h"
+#include "GdbDebugger.h"
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -223,7 +224,7 @@ BreakpointSettings BreakpointDialog::Settings() const {
 // Symbol and Source Paths
 //
 
-PathsDialog::PathsDialog(const QString& symbolPath, const QString& sourcePath, QWidget* parent) : QDialog(parent) {
+PathsDialog::PathsDialog(const QString& symbolPath, const QString& sourcePath, bool download, QWidget* parent) : QDialog(parent) {
 	setWindowTitle(tr("Symbol and Source Paths"));
 	resize(560, 420);
 	auto layout = new QVBoxLayout(this);
@@ -231,6 +232,13 @@ PathsDialog::PathsDialog(const QString& symbolPath, const QString& sourcePath, Q
 	m_Symbols = new QPlainTextEdit(this);
 	m_Symbols->setPlainText(QString(symbolPath).replace(':', '\n'));
 	layout->addWidget(m_Symbols);
+	// (GdbDebugger::SetDownloadSymbols: the symbol server, as it were)
+	auto urls = QString::fromStdString(GdbEngine::GdbDebugger::DebuginfodUrls());
+	m_Download = new QCheckBox(tr("&Download missing debug information from debuginfod servers"), this);
+	m_Download->setChecked(download);
+	m_Download->setToolTip(urls.isEmpty() ? tr("No servers: set DEBUGINFOD_URLS, or install debuginfod's configuration")
+		: tr("Servers: %1").arg(urls));
+	layout->addWidget(m_Download);
 	layout->addWidget(new QLabel(tr("Folders to look for &source files in (besides where they were compiled), one a line:"), this));
 	m_Sources = new QPlainTextEdit(this);
 	auto sources = QString(sourcePath).split(':', Qt::SkipEmptyParts);
@@ -243,6 +251,10 @@ PathsDialog::PathsDialog(const QString& symbolPath, const QString& sourcePath, Q
 
 QString PathsDialog::SymbolPath() const {
 	return m_Symbols->toPlainText().split('\n', Qt::SkipEmptyParts).join(':');
+}
+
+bool PathsDialog::DownloadSymbols() const {
+	return m_Download->isChecked();
 }
 
 QString PathsDialog::SourcePath() const {

@@ -498,6 +498,12 @@ namespace {
 		for (auto& f : frames)
 			inWorker |= f.Symbol.find(L"Worker") != std::wstring::npos;
 		CHECK(inWorker);
+		// the worker waits in libc: its frames are libc's (by the address: with libc's debug information GDB does not
+		// name the file), the worker's the program's
+		CHECK(!frames.empty() && frames[0].Symbol.starts_with(L"libc.so"));
+		for (auto& f : frames)
+			if (f.Symbol.find(L"Worker") != std::wstring::npos)
+				CHECK(f.Symbol.starts_with(L"threads!"));
 
 		std::vector<HandleInfo> handles;
 		CHECK_HR(co_await d.EnumHandles(handles));
@@ -582,6 +588,7 @@ int main(int argc, char** argv) {
 		Events events;
 		{
 			GdbDebugger d;
+			d.SetDownloadSymbols(false);		// (offline: the targets have their debug information)
 			auto hr = d.Create([&](DebuggerNotificationType type, void* data) { events.Handle(type, data); }, loop.CreateDispatcher());
 			if (FAILED(hr)) {
 				std::printf("  FAILED: cannot start GDB\n");

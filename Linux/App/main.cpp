@@ -18,7 +18,7 @@ namespace {
 			};
 			return Awaiter{ ms };
 		};
-		for (int i = 0; i < 100 && !Session().HasTarget(); i++)
+		for (int i = 0; i < 600 && !Session().HasTarget(); i++)		// (up to a minute: debuginfod downloads)
 			co_await wait(100);
 		co_await wait(500);
 		for (auto& command : commands)

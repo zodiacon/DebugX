@@ -43,6 +43,11 @@ on distributions that set it to 1, as Ubuntu does.
 - Locals and Watch use variable objects with the pretty-printers, so libstdc++'s containers show their elements.
 - Exception filters are GDB's signal handling (`handle SIGx stop/print/pass`). Core dumps are written with `gcore` and opened.
 - Handles are `/proc/<pid>/fd`; memory search is `find` over `/proc/<pid>/maps`' readable regions.
+- Symbols for what has none (a distribution's programs and libraries) come from debuginfod servers, as Windows' come from
+  a symbol server: on by default (Options > Symbol and Source Paths), the servers in `DEBUGINFOD_URLS`, else the system's
+  (`/etc/debuginfod/*.urls`; the variable is set only in login shells). A download shows in the Command view and makes
+  that start or stop wait. Installed debug packages (`libc6-dbg`, `*-dbgsym`) need no download.
+- `DEBUGX_MI_LOG=<file>` logs every line to and from GDB, with times.
 
 ## Not yet
 

@@ -8,6 +8,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <tuple>
 #include <vector>
 #include "IDebugger.h"
 #include "GdbProcess.h"
@@ -44,6 +45,16 @@ namespace GdbEngine {
 		const std::wstring& LastError() const {
 			return m_LastError;
 		}
+		// Whether GDB downloads the debug information of what has none (the program, its libraries) from the debuginfod
+		// servers -- what a symbol server is on Windows. On by default; the servers are $DEBUGINFOD_URLS, else the
+		// system's (/etc/debuginfod/*.urls: the variable is set only in login shells). Takes effect for what is loaded
+		// afterwards; a download is shown as output ("Downloading ... separate debug info for ...").
+		void SetDownloadSymbols(bool download);
+		bool DownloadSymbols() const {
+			return m_DownloadSymbols;
+		}
+		// the debuginfod servers GDB uses (empty: none, nothing is downloaded)
+		static std::string DebuginfodUrls();
 
 		HRESULT Create(NotificationHandler handler, std::unique_ptr<DebugEngine::IDispatcher> dispatcher = nullptr) override;
 
@@ -193,7 +204,10 @@ namespace GdbEngine {
 		bool CanRun() const;
 		bool IsLive() const;
 		std::string ThreadOption(bool withFrame = true) const;
+		// module!function of a frame record
 		std::string Symbolize(const MiValue& frame) const;
+		// the file mapped at an address (/proc/<pid>/maps, read once a stop); empty if none
+		std::string MappedFile(ULONG64 address) const;
 		std::string QuoteLocation(std::wstring_view location) const;
 		DebugEngine::Task<HRESULT> Interrupt();
 		DebugEngine::Task<HRESULT> EndTarget(bool terminate);
@@ -219,6 +233,10 @@ namespace GdbEngine {
 		DebugEngine::TargetType m_NextTargetType{ DebugEngine::TargetType::LiveUser };
 		bool m_HasTarget{ false };
 		bool m_ExitPosted{ false };
+		bool m_DownloadSymbols{ true };
+		// MappedFile's: the file-backed regions (start, end, path) as of a stop of a process
+		mutable std::vector<std::tuple<ULONG64, ULONG64, std::string>> m_Mapped;
+		mutable std::pair<int, std::uint64_t> m_MappedAt{ 0, ~0ull };
 		ULONG m_Thread{ 0 };			// GDB's number of the current thread
 		ULONG m_Frame{ 0 };				// the scope frame
 		int m_Pid{ 0 };					// the current inferior's process

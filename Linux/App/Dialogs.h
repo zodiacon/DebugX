@@ -60,11 +60,13 @@ private:
 // Options > Symbol and Source Paths: a folder a line
 class PathsDialog final : public QDialog {
 public:
-	PathsDialog(const QString& symbolPath, const QString& sourcePath, QWidget* parent = nullptr);
+	PathsDialog(const QString& symbolPath, const QString& sourcePath, bool download, QWidget* parent = nullptr);
 	QString SymbolPath() const;
 	QString SourcePath() const;
+	bool DownloadSymbols() const;
 
 private:
 	QPlainTextEdit* m_Symbols;
 	QPlainTextEdit* m_Sources;
+	QCheckBox* m_Download;
 };

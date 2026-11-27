@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdio>
+
 #include <atomic>
 #include <functional>
 #include <mutex>
@@ -47,6 +49,8 @@ namespace GdbEngine {
 
 	private:
 		void ReaderThread();
+		// $DEBUGX_MI_LOG: every line to and from GDB, timed (">" sent, "<" received)
+		void Log(char direction, std::string_view line);
 
 		Callbacks m_Callbacks;
 		pid_t m_Pid{ -1 };
@@ -56,6 +60,8 @@ namespace GdbEngine {
 		std::string m_TtyName;
 		std::thread m_Reader;
 		std::mutex m_WriteLock;
+		std::mutex m_LogLock;
+		std::FILE* m_Log{ nullptr };
 		std::atomic<bool> m_Running{ false };
 		std::atomic<bool> m_Stopping{ false };
 	};

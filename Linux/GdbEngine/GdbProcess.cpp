@@ -25,12 +25,27 @@ namespace GdbEngine {
 
 	GdbProcess::~GdbProcess() {
 		Stop();
+		if (m_Log)
+			std::fclose(m_Log);
+	}
+
+	void GdbProcess::Log(char direction, std::string_view line) {
+		if (!m_Log)
+			return;
+		using namespace std::chrono;
+		auto ms = duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+		std::lock_guard lock(m_LogLock);
+		std::fprintf(m_Log, "%lld.%03lld %c %.*s\n", static_cast<long long>(ms / 1000), static_cast<long long>(ms % 1000), direction,
+			static_cast<int>(line.size()), line.data());
+		std::fflush(m_Log);
 	}
 
 	bool GdbProcess::Start(Callbacks callbacks, std::string gdb) {
 		if (m_Running)
 			return false;
 		m_Callbacks = std::move(callbacks);
+		if (auto log = ::getenv("DEBUGX_MI_LOG"); log && *log && !m_Log)
+			m_Log = std::fopen(log, "a");
 		if (gdb.empty()) {
 			auto env = ::getenv("DEBUGX_GDB");
 			gdb = env && *env ? env : "gdb";
@@ -100,6 +115,7 @@ namespace GdbEngine {
 		std::lock_guard lock(m_WriteLock);
 		if (!m_Running || m_In < 0)
 			return false;
+		Log('>', line);
 		std::string data(line);
 		data += '\n';
 		const char* p = data.data();
@@ -146,6 +162,7 @@ namespace GdbEngine {
 				}
 				for (ssize_t i = 0; i < n; i++) {
 					if (buffer[i] == '\n') {
+						Log('<', line);
 						if (!line.empty() && m_Callbacks.Record)
 							m_Callbacks.Record(ParseMiLine(line));
 						line.clear();
